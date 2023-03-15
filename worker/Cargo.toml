@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
+serpress = { path = "../serpress" }
 cfg-if = "0.1.2"
 worker = "0.0.13"
 
@@ -19,6 +20,6 @@ worker = "0.0.13"
 # code size when deploying.
 console_error_panic_hook = { version = "0.1.1", optional = true }
 
-[profile.release]
+# [profile.release]
 # Tell `rustc` to optimize for small code size.
-opt-level = "s"
+# opt-level = "s"

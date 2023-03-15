@@ -1,4 +1,5 @@
 use worker::*;
+use serpress::*;
 
 mod utils;
 
@@ -19,5 +20,21 @@ pub async fn main(req: Request, _env: Env, _ctx: worker::Context) -> Result<Resp
     // Optionally, get more helpful error messages written to the console in the case of a panic.
     utils::set_panic_hook();
 
-    Response::ok("Hello from workers")
+    let server_conf = new_server_config(String::from(r#"
+        [services]
+
+        [services.core]
+        name = 'core'
+
+        [domains]
+        [domains.serpress]
+        domain = 'serpress.dev' 
+        "#));
+
+    let resp = match server_conf {
+        Ok(conf) => "all good",
+        Err(_) => "no good",
+    };
+
+    Response::ok(resp)
 }

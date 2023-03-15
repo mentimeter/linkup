@@ -1,0 +1,9 @@
+[package]
+name = "serpress"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = "1.0.156"
+toml = "0.7.3"
+url = { version = "2.3.1", features = ["serde"] }
