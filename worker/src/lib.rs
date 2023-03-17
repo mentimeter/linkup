@@ -21,15 +21,11 @@ pub async fn main(req: Request, _env: Env, _ctx: worker::Context) -> Result<Resp
     utils::set_panic_hook();
 
     let server_conf = new_server_config(String::from(r#"
-        [services]
-
-        [services.core]
-        name = 'core'
-
-        [domains]
-        [domains.serpress]
-        domain = 'serpress.dev' 
-        "#));
+    services:
+        - name: core
+    domains:
+        - domain: "serpress.dev" 
+    "#));
 
     let resp = match server_conf {
         Ok(conf) => "all good",
