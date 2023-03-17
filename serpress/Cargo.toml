@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+regex = "1.7.1"
 serde = "1.0.156"
 serde_yaml = "0.9.19"
 thiserror = "1.0.39"

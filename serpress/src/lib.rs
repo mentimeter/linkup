@@ -1,133 +1,36 @@
+use std::collections::{HashMap, HashSet};
+use regex::Regex;
 use thiserror::Error;
+use url::{Host, Origin, Url};
 
-use serde::{Deserialize, Serialize};
-use url::Url;
+mod yaml_server_config;
 
-#[derive(Debug, Deserialize, Serialize)]
+use crate::yaml_server_config::*;
+
+
 pub struct ServerConfig {
-    services: Vec<ServiceChosen>,
-    domains: Vec<Domain>,
+    services: HashMap<String, Service>,
+    domains: HashMap<String, Domain>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct LocalConfig {
-    serpress: SerpressConfig,
-    services: Vec<ServiceConfig>,
-    domains: Vec<Domain>,
+pub struct Service {
+    origin: String,
+    path_modifiers: Vec<PathModifier>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct SerpressConfig {
-    remote: Url,
-    local: Url,
-
-    name_kind: NameKind,    
-    alive_time: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ServiceChosen {
-    name: String,
-    location: Url,
-    path_modifiers: Option<Vec<PathModifier>>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ServiceConfig {
-    name: String,
-    remote: Url,
-    local: Url,
-    directory: Option<String>,
-    path_modifiers: Option<Vec<PathModifier>>,
-}
-
-
-#[derive(Debug, Deserialize, Serialize)]
 pub struct PathModifier {
-    source: String,
+    source: Regex,
     target: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct Domain {
-    domain: String,
-    default_service: Option<String>,
-    routes: Option<Vec<Route>>
+    default_service: String,
+    routes: Vec<Route>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
 pub struct Route {
-    path: String,
+    path: Regex,
     service: String,
-}
-
-
-#[derive(Debug, Deserialize, Serialize)]
-enum NameKind {
-    Animal,
-    SixChar,
-}
-
-pub fn new_server_config(input_conf: String) -> Result<ServerConfig, ConfigError> {
-    let config : Result<ServerConfig, serde_yaml::Error>= serde_yaml::from_str(&input_conf);
-
-    match config {
-        Err(e) => Err(ConfigError::Format(e)),
-        Ok(c) => {
-            if let Err(e) = check_config_domains(&c) {
-                return Err(e)
-            }
-
-            if let Err(e) = check_domain_services_valid(&c) {
-                return Err(e)
-            }
-
-            Ok(c)
-        }
-    }
-}
-
-pub fn get_service(conf: &ServerConfig, name: String) -> Result<&ServiceChosen, ConfigError> {
-    for s in conf.services.iter() {
-        if s.name == name {
-            return Ok(s)
-        }
-    }
-    Err(ConfigError::NoSuchService(name))
-}
-
-fn check_config_domains(conf: &ServerConfig) -> Result<(), ConfigError> {
-    for domain in conf.domains.iter()  {
-        match (&domain.default_service, &domain.routes) {
-            (None, None) => return Err(ConfigError::DomainError),
-            _ => (),
-        }
-    }
-    Ok(())
-}
-
-fn check_domain_services_valid(conf: &ServerConfig) -> Result<(), ConfigError> {
-    println!("domains: {:#?}", conf.domains);
-    println!("services: {:#?}", conf.services);
-    for domain in conf.domains.iter()  {
-        if let Some(s) = &domain.default_service {
-            match get_service(conf, s.to_string()) {
-            Err(e) => return Err(e),
-                Ok(_) => () 
-            }
-        }
-
-        if let Some(rs) = &domain.routes {
-            for r in rs.iter() {
-                match get_service(conf, r.service.to_string()) {
-                Err(e) => return Err(e),
-                    Ok(_) => () 
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 #[derive(Error, Debug)]
@@ -136,82 +39,227 @@ pub enum ConfigError {
     Format(#[from] serde_yaml::Error),
     #[error("no such service: {0}")]
     NoSuchService(String),
+    #[error("invalid regex: {0}, {0}")]
+    InvalidRegex(String, regex::Error),
     #[error("domain config error")]
-    DomainError,
+    DomainConfig,
+    #[error("invalid url: {0}")]
+    InvalidURL(String),
+    #[error("empty config")]
+    Empty,
     #[error("unknown error")]
     Unknown,
 }
 
 
+pub fn new_server_config(input_yaml_conf: String) -> Result<ServerConfig, ConfigError> {
+    let yaml_config_res : Result<YamlServerConfig, serde_yaml::Error>= serde_yaml::from_str(&input_yaml_conf);
+    match yaml_config_res {
+        Err(e) => Err(ConfigError::Format(e)),
+        Ok(c) => convert_server_config(c)
+    }
+}
+
+fn convert_server_config(yaml_config: YamlServerConfig) -> Result<ServerConfig, ConfigError> {
+    if let Err(e) = validate_not_empty(&yaml_config) {
+        return Err(e)
+    }
+
+    if let Err(e) = validate_service_references(&yaml_config) {
+        return Err(e)
+    }
+
+    let mut services: HashMap<String, Service> = HashMap::new();
+    let mut domains: HashMap<String, Domain> = HashMap::new();
+
+    // Convert YamlServerService to Service
+    for yaml_service in yaml_config.services {
+        if let Err(e) = validate_url_origin(&yaml_service.location) {
+            return Err(e)
+        }
+
+        let path_modifiers = match yaml_service.path_modifiers {
+            Some(pm) => convert_path_modifiers(pm),
+            None => Ok(Vec::new()),
+        }?;
+
+        let mut origin = yaml_service.location.to_string();
+        origin.pop(); // Assume no /
+        let service = Service {
+            origin,
+            path_modifiers,
+        };
+
+        services.insert(yaml_service.name, service);
+    }
+
+    // Convert YamlDomain to Domain
+    for yaml_domain in yaml_config.domains {
+        let routes = match yaml_domain.routes {
+            Some(dr) => convert_domain_routes(dr),
+            None => Ok(Vec::new())
+        }?;
+
+        let domain = Domain {
+            default_service: yaml_domain.default_service,
+            routes,
+        };
+
+        domains.insert(yaml_domain.domain, domain);
+    }
+
+    Ok(ServerConfig {
+        services,
+        domains,
+    })
+}
+
+fn convert_path_modifiers(yaml_path_modifiers: Vec<YamlPathModifier>) -> Result<Vec<PathModifier>, ConfigError> {
+    yaml_path_modifiers
+        .into_iter()
+        .map(|path_modifier| {
+            let source =  Regex::new(&path_modifier.source);
+            match source {
+                Err(e) => Err(ConfigError::InvalidRegex(path_modifier.source, e)),
+                Ok(s) => Ok(PathModifier{
+                    source: s,
+                    target: path_modifier.target,
+                })
+            }
+        })
+        .collect()
+}
+
+
+fn convert_domain_routes(yaml_routes: Vec<YamlRoute>) -> Result<Vec<Route>, ConfigError> {
+    yaml_routes
+        .into_iter()
+        .map(|route| {
+            let path = Regex::new(&route.path);
+            match path {
+                Err(e) => Err(ConfigError::InvalidRegex(route.path, e)),
+                Ok(p) => Ok(Route{
+                    path: p,
+                    service: route.service,
+                })
+            }
+        })
+        .collect()
+}
+
+fn validate_not_empty(server_config: &YamlServerConfig) -> Result<(), ConfigError> {
+    if server_config.services.is_empty() {
+        return Err(ConfigError::Empty);
+    }
+    if server_config.domains.is_empty() {
+        return Err(ConfigError::Empty);
+    }
+
+    Ok(())
+}
+
+fn validate_service_references(server_config: &YamlServerConfig) -> Result<(), ConfigError> {
+    let service_names: HashSet<&String> = server_config.services.iter().map(|s| &s.name).collect();
+  
+    for domain in &server_config.domains {
+        if !service_names.contains(&domain.default_service) {
+            return Err(ConfigError::NoSuchService(domain.default_service.to_string()));
+        }
+
+        if let Some(routes) = &domain.routes {
+            for route in routes {
+                if !service_names.contains(&route.service) {
+                    return Err(ConfigError::NoSuchService(route.service.to_string()));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_url_origin(url: &Url) -> Result<(), ConfigError> {
+    let origin = url.origin();
+    if !origin.is_tuple() {
+        return Err(ConfigError::InvalidURL(url.to_string()))
+    }
+
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return Err(ConfigError::InvalidURL(url.to_string()))
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::new_server_config;
+    use super::*;
 
     #[test]
-    fn accepts_default_valid_server_config() {
-        let server_conf_res = new_server_config(String::from(r#"
+    fn test_convert_server_config() {
+        let config_str = String::from(r#"
         services:
-            - name: core
-              location: http://remote-server.dev
+          - name: frontend
+            location: http://localhost:8000
+            path_modifiers:
+              - source: /foo/(.*)
+                target: /bar/$1
+          - name: backend
+            location: http://localhost:8001/
         domains:
-            - domain: api.serpress.dev
-              default_service: core
-        "#));
+          - domain: example.com
+            default_service: frontend
+            routes:
+              - path: /api/v1/.*
+                service: backend
+          - domain: api.example.com
+            default_service: backend
+        "#);
 
-        let server_conf = server_conf_res.unwrap();
+        let server_config = new_server_config(config_str).unwrap();
 
-        assert_eq!(server_conf.domains[0].domain, String::from("api.serpress.dev"));
-        assert_eq!(server_conf.services[0].name, String::from("core"));
-    }
+        // Test services
+        assert_eq!(server_config.services.len(), 2);
+        assert!(server_config.services.contains_key("frontend"));
+        assert!(server_config.services.contains_key("backend"));
+        assert_eq!(
+            server_config.services.get("frontend").unwrap().origin,
+            "http://localhost:8000"
+        );
+        assert_eq!(
+            server_config.services.get("frontend").unwrap().path_modifiers[0].source.as_str(),
+            "/foo/(.*)"
+        );
+        assert_eq!(
+            server_config.services.get("frontend").unwrap().path_modifiers[0].target,
+            "/bar/$1"
+        );
+        assert_eq!(
+            server_config.services.get("backend").unwrap().origin,
+            "http://localhost:8001"
+        );
+        assert!(server_config.services.get("backend").unwrap().path_modifiers.is_empty());
 
-    #[test]
-    fn fails_server_empty_conf() {
-        let server_conf_res = new_server_config(String::from(r#"
-        services:
-            - name: core
-              location: http://remote-server.dev
-        "#));
-
-        assert!(server_conf_res.is_err(), "needs domains should fail")
-    }
-
-    #[test]
-    fn fails_server_config_no_service_or_routes() {
-        let server_conf_res = new_server_config(String::from(r#"
-        services:
-            - name: core
-              location: http://remote-server.dev
-        domains:
-            - domain: api.serpress.dev
-        "#));
-
-        assert!(server_conf_res.is_err(), "config without default service or routes should fail")
-    }
-
-    #[test]
-    fn fails_server_config_no_such_service() {
-        let server_conf = new_server_config(String::from(r#"
-        services:
-            - name: core
-              location: http://remote-server.dev
-        domains:
-            - domain: api.serpress.dev
-              default_service: www
-        "#));
-
-        assert!(server_conf.is_err(), "no such service should fail");
-
-        let server_conf = new_server_config(String::from(r#"
-        services:
-            - name: core
-              location: http://remote-server.dev
-        domains:
-            - domain: api.serpress.dev
-              routes:
-                - path: /*
-                  service: www
-        "#));
-
-        assert!(server_conf.is_err(), "no such service should fail")
+        // Test domains
+        assert_eq!(server_config.domains.len(), 2);
+        assert!(server_config.domains.contains_key("example.com"));
+        assert!(server_config.domains.contains_key("api.example.com"));
+        assert_eq!(
+            server_config.domains.get("example.com").unwrap().default_service,
+            "frontend"
+        );
+        assert_eq!(
+            server_config.domains.get("example.com").unwrap().routes[0].path.as_str(),
+            "/api/v1/.*"
+        );
+        assert_eq!(
+            server_config.domains.get("example.com").unwrap().routes[0].service,
+            "backend"
+        );
+        assert_eq!(
+            server_config.domains.get("api.example.com").unwrap().default_service,
+            "backend"
+        );
+        assert!(server_config.domains.get("api.example.com").unwrap().routes.is_empty());
     }
 }
