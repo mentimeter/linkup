@@ -5,5 +5,10 @@ compatibility_date = "2022-01-20"
 [vars]
 WORKERS_RS_VERSION = "0.0.13"
 
+[kv_namespaces]
+[[kv_namespaces]]
+binding = "SERPRESS_SESSIONS"
+id = "do_not_use_replace_me_with_your_id" # Replace with your KV namespace ID.
+
 [build]
 command = "cargo install -q worker-build --version 0.0.9 && worker-build --release"

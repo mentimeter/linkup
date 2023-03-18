@@ -3,10 +3,11 @@ use rand::Rng;
 use thiserror::Error;
 
 mod server_config;
-mod memory_session_store;
 mod name_gen;
+mod memory_session_store;
 
 pub use server_config::*;
+pub use name_gen::new_session_name;
 pub use memory_session_store::*;
 use url::Url;
 

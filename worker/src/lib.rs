@@ -1,7 +1,9 @@
-use worker::*;
+use kv_store::KvSessionStore;
+use worker::{*, kv::KvStore};
 use serpress::*;
 
 mod utils;
+mod kv_store;
 
 fn log_request(req: &Request) {
     console_log!(
@@ -19,6 +21,17 @@ pub async fn main(req: Request, _env: Env, _ctx: worker::Context) -> Result<Resp
 
     // Optionally, get more helpful error messages written to the console in the case of a panic.
     utils::set_panic_hook();
+
+    let store = KvSessionStore::new();
+
+    // Headers to hashmap
+    let headers = req.headers();
+    
+    // get_request_session
+
+    // get_target_url
+
+    // get_additional_headers
 
     // let head = req.headers();
     // head.
