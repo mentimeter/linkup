@@ -7,33 +7,33 @@ use regex::Regex;
 
 #[derive(Clone)]
 pub struct ServerConfig {
-    services: HashMap<String, Service>,
-    domains: HashMap<String, Domain>,
-    domain_selection_order: Vec<String>,
+    pub services: HashMap<String, Service>,
+    pub domains: HashMap<String, Domain>,
+    pub domain_selection_order: Vec<String>,
 }
 
 #[derive(Clone)]
 pub struct Service {
-    origin: String,
-    path_modifiers: Vec<PathModifier>,
+    pub origin: Url,
+    pub path_modifiers: Vec<PathModifier>,
 }
 
 #[derive(Clone)]
 pub struct PathModifier {
-    source: Regex,
-    target: String,
+    pub source: Regex,
+    pub target: String,
 }
 
 #[derive(Clone)]
 pub struct Domain {
-    default_service: String,
-    routes: Vec<Route>,
+    pub default_service: String,
+    pub routes: Vec<Route>,
 }
 
 #[derive(Clone)]
 pub struct Route {
-    path: Regex,
-    service: String,
+    pub path: Regex,
+    pub service: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -119,10 +119,8 @@ fn convert_server_config(yaml_config: YamlServerConfig) -> Result<ServerConfig, 
             None => Ok(Vec::new()),
         }?;
 
-        let mut origin = yaml_service.location.to_string();
-        origin.pop(); // Assume no /
         let service = Service {
-            origin,
+            origin: yaml_service.location,
             path_modifiers,
         };
 
@@ -256,7 +254,6 @@ fn choose_domain_ordering(domains: Vec<String>) -> Vec<String> {
 
 pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
     let services: Vec<YamlServerService> = server_config.services.into_iter().map(|(name, service)| {
-        let location = Url::parse(&service.origin).expect("Unable to parse service origin URL");
         let path_modifiers = if service.path_modifiers.len() == 0 {
             None 
         } else {
@@ -270,7 +267,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
         
         YamlServerService {
             name,
-            location,
+            location: service.origin,
             path_modifiers,
         }
     }).collect();
@@ -348,7 +345,7 @@ mod tests {
         assert!(server_config.services.contains_key("backend"));
         assert_eq!(
             server_config.services.get("frontend").unwrap().origin,
-            "http://localhost:8000"
+            Url::parse("http://localhost:8000").unwrap()
         );
         assert_eq!(
             server_config.services.get("frontend").unwrap().path_modifiers[0].source.as_str(),
@@ -360,7 +357,7 @@ mod tests {
         );
         assert_eq!(
             server_config.services.get("backend").unwrap().origin,
-            "http://localhost:8001"
+            Url::parse("http://localhost:8001").unwrap()
         );
         assert!(server_config.services.get("backend").unwrap().path_modifiers.is_empty());
 
