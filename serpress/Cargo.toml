@@ -9,3 +9,5 @@ serde = "1.0.156"
 serde_yaml = "0.9.19"
 thiserror = "1.0.39"
 url = { version = "2.3.1", features = ["serde"] }
+rand = "0.8"
+

@@ -20,6 +20,9 @@ pub async fn main(req: Request, _env: Env, _ctx: worker::Context) -> Result<Resp
     // Optionally, get more helpful error messages written to the console in the case of a panic.
     utils::set_panic_hook();
 
+    // let head = req.headers();
+    // head.
+
     let server_conf = new_server_config(String::from(r#"
     services:
         - name: core
