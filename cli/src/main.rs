@@ -1,10 +1,27 @@
 use clap::{Parser, Subcommand};
+use thiserror::Error;
+
+mod local_config;
+mod start;
+mod check;
+
+use start::start;
 
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+
+#[derive(Error, Debug)]
+pub enum CliError {
+    #[error("no valid state file: {0}")]
+    NoState(String),
+    #[error("no valid config provided: {0}")]
+    BadConfig(String),
+    #[error("could not save statefile: {0}")]
+    SaveState(String)
 }
 
 #[derive(Subcommand)]
@@ -27,25 +44,29 @@ enum Commands {
     },
 }
 
-fn main() {
+fn main() -> Result<(), CliError> {
     let cli = Cli::parse();
 
     match &cli.command {
        Commands::Start{config}=> {
-        match config {
-            Some(c) => {
-                println!("had some, {}", c)
-            }
-            None => {
-                println!("had none config")
-            }
-        }
-        println!("Start with config {:?}", config)
+            start(config.clone())
        },
-       Commands::Stop{} => println!("Stop"),
-       Commands::Check{} => println!("Check"),
-       Commands::Local{} => println!("Local"),
-       Commands::Remote{} => println!("Remote")
+       Commands::Stop{} => {
+        println!("Stop");
+        Err(CliError::BadConfig(String::from("no good")))
+       }
+       Commands::Check{} => {
+        println!("Check");
+        Err(CliError::BadConfig(String::from("no good")))
+       }
+       Commands::Local{} =>{
+         println!("Local");
+        Err(CliError::BadConfig(String::from("no good")))
+       }
+       Commands::Remote{} => {
+        println!("Remote");
+        Err(CliError::BadConfig(String::from("no good")))
+       }
 
     //    _Stop => println!("Stop"),
     //    _Check => println!("Check"),

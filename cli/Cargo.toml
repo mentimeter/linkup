@@ -4,4 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+serpress = { path = "../serpress" }
 clap = { version = "4.1.8", features = ["derive"] }
+thiserror = "1.0.40"
+regex = "1.7.1"
+serde = "1.0.156"
+serde_yaml = "0.9.19"
+url = { version = "2.3.1", features = ["serde"] }
