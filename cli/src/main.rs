@@ -8,8 +8,10 @@ mod check;
 use start::start;
 
 const SERPRESS_CONFIG_ENV: &str = "SERPRESS_CONFIG";
+const SERPRESS_PORT: u16 = 9066;
 const SERPRESS_STATE_FILE: &str = ".serpress-state";
 const SERPRESS_PID_FILE: &str = ".serpress-pid";
+const SERPRESS_CLOUDFLARED_PID: &str = ".serpress-cloudflared-pid";
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -28,6 +30,8 @@ pub enum CliError {
     SaveState(String),
     #[error("could not start local server: {0}")]
     StartLocalServer(String),
+    #[error("could not start local tunnel: {0}")]
+    StartLocalTunnel(String),
 }
 
 #[derive(Subcommand)]

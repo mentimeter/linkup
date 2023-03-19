@@ -15,6 +15,7 @@ pub struct SerpressState {
   pub session_name: String,
   pub remote: Url,
   pub local: Url,
+  pub tunnel: Url,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -59,6 +60,7 @@ pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
       session_name: String::new(),
       remote: yaml_config.serpress.remote,
       local: yaml_config.serpress.local,
+      tunnel: Url::parse("http://localhost").expect("default url parses"),
   };
 
   let services = yaml_config
