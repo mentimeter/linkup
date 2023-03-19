@@ -63,7 +63,7 @@ pub fn get_request_session<T: SessionStore>(
 pub fn get_additional_headers(
     url: String,
     headers: HashMap<String, String>,
-    name: &String,
+    session_name: &String,
     service: &String,
 ) -> HashMap<String, String> {
     let mut additional_headers = HashMap::new();
@@ -85,7 +85,7 @@ pub fn get_additional_headers(
     }
 
     let tracestate = headers.get("tracestate");
-    let serpress_session = format!("serpress-session={}", name);
+    let serpress_session = format!("serpress-session={}", session_name);
     let serpress_service = format!("serpress-service={}", service);
     match tracestate {
         Some(ts) if !ts.contains(&serpress_session) => {
@@ -102,7 +102,7 @@ pub fn get_additional_headers(
     if !headers.contains_key("X-Forwarded-Host") {
         additional_headers.insert(
             "X-Forwarded-Host".to_string(),
-            get_target_domain(&url, name),
+            get_target_domain(&url, session_name),
         );
     }
 
