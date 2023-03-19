@@ -14,7 +14,6 @@ pub struct LocalState {
 pub struct SerpressState {
   pub session_name: String,
   pub remote: Url,
-  pub local: Url,
   pub tunnel: Url,
 }
 
@@ -59,7 +58,6 @@ pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
   let serpress = SerpressState {
       session_name: String::new(),
       remote: yaml_config.serpress.remote,
-      local: yaml_config.serpress.local,
       tunnel: Url::parse("http://localhost").expect("default url parses"),
   };
 
@@ -100,7 +98,6 @@ mod tests {
     const CONF_STR: &str = r#"
 serpress:
   remote: https://remote-serpress.example.com
-  local: http://localhost:8080
 services:
   - name: frontend
     remote: http://remote-service1.example.com
@@ -130,10 +127,6 @@ domains:
         assert_eq!(
             local_state.serpress.remote,
             Url::parse("https://remote-serpress.example.com").unwrap()
-        );
-        assert_eq!(
-            local_state.serpress.local,
-            Url::parse("http://localhost:8080").unwrap()
         );
 
         assert_eq!(local_state.services.len(), 2);

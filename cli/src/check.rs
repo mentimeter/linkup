@@ -6,6 +6,7 @@ use serde_yaml;
 use serpress::{YamlServerConfig, YamlServerService, YamlServerConfigPost};
 use url::Url;
 
+use crate::SERPRESS_PORT;
 use crate::background_services::{is_local_server_started, start_local_server, is_tunnel_started, start_tunnel};
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::start::save_state;
@@ -25,9 +26,11 @@ pub fn check() -> Result<(), CliError> {
   }
 
   let (local_server_conf, remote_server_conf) = server_config_from_state(&state);
+  let localUrl = Url::parse(&format!("http://localhost:{}", SERPRESS_PORT)).expect("serpress url invalid");
 
   let server_session_name = load_config(&state.serpress.remote, &state.serpress.session_name, remote_server_conf)?;
-  let local_session_name = load_config(&state.serpress.local, &server_session_name, local_server_conf)?;
+  let local_session_name = load_config(&localUrl, &server_session_name, local_server_conf)?;
+
   if server_session_name != local_session_name {
     return Err(CliError::InconsistentState)
   }
@@ -61,7 +64,7 @@ fn load_config(url: &Url, desired_name: &String, config: YamlServerConfig) -> Re
 
     match response.status() {
         StatusCode::OK => {
-            let mut content = String::new();
+            let content = String::new();
             response.text().map_err(|e| CliError::LoadConfig(desired_name.clone(), e.to_string()))?;
             Ok(content)
         }
