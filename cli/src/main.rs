@@ -4,6 +4,7 @@ use thiserror::Error;
 mod local_config;
 mod start;
 mod check;
+mod background_services;
 
 use start::start;
 
@@ -32,6 +33,10 @@ pub enum CliError {
     StartLocalServer(String),
     #[error("could not start local tunnel: {0}")]
     StartLocalTunnel(String),
+    #[error("could not load config to {0}: {1}")]
+    LoadConfig(String, String),
+    #[error("your session is in an inconsistent state. Stop your session before trying again.")]
+    InconsistentState,
 }
 
 #[derive(Subcommand)]

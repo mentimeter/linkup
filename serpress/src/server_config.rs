@@ -37,6 +37,13 @@ pub struct Route {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct YamlServerConfigPost {
+    pub desired_name: String,
+    pub services: Vec<YamlServerService>,
+    pub domains: Vec<YamlDomain>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct YamlServerConfig {
     pub services: Vec<YamlServerService>,
     pub domains: Vec<YamlDomain>,
@@ -49,20 +56,20 @@ pub struct YamlServerService {
     pub path_modifiers: Option<Vec<YamlPathModifier>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct YamlPathModifier {
     pub source: String,
     pub target: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct YamlDomain {
     pub domain: String,
     pub default_service: String,
     pub routes: Option<Vec<YamlRoute>>
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct YamlRoute {
     pub path: String,
     pub service: String,
