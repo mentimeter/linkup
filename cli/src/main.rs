@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
 use thiserror::Error;
 
+mod background_services;
+mod check;
 mod local_config;
 mod start;
-mod check;
-mod background_services;
 
 use start::start;
 
@@ -45,18 +45,10 @@ enum Commands {
         #[arg(short, long)]
         config: Option<String>,
     },
-    Stop {
-
-    },
-    Check {
-
-    },
-    Local {
-
-    },
-    Remote {
-
-    },
+    Stop {},
+    Check {},
+    Local {},
+    Remote {},
 }
 
 fn main() -> Result<(), CliError> {
@@ -87,5 +79,4 @@ fn main() -> Result<(), CliError> {
     //    _Check => println!("Check"),
     //    _Local => println!("Local"),
     }
-
 }

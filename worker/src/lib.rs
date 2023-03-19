@@ -1,9 +1,9 @@
 use kv_store::KvSessionStore;
-use worker::{*, kv::KvStore};
 use serpress::*;
+use worker::{kv::KvStore, *};
 
-mod utils;
 mod kv_store;
+mod utils;
 
 fn log_request(req: &Request) {
     console_log!(
@@ -26,7 +26,7 @@ pub async fn main(req: Request, _env: Env, _ctx: worker::Context) -> Result<Resp
 
     // Headers to hashmap
     let headers = req.headers();
-    
+
     // get_request_session
 
     // get_target_url
@@ -36,12 +36,14 @@ pub async fn main(req: Request, _env: Env, _ctx: worker::Context) -> Result<Resp
     // let head = req.headers();
     // head.
 
-    let server_conf = new_server_config(String::from(r#"
+    let server_conf = new_server_config(String::from(
+        r#"
     services:
         - name: core
     domains:
         - domain: "serpress.dev" 
-    "#));
+    "#,
+    ));
 
     let resp = match server_conf {
         Ok(conf) => "all good",

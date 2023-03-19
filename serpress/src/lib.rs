@@ -1,19 +1,24 @@
-use std::collections::HashMap;
 use rand::Rng;
+use std::collections::HashMap;
 use thiserror::Error;
 
-mod server_config;
-mod name_gen;
 mod memory_session_store;
+mod name_gen;
+mod server_config;
 
-pub use server_config::*;
-pub use name_gen::new_session_name;
 pub use memory_session_store::*;
+pub use name_gen::new_session_name;
+pub use server_config::*;
 use url::Url;
 
 pub trait SessionStore {
     fn get(&self, name: &String) -> Option<ServerConfig>;
-    fn new(&self, config: ServerConfig, name_kind: NameKind, desired_name: Option<String>) -> String;
+    fn new(
+        &self,
+        config: ServerConfig,
+        name_kind: NameKind,
+        desired_name: Option<String>,
+    ) -> String;
 }
 
 #[derive(PartialEq)]
@@ -22,14 +27,17 @@ pub enum NameKind {
     SixChar,
 }
 
-
 #[derive(Error, Debug)]
 pub enum SessionError {
     #[error("no session found for request {0}")]
-    NoSuchSession(String) // Add known headers to error
+    NoSuchSession(String), // Add known headers to error
 }
 
-pub fn get_request_session<T: SessionStore>(url: String, headers: HashMap<String, String>, store: &T) -> Result<(String, ServerConfig), SessionError> {
+pub fn get_request_session<T: SessionStore>(
+    url: String,
+    headers: HashMap<String, String>,
+    store: &T,
+) -> Result<(String, ServerConfig), SessionError> {
     let url_name = first_subdomain(&url);
     if let Some(config) = store.get(&url_name) {
         return Ok((url_name, config));
@@ -52,7 +60,12 @@ pub fn get_request_session<T: SessionStore>(url: String, headers: HashMap<String
     Err(SessionError::NoSuchSession(url))
 }
 
-pub fn get_additional_headers(url: String, headers: HashMap<String, String>, name: &String, service: &String) -> HashMap<String, String> {
+pub fn get_additional_headers(
+    url: String,
+    headers: HashMap<String, String>,
+    name: &String,
+    service: &String,
+) -> HashMap<String, String> {
     let mut additional_headers = HashMap::new();
 
     if !headers.contains_key("traceparent") {
@@ -87,14 +100,22 @@ pub fn get_additional_headers(url: String, headers: HashMap<String, String>, nam
     }
 
     if !headers.contains_key("X-Forwarded-Host") {
-        additional_headers.insert("X-Forwarded-Host".to_string(), get_target_domain(&url, name));
+        additional_headers.insert(
+            "X-Forwarded-Host".to_string(),
+            get_target_domain(&url, name),
+        );
     }
 
     additional_headers
 }
 
 // Returns a url for the destination service and the service name, if the request could be served by the config
-pub fn get_target_url(url: String, headers: HashMap<String, String>, config: &ServerConfig, session_name: &String) -> Option<(String, String)> {
+pub fn get_target_url(
+    url: String,
+    headers: HashMap<String, String>,
+    config: &ServerConfig,
+    session_name: &String,
+) -> Option<(String, String)> {
     let target = Url::parse(&url).unwrap();
     let tracestate = headers.get("tracestate");
     let path = target.path();
@@ -106,14 +127,16 @@ pub fn get_target_url(url: String, headers: HashMap<String, String>, config: &Se
             if let Some(service) = config.services.get(&service_name) {
                 // We don't want to re-apply path_modifiers here, they should have been applied already
                 let target = redirect(target, &service.origin, None);
-                return Some((String::from(target), service_name))
+                return Some((String::from(target), service_name));
             }
         }
     }
 
     let target_domain = get_target_domain(&url, &session_name);
     if let Some(domain) = config.domains.get(&target_domain) {
-        let service_name = domain.routes.iter()
+        let service_name = domain
+            .routes
+            .iter()
             .find_map(|route| {
                 if route.path.is_match(path) {
                     Some(route.service.clone())
@@ -123,18 +146,20 @@ pub fn get_target_url(url: String, headers: HashMap<String, String>, config: &Se
             })
             .unwrap_or_else(|| domain.default_service.clone());
         println!("target service: {:#?}", service_name);
-        
+
         if let Some(service) = config.services.get(&service_name) {
             let mut new_path = path.to_string();
             for modifier in &service.path_modifiers {
                 if modifier.source.is_match(&new_path) {
-                    new_path = modifier.source.replace_all(&new_path, &modifier.target).to_string();
+                    new_path = modifier
+                        .source
+                        .replace_all(&new_path, &modifier.target)
+                        .to_string();
                 }
             }
 
-
             let target = redirect(target, &service.origin, Some(new_path));
-            return Some((String::from(target), service_name))
+            return Some((String::from(target), service_name));
         }
     }
 
@@ -157,20 +182,28 @@ fn redirect(mut target: Url, source: &Url, path: Option<String>) -> Url {
 }
 
 fn get_target_domain(url: &String, session_name: &String) -> String {
-    let without_schema = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")).unwrap_or(url);
-    
-    let domain_with_path : String = if first_subdomain(url) == *session_name {
-        without_schema.strip_prefix(&format!("{}.", session_name)).map(String::from).unwrap_or_else(|| without_schema.to_string())
+    let without_schema = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+        .unwrap_or(url);
+
+    let domain_with_path: String = if first_subdomain(url) == *session_name {
+        without_schema
+            .strip_prefix(&format!("{}.", session_name))
+            .map(String::from)
+            .unwrap_or_else(|| without_schema.to_string())
     } else {
         without_schema.to_string()
     };
-
 
     domain_with_path.split('/').collect::<Vec<_>>()[0].to_string()
 }
 
 fn first_subdomain(url: &String) -> String {
-    let without_schema = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")).unwrap_or(url);
+    let without_schema = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+        .unwrap_or(url);
     let parts: Vec<&str> = without_schema.split('.').collect();
     if parts.len() <= 2 {
         String::from("")
@@ -204,11 +237,9 @@ fn extrace_tracestate(tracestate: &String, serpress_key: String) -> String {
         .unwrap_or_else(|| "".to_string())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     const CONF_STR: &str = r#"
     services:
@@ -238,7 +269,12 @@ mod tests {
         let name = session_store.new(config, NameKind::Animal, None);
 
         // Normal subdomain
-        get_request_session(format!("{}.example.com", name), HashMap::new(), &session_store).unwrap();
+        get_request_session(
+            format!("{}.example.com", name),
+            HashMap::new(),
+            &session_store,
+        )
+        .unwrap();
 
         // Referer
         let mut referer_headers: HashMap<String, String> = HashMap::new();
@@ -248,7 +284,10 @@ mod tests {
 
         // Trace state
         let mut trace_headers: HashMap<String, String> = HashMap::new();
-        trace_headers.insert(format!("tracestate"), format!("some-other=xyz,serpress-session={}", name));
+        trace_headers.insert(
+            format!("tracestate"),
+            format!("some-other=xyz,serpress-session={}", name),
+        );
         get_request_session(format!("example.com"), trace_headers, &session_store).unwrap();
 
         let mut trace_headers_two: HashMap<String, String> = HashMap::new();
@@ -260,31 +299,52 @@ mod tests {
     fn test_get_additional_headers() {
         let session_name = String::from("tiny-cow");
         let headers = HashMap::new();
-        let add_headers = get_additional_headers(format!("https://tiny-cow.example.com/abc-xyz"), headers, &session_name, &format!("frontend"));
+        let add_headers = get_additional_headers(
+            format!("https://tiny-cow.example.com/abc-xyz"),
+            headers,
+            &session_name,
+            &format!("frontend"),
+        );
 
         assert_eq!(add_headers.get("traceparent").unwrap().len(), 55);
-        assert_eq!(add_headers.get("tracestate").unwrap(), "serpress-session=tiny-cow,serpress-service=frontend");
+        assert_eq!(
+            add_headers.get("tracestate").unwrap(),
+            "serpress-session=tiny-cow,serpress-service=frontend"
+        );
         assert_eq!(add_headers.get("X-Forwarded-Host").unwrap(), "example.com");
 
-        let mut already_headers : HashMap<String, String> = HashMap::new();
+        let mut already_headers: HashMap<String, String> = HashMap::new();
         already_headers.insert(format!("traceparent"), format!("anything"));
         already_headers.insert(format!("tracestate"), format!("serpress-session=tiny-cow"));
         already_headers.insert(format!("X-Forwarded-Host"), format!("example.com"));
-        let add_headers = get_additional_headers(format!("https://abc.some-tunnel.com/abc-xyz"), already_headers, &session_name, &format!("frontend"));
+        let add_headers = get_additional_headers(
+            format!("https://abc.some-tunnel.com/abc-xyz"),
+            already_headers,
+            &session_name,
+            &format!("frontend"),
+        );
 
         assert!(add_headers.get("traceparent").is_none());
         assert!(add_headers.get("X-Forwarded-Host").is_none());
         assert!(add_headers.get("tracestate").is_none());
 
-        let mut already_headers_two : HashMap<String, String> = HashMap::new();
+        let mut already_headers_two: HashMap<String, String> = HashMap::new();
         already_headers_two.insert(format!("traceparent"), format!("anything"));
         already_headers_two.insert(format!("tracestate"), format!("other-service=32"));
         already_headers_two.insert(format!("X-Forwarded-Host"), format!("example.com"));
-        let add_headers = get_additional_headers(format!("https://abc.some-tunnel.com/abc-xyz"), already_headers_two, &session_name, &format!("frontend"));
+        let add_headers = get_additional_headers(
+            format!("https://abc.some-tunnel.com/abc-xyz"),
+            already_headers_two,
+            &session_name,
+            &format!("frontend"),
+        );
 
         assert!(add_headers.get("traceparent").is_none());
         assert!(add_headers.get("X-Forwarded-Host").is_none());
-        assert_eq!(add_headers.get("tracestate").unwrap(), "other-service=32,serpress-session=tiny-cow,serpress-service=frontend");
+        assert_eq!(
+            add_headers.get("tracestate").unwrap(),
+            "other-service=32,serpress-session=tiny-cow,serpress-service=frontend"
+        );
     }
 
     #[test]
@@ -293,11 +353,20 @@ mod tests {
         let url2 = format!("api.example.com");
         let url3 = format!("https://tiny-cow.example.com/a/b/c?a=b");
 
-        assert_eq!(get_target_domain(&url1, &format!("tiny-cow")), "example.com");
-        assert_eq!(get_target_domain(&url2, &format!("tiny-cow")), "api.example.com");
-        assert_eq!(get_target_domain(&url3, &format!("tiny-cow")), "example.com");
+        assert_eq!(
+            get_target_domain(&url1, &format!("tiny-cow")),
+            "example.com"
+        );
+        assert_eq!(
+            get_target_domain(&url2, &format!("tiny-cow")),
+            "api.example.com"
+        );
+        assert_eq!(
+            get_target_domain(&url3, &format!("tiny-cow")),
+            "example.com"
+        );
     }
-    
+
     #[test]
     fn test_get_target_url() {
         let session_store = MemorySessionStore::new();
@@ -305,22 +374,99 @@ mod tests {
         let input_config = new_server_config(String::from(CONF_STR)).unwrap();
 
         let name = session_store.new(input_config, NameKind::Animal, None);
-        
-        let (name, config) = get_request_session(format!("{}.example.com", name), HashMap::new(), &session_store).unwrap();
+
+        let (name, config) = get_request_session(
+            format!("{}.example.com", name),
+            HashMap::new(),
+            &session_store,
+        )
+        .unwrap();
 
         // Standard named subdomain
-        assert_eq!(get_target_url(format!("http://{}.example.com/?a=b", &name), HashMap::new(), &config, &name).unwrap(), (format!("http://localhost:8000/?a=b"), format!("frontend")));
+        assert_eq!(
+            get_target_url(
+                format!("http://{}.example.com/?a=b", &name),
+                HashMap::new(),
+                &config,
+                &name
+            )
+            .unwrap(),
+            (format!("http://localhost:8000/?a=b"), format!("frontend"))
+        );
         // With path
-        assert_eq!(get_target_url(format!("http://{}.example.com/a/b/c/?a=b", &name), HashMap::new(), &config, &name).unwrap(), (format!("http://localhost:8000/a/b/c/?a=b"), format!("frontend")));
+        assert_eq!(
+            get_target_url(
+                format!("http://{}.example.com/a/b/c/?a=b", &name),
+                HashMap::new(),
+                &config,
+                &name
+            )
+            .unwrap(),
+            (
+                format!("http://localhost:8000/a/b/c/?a=b"),
+                format!("frontend")
+            )
+        );
         // Test path_modifiers
-        assert_eq!(get_target_url(format!("http://{}.example.com/foo/b/c/?a=b", &name), HashMap::new(), &config, &name).unwrap(), (format!("http://localhost:8000/bar/b/c/?a=b"), format!("frontend")));
+        assert_eq!(
+            get_target_url(
+                format!("http://{}.example.com/foo/b/c/?a=b", &name),
+                HashMap::new(),
+                &config,
+                &name
+            )
+            .unwrap(),
+            (
+                format!("http://localhost:8000/bar/b/c/?a=b"),
+                format!("frontend")
+            )
+        );
         // Test domain routes
-        assert_eq!(get_target_url(format!("http://{}.example.com/api/v1/?a=b", &name), HashMap::new(), &config, &name).unwrap(), (format!("http://localhost:8001/api/v1/?a=b"), format!("backend")));
+        assert_eq!(
+            get_target_url(
+                format!("http://{}.example.com/api/v1/?a=b", &name),
+                HashMap::new(),
+                &config,
+                &name
+            )
+            .unwrap(),
+            (
+                format!("http://localhost:8001/api/v1/?a=b"),
+                format!("backend")
+            )
+        );
         // Test no named subdomain
-        assert_eq!(get_target_url(format!("http://api.example.com/api/v1/?a=b"), HashMap::new(), &config, &name).unwrap(), (format!("http://localhost:8001/api/v1/?a=b"), format!("backend")));
+        assert_eq!(
+            get_target_url(
+                format!("http://api.example.com/api/v1/?a=b"),
+                HashMap::new(),
+                &config,
+                &name
+            )
+            .unwrap(),
+            (
+                format!("http://localhost:8001/api/v1/?a=b"),
+                format!("backend")
+            )
+        );
         // Test has already been through another serpress server
         let mut service_state_headers: HashMap<String, String> = HashMap::new();
-        service_state_headers.insert(format!("tracestate"), format!("serpress-service={}", "frontend"));
-        assert_eq!(get_target_url(format!("https://literally-any-url.com/foo/a/b"), service_state_headers, &config, &name).unwrap(), (format!("http://localhost:8000/foo/a/b"), format!("frontend")));
+        service_state_headers.insert(
+            format!("tracestate"),
+            format!("serpress-service={}", "frontend"),
+        );
+        assert_eq!(
+            get_target_url(
+                format!("https://literally-any-url.com/foo/a/b"),
+                service_state_headers,
+                &config,
+                &name
+            )
+            .unwrap(),
+            (
+                format!("http://localhost:8000/foo/a/b"),
+                format!("frontend")
+            )
+        );
     }
 }

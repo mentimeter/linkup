@@ -1,35 +1,35 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use serpress::{YamlPathModifier, YamlDomain};
+use serpress::{YamlDomain, YamlPathModifier};
 
 #[derive(Deserialize, Serialize)]
 pub struct LocalState {
-  pub serpress: SerpressState,
-  pub domains: Vec<YamlDomain>,
-  pub services: Vec<LocalService>,
+    pub serpress: SerpressState,
+    pub domains: Vec<YamlDomain>,
+    pub services: Vec<LocalService>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct SerpressState {
-  pub session_name: String,
-  pub remote: Url,
-  pub tunnel: Url,
+    pub session_name: String,
+    pub remote: Url,
+    pub tunnel: Url,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct LocalService {
-  pub name: String,
-  pub remote: Url,
-  pub local: Url,
-  pub current: ServiceTarget,
-  pub path_modifiers: Vec<YamlPathModifier>,
+    pub name: String,
+    pub remote: Url,
+    pub local: Url,
+    pub current: ServiceTarget,
+    pub path_modifiers: Vec<YamlPathModifier>,
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub enum ServiceTarget {
-  Local,
-  Remote
+    Local,
+    Remote,
 }
 
 #[derive(Deserialize)]
@@ -42,7 +42,6 @@ pub struct YamlLocalConfig {
 #[derive(Deserialize)]
 struct SerpressConfig {
     remote: Url,
-    local: Url,
 }
 
 #[derive(Deserialize)]
@@ -53,42 +52,40 @@ struct YamlLocalService {
     path_modifiers: Option<Vec<YamlPathModifier>>,
 }
 
-
 pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
-  let serpress = SerpressState {
-      session_name: String::new(),
-      remote: yaml_config.serpress.remote,
-      tunnel: Url::parse("http://localhost").expect("default url parses"),
-  };
+    let serpress = SerpressState {
+        session_name: String::new(),
+        remote: yaml_config.serpress.remote,
+        tunnel: Url::parse("http://localhost").expect("default url parses"),
+    };
 
-  let services = yaml_config
-      .services
-      .into_iter()
-      .map(|yaml_service| {
-          let path_modifiers = match yaml_service.path_modifiers {
-              Some(modifiers) => modifiers,
-              None => Vec::new(),
-          };
+    let services = yaml_config
+        .services
+        .into_iter()
+        .map(|yaml_service| {
+            let path_modifiers = match yaml_service.path_modifiers {
+                Some(modifiers) => modifiers,
+                None => Vec::new(),
+            };
 
-          LocalService {
-              name: yaml_service.name,
-              remote: yaml_service.remote,
-              local: yaml_service.local,
-              current: ServiceTarget::Remote,
-              path_modifiers,
-          }
-      })
-      .collect::<Vec<LocalService>>();
+            LocalService {
+                name: yaml_service.name,
+                remote: yaml_service.remote,
+                local: yaml_service.local,
+                current: ServiceTarget::Remote,
+                path_modifiers,
+            }
+        })
+        .collect::<Vec<LocalService>>();
 
-  let domains = yaml_config.domains;
+    let domains = yaml_config.domains;
 
-  LocalState {
-      serpress,
-      domains,
-      services,
-  }
+    LocalState {
+        serpress,
+        domains,
+        services,
+    }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -159,4 +156,3 @@ domains:
         assert!(local_state.domains[0].routes.is_some());
     }
 }
-

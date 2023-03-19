@@ -1,116 +1,123 @@
-use std::{env, fs::{self, File}, path::PathBuf};
+use std::{
+    env,
+    fs::{self, File},
+    path::PathBuf,
+};
 
-use crate::{local_config::{config_to_state, YamlLocalConfig, LocalState}, CliError, SERPRESS_CONFIG_ENV, SERPRESS_STATE_FILE, check::check};
+use crate::{
+    check::check,
+    local_config::{config_to_state, LocalState, YamlLocalConfig},
+    CliError, SERPRESS_CONFIG_ENV, SERPRESS_STATE_FILE,
+};
 
 pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
-  // TODO: run `stop` to kill the previous local server?
-  
-  let previous_state = get_state();
-  let input_config = get_config(config_arg)?;
+    // TODO: run `stop` to kill the previous local server?
 
-  let mut state = config_to_state(input_config);
+    let previous_state = get_state();
+    let input_config = get_config(config_arg)?;
 
-  // Reuse previous session name if possible
-  if let Ok(ps) = previous_state {
-      state.serpress.session_name = ps.serpress.session_name
-  }
+    let mut state = config_to_state(input_config);
 
-  save_state(state)?;
+    // Reuse previous session name if possible
+    if let Ok(ps) = previous_state {
+        state.serpress.session_name = ps.serpress.session_name
+    }
 
-  check()?;
+    save_state(state)?;
 
-  Ok(())
+    check()?;
+
+    Ok(())
 }
 
 fn get_config(config_arg: Option<String>) -> Result<YamlLocalConfig, CliError> {
-  let config_path = match config_arg {
-      Some(path) => path,
-      None => match env::var(SERPRESS_CONFIG_ENV) {
-          Ok(val) => val,
-          Err(_) => {
-              return Err(CliError::BadConfig(
-                  "No config argument provided and SERPRESS_CONFIG environment variable not set"
-                      .to_string(),
-              ))
-          }
-      },
-  };
+    let config_path =
+        match config_arg {
+            Some(path) => path,
+            None => match env::var(SERPRESS_CONFIG_ENV) {
+                Ok(val) => val,
+                Err(_) => return Err(CliError::BadConfig(
+                    "No config argument provided and SERPRESS_CONFIG environment variable not set"
+                        .to_string(),
+                )),
+            },
+        };
 
-  let content = match fs::read_to_string(&config_path) {
-      Ok(content) => content,
-      Err(_) => {
-          return Err(CliError::BadConfig(format!(
-              "Failed to read the config file at {}",
-              config_path
-          )))
-      }
-  };
+    let content = match fs::read_to_string(&config_path) {
+        Ok(content) => content,
+        Err(_) => {
+            return Err(CliError::BadConfig(format!(
+                "Failed to read the config file at {}",
+                config_path
+            )))
+        }
+    };
 
-  let yaml_config: YamlLocalConfig = match serde_yaml::from_str(&content) {
-      Ok(config) => config,
-      Err(_) => {
-          return Err(CliError::BadConfig(format!(
-              "Failed to deserialize the config file at {}",
-              config_path
-          )))
-      }
-  };
+    let yaml_config: YamlLocalConfig = match serde_yaml::from_str(&content) {
+        Ok(config) => config,
+        Err(_) => {
+            return Err(CliError::BadConfig(format!(
+                "Failed to deserialize the config file at {}",
+                config_path
+            )))
+        }
+    };
 
-  Ok(yaml_config)
+    Ok(yaml_config)
 }
 
 pub fn get_state() -> Result<LocalState, CliError> {
-  let home_dir = match env::var("HOME") {
-      Ok(val) => val,
-      Err(e) => return Err(CliError::NoState(e.to_string())),
-  };
+    let home_dir = match env::var("HOME") {
+        Ok(val) => val,
+        Err(e) => return Err(CliError::NoState(e.to_string())),
+    };
 
-  let mut path = PathBuf::from(home_dir);
-  path.push(SERPRESS_STATE_FILE);
+    let mut path = PathBuf::from(home_dir);
+    path.push(SERPRESS_STATE_FILE);
 
-  if let Err(e) = File::open(&path) {
-    return Err(CliError::NoState(e.to_string()));
-  }
+    if let Err(e) = File::open(&path) {
+        return Err(CliError::NoState(e.to_string()));
+    }
 
-  let content = match fs::read_to_string(&path) {
-      Ok(content) => content,
-      Err(e) => return Err(CliError::NoState(e.to_string())),
-  };
+    let content = match fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(e) => return Err(CliError::NoState(e.to_string())),
+    };
 
-  match serde_yaml::from_str(&content) {
-      Ok(config) => Ok(config),
-      Err(e) => return Err(CliError::NoState(e.to_string())),
-  }
+    match serde_yaml::from_str(&content) {
+        Ok(config) => Ok(config),
+        Err(e) => return Err(CliError::NoState(e.to_string())),
+    }
 }
 
 pub fn save_state(state: LocalState) -> Result<(), CliError> {
-  let yaml_string = match serde_yaml::to_string(&state) {
-      Ok(yaml) => yaml,
-      Err(_) => {
-          return Err(CliError::SaveState(
-              "Failed to serialize the state into YAML".to_string(),
-          ))
-      }
-  };
+    let yaml_string = match serde_yaml::to_string(&state) {
+        Ok(yaml) => yaml,
+        Err(_) => {
+            return Err(CliError::SaveState(
+                "Failed to serialize the state into YAML".to_string(),
+            ))
+        }
+    };
 
-  let home_dir = match env::var("HOME") {
-      Ok(val) => val,
-      Err(_) => {
-          return Err(CliError::SaveState(
-              "Failed to get the HOME environment variable".to_string(),
-          ))
-      }
-  };
+    let home_dir = match env::var("HOME") {
+        Ok(val) => val,
+        Err(_) => {
+            return Err(CliError::SaveState(
+                "Failed to get the HOME environment variable".to_string(),
+            ))
+        }
+    };
 
-  let mut path = PathBuf::from(home_dir);
-  path.push(SERPRESS_STATE_FILE);
+    let mut path = PathBuf::from(home_dir);
+    path.push(SERPRESS_STATE_FILE);
 
-  if let Err(_) = fs::write(&path, yaml_string) {
-      return Err(CliError::SaveState(format!(
-          "Failed to write the state file at {}",
-          path.display()
-      )));
-  }
+    if let Err(_) = fs::write(&path, yaml_string) {
+        return Err(CliError::SaveState(format!(
+            "Failed to write the state file at {}",
+            path.display()
+        )));
+    }
 
-  Ok(())
+    Ok(())
 }
