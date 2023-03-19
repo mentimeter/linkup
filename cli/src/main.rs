@@ -7,6 +7,10 @@ mod check;
 
 use start::start;
 
+const SERPRESS_CONFIG_ENV: &str = "SERPRESS_CONFIG";
+const SERPRESS_STATE_FILE: &str = ".serpress-state";
+const SERPRESS_PID_FILE: &str = ".serpress-pid";
+
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
@@ -21,7 +25,9 @@ pub enum CliError {
     #[error("no valid config provided: {0}")]
     BadConfig(String),
     #[error("could not save statefile: {0}")]
-    SaveState(String)
+    SaveState(String),
+    #[error("could not start local server: {0}")]
+    StartLocalServer(String),
 }
 
 #[derive(Subcommand)]
