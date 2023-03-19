@@ -47,32 +47,37 @@ async fn serpress_request_handler(
       .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
       .collect::<HashMap<String, String>>();
 
-  let result = get_request_session(url.clone(), headers.clone(), |n| session_store.get(n));
+  let session_result = get_request_session(url.clone(), headers.clone(), |n| session_store.get(n));
 
-  match result {
-      Ok((session_name, config)) => {
-          if let Some((destination_url, service)) = get_target_url(url.clone(), headers.clone(), &config, &session_name) {
-              let extra_headers = get_additional_headers(url, &headers, &session_name, &service);
+  let (session_name, config) = match session_result {
+      Ok(result) => result,
+      Err(_) => return HttpResponse::UnprocessableEntity().body("Unprocessable Content"),
+  };
 
-              // Proxy the request using the destination_url and the merged headers
-              let client = reqwest::Client::new();
-              let response = client.request(req.method().clone(), &destination_url)
-                  .headers(merge_headers(headers, extra_headers))
-                  .body(req_body)
-                  .send()
-                  .await;
+  let (destination_url, service) = match get_target_url(url.clone(), headers.clone(), &config, &session_name) {
+      Some(result) => result,
+      None => return HttpResponse::NotFound().body("Fallback handler"),
+  };
 
-              match response {
-                  Ok(response) => convert_reqwest_response(response).await.unwrap_or_else(|_| HttpResponse::InternalServerError().finish()),
-                  Err(_) => HttpResponse::BadGateway().finish(),
-              }
-          } else {
-              HttpResponse::NotFound().body("Fallback handler")
-          }
-      }
-      Err(_) => HttpResponse::UnprocessableEntity().body("Unprocessable Content"),
-  }
+  let extra_headers = get_additional_headers(url, &headers, &session_name, &service);
+
+  // Proxy the request using the destination_url and the merged headers
+  let client = reqwest::Client::new();
+  let response_result = client
+      .request(req.method().clone(), &destination_url)
+      .headers(merge_headers(headers, extra_headers))
+      .body(req_body)
+      .send()
+      .await;
+
+  let response = match response_result {
+      Ok(response) => response,
+      Err(_) => return HttpResponse::BadGateway().finish(),
+  };
+
+  convert_reqwest_response(response).await.unwrap_or_else(|_| HttpResponse::InternalServerError().finish())
 }
+
 
 fn merge_headers(
   original_headers: HashMap<String, String>,
