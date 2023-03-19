@@ -1,10 +1,8 @@
 
-use std::{io, sync::Arc, collections::HashMap};
+use std::{io, collections::HashMap};
 
 use thiserror::Error;
 use actix_web::{Responder, HttpServer, App, web, HttpResponse, middleware, HttpRequest};
-use serde_yaml::from_str;
-// use bytes::Bytes;
 
 use serpress::*;
 
@@ -18,7 +16,7 @@ pub enum ProxyError {
 }
 
 async fn serpress_config_handler(
-  session_store: web::Data<Arc<MemorySessionStore>>,
+  session_store: web::Data<MemorySessionStore>,
   req_body: web::Bytes,
 ) -> impl Responder {
 
@@ -49,13 +47,12 @@ async fn serpress_request_handler(
       .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
       .collect::<HashMap<String, String>>();
 
-  // TODO Fix
-  let result = get_request_session(url, headers.clone(), *session_store);
+  let result = get_request_session(url.clone(), headers.clone(), |n| session_store.get(n));
 
   match result {
       Ok((session_name, config)) => {
           if let Some((destination_url, service)) = get_target_url(url.clone(), headers.clone(), &config, &session_name) {
-              let extra_headers = get_additional_headers(url, headers, &session_name, &service);
+              let extra_headers = get_additional_headers(url, &headers, &session_name, &service);
 
               // Proxy the request using the destination_url and the merged headers
               let client = reqwest::Client::new();

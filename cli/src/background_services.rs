@@ -124,7 +124,13 @@ pub fn start_local_server() -> Result<(), CliError> {
                 .expect("Failed to set CTRL+C handler");
             });
 
-            local_serpress_main();
+            match local_serpress_main() {
+                Ok(_) => println!("local serpress server finished"),
+                Err(e) => println!(
+                    "local serpress server finished with error {}",
+                    e.to_string()
+                ),
+            }
         });
 
     match daemonize.start() {

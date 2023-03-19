@@ -33,26 +33,29 @@ pub enum SessionError {
     NoSuchSession(String), // Add known headers to error
 }
 
-pub fn get_request_session<T: SessionStore>(
+pub fn get_request_session<F>(
     url: String,
     headers: HashMap<String, String>,
-    store: &T,
-) -> Result<(String, ServerConfig), SessionError> {
+    store_get: F,
+) -> Result<(String, ServerConfig), SessionError>
+where
+    F: Fn(&String) -> Option<ServerConfig>,
+{
     let url_name = first_subdomain(&url);
-    if let Some(config) = store.get(&url_name) {
+    if let Some(config) = store_get(&url_name) {
         return Ok((url_name, config));
     }
 
     if let Some(referer) = headers.get("referer") {
         let referer_name = first_subdomain(referer);
-        if let Some(config) = store.get(&referer_name) {
+        if let Some(config) = store_get(&url_name) {
             return Ok((referer_name, config));
         }
     }
 
     if let Some(tracestate) = headers.get("tracestate") {
         let trace_name = extract_tracestate_session(tracestate);
-        if let Some(config) = store.get(&trace_name) {
+        if let Some(config) = store_get(&url_name) {
             return Ok((trace_name, config));
         }
     }
@@ -62,7 +65,7 @@ pub fn get_request_session<T: SessionStore>(
 
 pub fn get_additional_headers(
     url: String,
-    headers: HashMap<String, String>,
+    headers: &HashMap<String, String>,
     session_name: &String,
     service: &String,
 ) -> HashMap<String, String> {
@@ -269,18 +272,19 @@ mod tests {
         let name = session_store.new(config, NameKind::Animal, None);
 
         // Normal subdomain
-        get_request_session(
-            format!("{}.example.com", name),
-            HashMap::new(),
-            &session_store,
-        )
+        get_request_session(format!("{}.example.com", name), HashMap::new(), |n| {
+            session_store.get(n)
+        })
         .unwrap();
 
         // Referer
         let mut referer_headers: HashMap<String, String> = HashMap::new();
         // TODO check header capitalization
         referer_headers.insert(format!("referer"), format!("http://{}.example.com", name));
-        get_request_session(format!("example.com"), referer_headers, &session_store).unwrap();
+        get_request_session(format!("example.com"), referer_headers, |n| {
+            session_store.get(n)
+        })
+        .unwrap();
 
         // Trace state
         let mut trace_headers: HashMap<String, String> = HashMap::new();
@@ -288,11 +292,17 @@ mod tests {
             format!("tracestate"),
             format!("some-other=xyz,serpress-session={}", name),
         );
-        get_request_session(format!("example.com"), trace_headers, &session_store).unwrap();
+        get_request_session(format!("example.com"), trace_headers, |n| {
+            session_store.get(n)
+        })
+        .unwrap();
 
         let mut trace_headers_two: HashMap<String, String> = HashMap::new();
         trace_headers_two.insert(format!("tracestate"), format!("serpress-session={}", name));
-        get_request_session(format!("example.com"), trace_headers_two, &session_store).unwrap();
+        get_request_session(format!("example.com"), trace_headers_two, |n| {
+            session_store.get(n)
+        })
+        .unwrap();
     }
 
     #[test]
@@ -301,7 +311,7 @@ mod tests {
         let headers = HashMap::new();
         let add_headers = get_additional_headers(
             format!("https://tiny-cow.example.com/abc-xyz"),
-            headers,
+            &headers,
             &session_name,
             &format!("frontend"),
         );
@@ -319,7 +329,7 @@ mod tests {
         already_headers.insert(format!("X-Forwarded-Host"), format!("example.com"));
         let add_headers = get_additional_headers(
             format!("https://abc.some-tunnel.com/abc-xyz"),
-            already_headers,
+            &already_headers,
             &session_name,
             &format!("frontend"),
         );
@@ -334,7 +344,7 @@ mod tests {
         already_headers_two.insert(format!("X-Forwarded-Host"), format!("example.com"));
         let add_headers = get_additional_headers(
             format!("https://abc.some-tunnel.com/abc-xyz"),
-            already_headers_two,
+            &already_headers_two,
             &session_name,
             &format!("frontend"),
         );
@@ -375,12 +385,11 @@ mod tests {
 
         let name = session_store.new(input_config, NameKind::Animal, None);
 
-        let (name, config) = get_request_session(
-            format!("{}.example.com", name),
-            HashMap::new(),
-            &session_store,
-        )
-        .unwrap();
+        let (name, config) =
+            get_request_session(format!("{}.example.com", name), HashMap::new(), |n| {
+                session_store.get(n)
+            })
+            .unwrap();
 
         // Standard named subdomain
         assert_eq!(

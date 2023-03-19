@@ -1,13 +1,7 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Mutex};
 
 use crate::name_gen::new_session_name;
 use crate::{NameKind, ServerConfig, SessionStore};
-
-
-
 
 pub struct MemorySessionStore {
     store: Mutex<HashMap<String, ServerConfig>>,

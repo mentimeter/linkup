@@ -103,17 +103,22 @@ pub fn new_server_config(input_yaml_conf: String) -> Result<ServerConfig, Config
     }
 }
 
-pub fn new_server_config_post(input_yaml_conf: String) -> Result<(String, ServerConfig), ConfigError> {
+pub fn new_server_config_post(
+    input_yaml_conf: String,
+) -> Result<(String, ServerConfig), ConfigError> {
     let yaml_config_post_res: Result<YamlServerConfigPost, serde_yaml::Error> =
         serde_yaml::from_str(&input_yaml_conf);
     match yaml_config_post_res {
         Err(e) => Err(ConfigError::Format(e)),
         Ok(c) => {
-            let server_conf = convert_server_config(YamlServerConfig { services: c.services, domains: c.domains });
+            let server_conf = convert_server_config(YamlServerConfig {
+                services: c.services,
+                domains: c.domains,
+            });
 
             match server_conf {
                 Err(e) => Err(e),
-                Ok(sc) => Ok((c.desired_name, sc))
+                Ok(sc) => Ok((c.desired_name, sc)),
             }
         }
     }
