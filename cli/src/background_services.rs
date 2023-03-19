@@ -6,12 +6,12 @@ use std::sync::{mpsc, Once};
 use std::thread;
 use std::time::Duration;
 
-use actix_web::{web, App, HttpServer, Responder};
 use daemonize::Daemonize;
 use regex::Regex;
 use thiserror::Error;
 use url::Url;
 
+use crate::local_server::local_serpress_main;
 use crate::{CliError, SERPRESS_PID_FILE};
 use crate::{SERPRESS_CLOUDFLARED_PID, SERPRESS_PORT};
 
@@ -109,21 +109,12 @@ pub fn is_local_server_started() -> Result<(), CheckErr> {
     }
 }
 
-// You'll need to replace this with your actual server logic.
-async fn server_handler() -> impl Responder {
-    "Hello, world!"
-}
-
 pub fn start_local_server() -> Result<(), CliError> {
     let daemonize = Daemonize::new()
         .pid_file(SERPRESS_PID_FILE)
         .chown_pid_file(true)
         .working_directory(".")
         .privileged_action(|| {
-            let server = HttpServer::new(|| App::new().route("/", web::get().to(server_handler)))
-                .bind(format!("127.0.0.1:{}", SERPRESS_PORT)) // You may want to bind to a different address/port.
-                .expect("Failed to bind the server");
-
             static ONCE: Once = Once::new();
             ONCE.call_once(|| {
                 ctrlc::set_handler(move || {
@@ -133,8 +124,7 @@ pub fn start_local_server() -> Result<(), CliError> {
                 .expect("Failed to set CTRL+C handler");
             });
 
-            // TODO this probably means that the pid file doesn't get deleted if the server crashes
-            server.run();
+            local_serpress_main();
         });
 
     match daemonize.start() {

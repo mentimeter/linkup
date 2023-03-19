@@ -1,10 +1,11 @@
 use clap::{Parser, Subcommand};
 use thiserror::Error;
 
-mod background_services;
 mod check;
-mod local_config;
 mod start;
+mod local_config;
+mod background_services;
+mod local_server;
 
 use start::start;
 
