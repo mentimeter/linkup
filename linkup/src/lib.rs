@@ -227,9 +227,7 @@ fn extrace_tracestate(tracestate: &String, linkup_key: String) -> String {
     tracestate
         .split(',')
         .filter_map(|kv| {
-            let mut parts = kv.splitn(2, '=');
-            let key = parts.next()?;
-            let value = parts.next()?;
+            let (key, value) = kv.split_once('=')?;
             if key.trim() == linkup_key {
                 Some(value.trim().to_string())
             } else {
