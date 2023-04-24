@@ -16,11 +16,11 @@ use crate::{start::get_state, CliError};
 pub fn check() -> Result<(), CliError> {
     let mut state = get_state()?;
 
-    if let Err(_) = is_local_server_started() {
+    if is_local_server_started().is_err() {
         start_local_server()?
     }
 
-    if let Err(_) = is_tunnel_started() {
+    if is_tunnel_started().is_err() {
         let tunnel = start_tunnel()?;
         state.linkup.tunnel = tunnel;
     }

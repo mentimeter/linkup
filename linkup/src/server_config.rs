@@ -125,22 +125,15 @@ pub fn new_server_config_post(
 }
 
 fn convert_server_config(yaml_config: YamlServerConfig) -> Result<ServerConfig, ConfigError> {
-    if let Err(e) = validate_not_empty(&yaml_config) {
-        return Err(e);
-    }
-
-    if let Err(e) = validate_service_references(&yaml_config) {
-        return Err(e);
-    }
+    validate_not_empty(&yaml_config)?;
+    validate_service_references(&yaml_config)?;
 
     let mut services: HashMap<String, Service> = HashMap::new();
     let mut domains: HashMap<String, Domain> = HashMap::new();
 
     // Convert YamlServerService to Service
     for yaml_service in yaml_config.services {
-        if let Err(e) = validate_url_origin(&yaml_service.location) {
-            return Err(e);
-        }
+        validate_url_origin(&yaml_service.location)?;
 
         let path_modifiers = match yaml_service.path_modifiers {
             Some(pm) => convert_path_modifiers(pm),
