@@ -56,7 +56,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
             });
 
             Command::new("cloudflared")
-                .args(&[
+                .args([
                     "tunnel",
                     "--url",
                     &format!("http://localhost:{}", LINKUP_PORT),

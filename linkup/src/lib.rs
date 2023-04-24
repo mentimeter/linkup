@@ -135,7 +135,7 @@ pub fn get_target_url(
         }
     }
 
-    let target_domain = get_target_domain(&url, &session_name);
+    let target_domain = get_target_domain(&url, session_name);
     if let Some(domain) = config.domains.get(&target_domain) {
         let service_name = domain
             .routes
@@ -170,8 +170,8 @@ pub fn get_target_url(
 }
 
 fn redirect(mut target: Url, source: &Url, path: Option<String>) -> Url {
-    target.set_host(source.host_str().clone()).unwrap();
-    target.set_scheme(source.scheme().clone()).unwrap();
+    target.set_host(source.host_str()).unwrap();
+    target.set_scheme(source.scheme()).unwrap();
 
     if let Some(port) = source.port() {
         target.set_port(Some(port)).unwrap();
