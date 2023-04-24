@@ -218,10 +218,14 @@ fn validate_not_empty(server_config: &YamlServerConfig) -> Result<(), ConfigErro
 }
 
 fn validate_service_references(server_config: &YamlServerConfig) -> Result<(), ConfigError> {
-    let service_names: HashSet<&String> = server_config.services.iter().map(|s| &s.name).collect();
+    let service_names: HashSet<&str> = server_config
+        .services
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect();
 
     for domain in &server_config.domains {
-        if !service_names.contains(&domain.default_service) {
+        if !service_names.contains(&domain.default_service.as_str()) {
             return Err(ConfigError::NoSuchService(
                 domain.default_service.to_string(),
             ));
@@ -229,7 +233,7 @@ fn validate_service_references(server_config: &YamlServerConfig) -> Result<(), C
 
         if let Some(routes) = &domain.routes {
             for route in routes {
-                if !service_names.contains(&route.service) {
+                if !service_names.contains(&route.service.as_str()) {
                     return Err(ConfigError::NoSuchService(route.service.to_string()));
                 }
             }

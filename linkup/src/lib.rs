@@ -12,7 +12,7 @@ pub use server_config::*;
 use url::Url;
 
 pub trait SessionStore {
-    fn get(&self, name: &String) -> Option<ServerConfig>;
+    fn get(&self, name: &str) -> Option<ServerConfig>;
     fn new(
         &self,
         config: ServerConfig,
@@ -39,7 +39,7 @@ pub fn get_request_session<F>(
     store_get: F,
 ) -> Result<(String, ServerConfig), SessionError>
 where
-    F: Fn(&String) -> Option<ServerConfig>,
+    F: Fn(&str) -> Option<ServerConfig>,
 {
     let url_name = first_subdomain(&url);
     if let Some(config) = store_get(&url_name) {
@@ -66,8 +66,8 @@ where
 pub fn get_additional_headers(
     url: String,
     headers: &HashMap<String, String>,
-    session_name: &String,
-    service: &String,
+    session_name: &str,
+    service: &str,
 ) -> HashMap<String, String> {
     let mut additional_headers = HashMap::new();
 
@@ -117,7 +117,7 @@ pub fn get_target_url(
     url: String,
     headers: HashMap<String, String>,
     config: &ServerConfig,
-    session_name: &String,
+    session_name: &str,
 ) -> Option<(String, String)> {
     let target = Url::parse(&url).unwrap();
     let tracestate = headers.get("tracestate");
@@ -184,7 +184,7 @@ fn redirect(mut target: Url, source: &Url, path: Option<String>) -> Url {
     target
 }
 
-fn get_target_domain(url: &String, session_name: &String) -> String {
+fn get_target_domain(url: &str, session_name: &str) -> String {
     let without_schema = url
         .strip_prefix("http://")
         .or_else(|| url.strip_prefix("https://"))
@@ -202,7 +202,7 @@ fn get_target_domain(url: &String, session_name: &String) -> String {
     domain_with_path.split('/').collect::<Vec<_>>()[0].to_string()
 }
 
-fn first_subdomain(url: &String) -> String {
+fn first_subdomain(url: &str) -> String {
     let without_schema = url
         .strip_prefix("http://")
         .or_else(|| url.strip_prefix("https://"))
@@ -215,15 +215,15 @@ fn first_subdomain(url: &String) -> String {
     }
 }
 
-fn extract_tracestate_session(tracestate: &String) -> String {
+fn extract_tracestate_session(tracestate: &str) -> String {
     extrace_tracestate(tracestate, String::from("linkup-session"))
 }
 
-fn extract_tracestate_service(tracestate: &String) -> String {
+fn extract_tracestate_service(tracestate: &str) -> String {
     extrace_tracestate(tracestate, String::from("linkup-service"))
 }
 
-fn extrace_tracestate(tracestate: &String, linkup_key: String) -> String {
+fn extrace_tracestate(tracestate: &str, linkup_key: String) -> String {
     tracestate
         .split(',')
         .filter_map(|kv| {
@@ -314,7 +314,7 @@ mod tests {
             "https://tiny-cow.example.com/abc-xyz".to_string(),
             &headers,
             &session_name,
-            &"frontend".to_string(),
+            "frontend",
         );
 
         assert_eq!(add_headers.get("traceparent").unwrap().len(), 55);
@@ -335,7 +335,7 @@ mod tests {
             "https://abc.some-tunnel.com/abc-xyz".to_string(),
             &already_headers,
             &session_name,
-            &"frontend".to_string(),
+            "frontend",
         );
 
         assert!(add_headers.get("traceparent").is_none());
@@ -350,7 +350,7 @@ mod tests {
             "https://abc.some-tunnel.com/abc-xyz".to_string(),
             &already_headers_two,
             &session_name,
-            &"frontend".to_string(),
+            "frontend",
         );
 
         assert!(add_headers.get("traceparent").is_none());
@@ -367,18 +367,9 @@ mod tests {
         let url2 = "api.example.com".to_string();
         let url3 = "https://tiny-cow.example.com/a/b/c?a=b".to_string();
 
-        assert_eq!(
-            get_target_domain(&url1, &"tiny-cow".to_string()),
-            "example.com"
-        );
-        assert_eq!(
-            get_target_domain(&url2, &"tiny-cow".to_string()),
-            "api.example.com"
-        );
-        assert_eq!(
-            get_target_domain(&url3, &"tiny-cow".to_string()),
-            "example.com"
-        );
+        assert_eq!(get_target_domain(&url1, "tiny-cow"), "example.com");
+        assert_eq!(get_target_domain(&url2, "tiny-cow"), "api.example.com");
+        assert_eq!(get_target_domain(&url3, "tiny-cow"), "example.com");
     }
 
     #[test]

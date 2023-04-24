@@ -16,7 +16,7 @@ impl MemorySessionStore {
 }
 
 impl SessionStore for MemorySessionStore {
-    fn get(&self, name: &String) -> Option<ServerConfig> {
+    fn get(&self, name: &str) -> Option<ServerConfig> {
         match self.store.lock() {
             Ok(l) => l.get(name).cloned(),
             Err(_) => None,

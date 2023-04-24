@@ -14,7 +14,7 @@ impl KvSessionStore {
 }
 
 impl SessionStore for KvSessionStore {
-    fn get(&self, name: &String) -> Option<ServerConfig> {
+    fn get(&self, name: &str) -> Option<ServerConfig> {
         let value = match block_on(self.kv.get(name).text()) {
             Ok(Some(v)) => v,
             _ => return None,
