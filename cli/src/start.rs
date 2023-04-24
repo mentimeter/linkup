@@ -86,7 +86,7 @@ pub fn get_state() -> Result<LocalState, CliError> {
 
     match serde_yaml::from_str(&content) {
         Ok(config) => Ok(config),
-        Err(e) => return Err(CliError::NoState(e.to_string())),
+        Err(e) => Err(CliError::NoState(e.to_string())),
     }
 }
 
