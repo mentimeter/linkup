@@ -281,7 +281,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
         .services
         .into_iter()
         .map(|(name, service)| {
-            let path_modifiers = if service.path_modifiers.len() == 0 {
+            let path_modifiers = if service.path_modifiers.is_empty() {
                 None
             } else {
                 Some(
@@ -309,7 +309,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
         .into_iter()
         .map(|(domain, domain_data)| {
             let default_service = domain_data.default_service;
-            let routes = if domain_data.routes.len() == 0 {
+            let routes = if domain_data.routes.is_empty() {
                 None
             } else {
                 Some(
