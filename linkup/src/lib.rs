@@ -235,7 +235,7 @@ fn extrace_tracestate(tracestate: &String, linkup_key: String) -> String {
             }
         })
         .next()
-        .unwrap_or_else(|| "".to_string())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
