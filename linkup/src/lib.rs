@@ -280,8 +280,11 @@ mod tests {
         // Referer
         let mut referer_headers: HashMap<String, String> = HashMap::new();
         // TODO check header capitalization
-        referer_headers.insert(format!("referer"), format!("http://{}.example.com", name));
-        get_request_session(format!("example.com"), referer_headers, |n| {
+        referer_headers.insert(
+            "referer".to_string(),
+            format!("http://{}.example.com", name),
+        );
+        get_request_session("example.com".to_string(), referer_headers, |n| {
             session_store.get(n)
         })
         .unwrap();
@@ -289,17 +292,17 @@ mod tests {
         // Trace state
         let mut trace_headers: HashMap<String, String> = HashMap::new();
         trace_headers.insert(
-            format!("tracestate"),
+            "tracestate".to_string(),
             format!("some-other=xyz,linkup-session={}", name),
         );
-        get_request_session(format!("example.com"), trace_headers, |n| {
+        get_request_session("example.com".to_string(), trace_headers, |n| {
             session_store.get(n)
         })
         .unwrap();
 
         let mut trace_headers_two: HashMap<String, String> = HashMap::new();
-        trace_headers_two.insert(format!("tracestate"), format!("linkup-session={}", name));
-        get_request_session(format!("example.com"), trace_headers_two, |n| {
+        trace_headers_two.insert("tracestate".to_string(), format!("linkup-session={}", name));
+        get_request_session("example.com".to_string(), trace_headers_two, |n| {
             session_store.get(n)
         })
         .unwrap();
@@ -310,10 +313,10 @@ mod tests {
         let session_name = String::from("tiny-cow");
         let headers = HashMap::new();
         let add_headers = get_additional_headers(
-            format!("https://tiny-cow.example.com/abc-xyz"),
+            "https://tiny-cow.example.com/abc-xyz".to_string(),
             &headers,
             &session_name,
-            &format!("frontend"),
+            &"frontend".to_string(),
         );
 
         assert_eq!(add_headers.get("traceparent").unwrap().len(), 55);
@@ -324,14 +327,17 @@ mod tests {
         assert_eq!(add_headers.get("X-Forwarded-Host").unwrap(), "example.com");
 
         let mut already_headers: HashMap<String, String> = HashMap::new();
-        already_headers.insert(format!("traceparent"), format!("anything"));
-        already_headers.insert(format!("tracestate"), format!("linkup-session=tiny-cow"));
-        already_headers.insert(format!("X-Forwarded-Host"), format!("example.com"));
+        already_headers.insert("traceparent".to_string(), "anything".to_string());
+        already_headers.insert(
+            "tracestate".to_string(),
+            "linkup-session=tiny-cow".to_string(),
+        );
+        already_headers.insert("X-Forwarded-Host".to_string(), "example.com".to_string());
         let add_headers = get_additional_headers(
-            format!("https://abc.some-tunnel.com/abc-xyz"),
+            "https://abc.some-tunnel.com/abc-xyz".to_string(),
             &already_headers,
             &session_name,
-            &format!("frontend"),
+            &"frontend".to_string(),
         );
 
         assert!(add_headers.get("traceparent").is_none());
@@ -339,14 +345,14 @@ mod tests {
         assert!(add_headers.get("tracestate").is_none());
 
         let mut already_headers_two: HashMap<String, String> = HashMap::new();
-        already_headers_two.insert(format!("traceparent"), format!("anything"));
-        already_headers_two.insert(format!("tracestate"), format!("other-service=32"));
-        already_headers_two.insert(format!("X-Forwarded-Host"), format!("example.com"));
+        already_headers_two.insert("traceparent".to_string(), "anything".to_string());
+        already_headers_two.insert("tracestate".to_string(), "other-service=32".to_string());
+        already_headers_two.insert("X-Forwarded-Host".to_string(), "example.com".to_string());
         let add_headers = get_additional_headers(
-            format!("https://abc.some-tunnel.com/abc-xyz"),
+            "https://abc.some-tunnel.com/abc-xyz".to_string(),
             &already_headers_two,
             &session_name,
-            &format!("frontend"),
+            &"frontend".to_string(),
         );
 
         assert!(add_headers.get("traceparent").is_none());
@@ -359,20 +365,20 @@ mod tests {
 
     #[test]
     fn test_get_target_domain() {
-        let url1 = format!("tiny-cow.example.com/path/to/page.html");
-        let url2 = format!("api.example.com");
-        let url3 = format!("https://tiny-cow.example.com/a/b/c?a=b");
+        let url1 = "tiny-cow.example.com/path/to/page.html".to_string();
+        let url2 = "api.example.com".to_string();
+        let url3 = "https://tiny-cow.example.com/a/b/c?a=b".to_string();
 
         assert_eq!(
-            get_target_domain(&url1, &format!("tiny-cow")),
+            get_target_domain(&url1, &"tiny-cow".to_string()),
             "example.com"
         );
         assert_eq!(
-            get_target_domain(&url2, &format!("tiny-cow")),
+            get_target_domain(&url2, &"tiny-cow".to_string()),
             "api.example.com"
         );
         assert_eq!(
-            get_target_domain(&url3, &format!("tiny-cow")),
+            get_target_domain(&url3, &"tiny-cow".to_string()),
             "example.com"
         );
     }
@@ -400,7 +406,10 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (format!("http://localhost:8000/?a=b"), format!("frontend"))
+            (
+                "http://localhost:8000/?a=b".to_string(),
+                "frontend".to_string()
+            )
         );
         // With path
         assert_eq!(
@@ -412,8 +421,8 @@ mod tests {
             )
             .unwrap(),
             (
-                format!("http://localhost:8000/a/b/c/?a=b"),
-                format!("frontend")
+                "http://localhost:8000/a/b/c/?a=b".to_string(),
+                "frontend".to_string()
             )
         );
         // Test path_modifiers
@@ -426,8 +435,8 @@ mod tests {
             )
             .unwrap(),
             (
-                format!("http://localhost:8000/bar/b/c/?a=b"),
-                format!("frontend")
+                "http://localhost:8000/bar/b/c/?a=b".to_string(),
+                "frontend".to_string()
             )
         );
         // Test domain routes
@@ -440,41 +449,41 @@ mod tests {
             )
             .unwrap(),
             (
-                format!("http://localhost:8001/api/v1/?a=b"),
-                format!("backend")
+                "http://localhost:8001/api/v1/?a=b".to_string(),
+                "backend".to_string()
             )
         );
         // Test no named subdomain
         assert_eq!(
             get_target_url(
-                format!("http://api.example.com/api/v1/?a=b"),
+                "http://api.example.com/api/v1/?a=b".to_string(),
                 HashMap::new(),
                 &config,
                 &name
             )
             .unwrap(),
             (
-                format!("http://localhost:8001/api/v1/?a=b"),
-                format!("backend")
+                "http://localhost:8001/api/v1/?a=b".to_string(),
+                "backend".to_string()
             )
         );
         // Test has already been through another linkup server
         let mut service_state_headers: HashMap<String, String> = HashMap::new();
         service_state_headers.insert(
-            format!("tracestate"),
-            format!("linkup-service={}", "frontend"),
+            "tracestate".to_string(),
+            "linkup-service=frontend".to_string(),
         );
         assert_eq!(
             get_target_url(
-                format!("https://literally-any-url.com/foo/a/b"),
+                "https://literally-any-url.com/foo/a/b".to_string(),
                 service_state_headers,
                 &config,
                 &name
             )
             .unwrap(),
             (
-                format!("http://localhost:8000/foo/a/b"),
-                format!("frontend")
+                "http://localhost:8000/foo/a/b".to_string(),
+                "frontend".to_string()
             )
         );
     }
