@@ -126,10 +126,7 @@ pub fn start_local_server() -> Result<(), CliError> {
 
             match local_linkup_main() {
                 Ok(_) => println!("local linkup server finished"),
-                Err(e) => println!(
-                    "local linkup server finished with error {}",
-                    e.to_string()
-                ),
+                Err(e) => println!("local linkup server finished with error {}", e),
             }
         });
 
