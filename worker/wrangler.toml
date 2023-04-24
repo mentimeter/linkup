@@ -1,4 +1,4 @@
-name = "serpress-worker"
+name = "linkup-worker"
 main = "build/worker/shim.mjs"
 compatibility_date = "2022-01-20"
 
@@ -7,7 +7,7 @@ WORKERS_RS_VERSION = "0.0.13"
 
 [kv_namespaces]
 [[kv_namespaces]]
-binding = "SERPRESS_SESSIONS"
+binding = "LINKUP_SESSIONS"
 id = "do_not_use_replace_me_with_your_id" # Replace with your KV namespace ID.
 
 [build]

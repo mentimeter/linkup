@@ -3,5 +3,5 @@
 members = [
   "cli",
   "worker",
-  "serpress",
+  "linkup",
 ]

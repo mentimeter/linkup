@@ -11,11 +11,11 @@ use regex::Regex;
 use thiserror::Error;
 use url::Url;
 
-use crate::local_server::local_serpress_main;
-use crate::{CliError, SERPRESS_PID_FILE};
-use crate::{SERPRESS_CLOUDFLARED_PID, SERPRESS_PORT};
+use crate::local_server::local_linkup_main;
+use crate::{CliError, LINKUP_PID_FILE};
+use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_PORT};
 
-const SERPRESS_CLOUDFLARED_STDOUT: &str = ".serpress-cloudflared-stdout";
+const LINKUP_CLOUDFLARED_STDOUT: &str = ".linkup-cloudflared-stdout";
 
 #[derive(Error, Debug)]
 pub enum CheckErr {
@@ -26,7 +26,7 @@ pub enum CheckErr {
 }
 
 pub fn is_tunnel_started() -> Result<(), CheckErr> {
-    if !Path::new(SERPRESS_CLOUDFLARED_PID).exists() {
+    if !Path::new(LINKUP_CLOUDFLARED_PID).exists() {
         Err(CheckErr::TunnelNotStarted)
     } else {
         Ok(())
@@ -34,12 +34,12 @@ pub fn is_tunnel_started() -> Result<(), CheckErr> {
 }
 
 pub fn start_tunnel() -> Result<Url, CliError> {
-    let stdout_file = File::create(SERPRESS_CLOUDFLARED_STDOUT).map_err(|_| {
+    let stdout_file = File::create(LINKUP_CLOUDFLARED_STDOUT).map_err(|_| {
         CliError::StartLocalTunnel("Failed to create stdout file for local tunnel".to_string())
     })?;
 
     let daemonize = Daemonize::new()
-        .pid_file(SERPRESS_CLOUDFLARED_PID)
+        .pid_file(LINKUP_CLOUDFLARED_PID)
         .chown_pid_file(true)
         .working_directory(".")
         .stdout(stdout_file);
@@ -49,7 +49,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
             static ONCE: Once = Once::new();
             ONCE.call_once(|| {
                 ctrlc::set_handler(move || {
-                    let _ = remove_file(SERPRESS_CLOUDFLARED_PID);
+                    let _ = remove_file(LINKUP_CLOUDFLARED_PID);
                     std::process::exit(0);
                 })
                 .expect("Failed to set CTRL+C handler");
@@ -59,7 +59,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
                 .args(&[
                     "tunnel",
                     "--url",
-                    &format!("http://localhost:{}", SERPRESS_PORT),
+                    &format!("http://localhost:{}", LINKUP_PORT),
                 ])
                 .stdout(Stdio::null())
                 .spawn()
@@ -75,7 +75,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
         }
     }
 
-    let stdout_file = File::open(SERPRESS_CLOUDFLARED_STDOUT).map_err(|_| {
+    let stdout_file = File::open(LINKUP_CLOUDFLARED_STDOUT).map_err(|_| {
         CliError::StartLocalTunnel("Failed to open stdout file for local tunnel".to_string())
     })?;
 
@@ -102,7 +102,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
 }
 
 pub fn is_local_server_started() -> Result<(), CheckErr> {
-    if !Path::new(SERPRESS_PID_FILE).exists() {
+    if !Path::new(LINKUP_PID_FILE).exists() {
         Err(CheckErr::LocalNotStarted)
     } else {
         Ok(())
@@ -111,23 +111,23 @@ pub fn is_local_server_started() -> Result<(), CheckErr> {
 
 pub fn start_local_server() -> Result<(), CliError> {
     let daemonize = Daemonize::new()
-        .pid_file(SERPRESS_PID_FILE)
+        .pid_file(LINKUP_PID_FILE)
         .chown_pid_file(true)
         .working_directory(".")
         .privileged_action(|| {
             static ONCE: Once = Once::new();
             ONCE.call_once(|| {
                 ctrlc::set_handler(move || {
-                    let _ = remove_file(SERPRESS_PID_FILE);
+                    let _ = remove_file(LINKUP_PID_FILE);
                     std::process::exit(0);
                 })
                 .expect("Failed to set CTRL+C handler");
             });
 
-            match local_serpress_main() {
-                Ok(_) => println!("local serpress server finished"),
+            match local_linkup_main() {
+                Ok(_) => println!("local linkup server finished"),
                 Err(e) => println!(
-                    "local serpress server finished with error {}",
+                    "local linkup server finished with error {}",
                     e.to_string()
                 ),
             }

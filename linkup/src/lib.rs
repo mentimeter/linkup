@@ -88,15 +88,15 @@ pub fn get_additional_headers(
     }
 
     let tracestate = headers.get("tracestate");
-    let serpress_session = format!("serpress-session={}", session_name);
-    let serpress_service = format!("serpress-service={}", service);
+    let linkup_session = format!("linkup-session={}", session_name);
+    let linkup_service = format!("linkup-service={}", service);
     match tracestate {
-        Some(ts) if !ts.contains(&serpress_session) => {
-            let new_tracestate = format!("{},{},{}", ts, serpress_session, serpress_service);
+        Some(ts) if !ts.contains(&linkup_session) => {
+            let new_tracestate = format!("{},{},{}", ts, linkup_session, linkup_service);
             additional_headers.insert("tracestate".to_string(), new_tracestate);
         }
         None => {
-            let new_tracestate = format!("{},{}", serpress_session, serpress_service);
+            let new_tracestate = format!("{},{}", linkup_session, linkup_service);
             additional_headers.insert("tracestate".to_string(), new_tracestate);
         }
         _ => {}
@@ -123,7 +123,7 @@ pub fn get_target_url(
     let tracestate = headers.get("tracestate");
     let path = target.path();
 
-    // If the request hit serpress before, we shouldn't need to do routing again.
+    // If the request hit linkup before, we shouldn't need to do routing again.
     if let Some(tracestate_value) = tracestate {
         let service_name = extract_tracestate_service(tracestate_value);
         if !service_name.is_empty() {
@@ -216,21 +216,21 @@ fn first_subdomain(url: &String) -> String {
 }
 
 fn extract_tracestate_session(tracestate: &String) -> String {
-    extrace_tracestate(tracestate, String::from("serpress-session"))
+    extrace_tracestate(tracestate, String::from("linkup-session"))
 }
 
 fn extract_tracestate_service(tracestate: &String) -> String {
-    extrace_tracestate(tracestate, String::from("serpress-service"))
+    extrace_tracestate(tracestate, String::from("linkup-service"))
 }
 
-fn extrace_tracestate(tracestate: &String, serpress_key: String) -> String {
+fn extrace_tracestate(tracestate: &String, linkup_key: String) -> String {
     tracestate
         .split(',')
         .filter_map(|kv| {
             let mut parts = kv.splitn(2, '=');
             let key = parts.next()?;
             let value = parts.next()?;
-            if key.trim() == serpress_key {
+            if key.trim() == linkup_key {
                 Some(value.trim().to_string())
             } else {
                 None
@@ -290,7 +290,7 @@ mod tests {
         let mut trace_headers: HashMap<String, String> = HashMap::new();
         trace_headers.insert(
             format!("tracestate"),
-            format!("some-other=xyz,serpress-session={}", name),
+            format!("some-other=xyz,linkup-session={}", name),
         );
         get_request_session(format!("example.com"), trace_headers, |n| {
             session_store.get(n)
@@ -298,7 +298,7 @@ mod tests {
         .unwrap();
 
         let mut trace_headers_two: HashMap<String, String> = HashMap::new();
-        trace_headers_two.insert(format!("tracestate"), format!("serpress-session={}", name));
+        trace_headers_two.insert(format!("tracestate"), format!("linkup-session={}", name));
         get_request_session(format!("example.com"), trace_headers_two, |n| {
             session_store.get(n)
         })
@@ -319,13 +319,13 @@ mod tests {
         assert_eq!(add_headers.get("traceparent").unwrap().len(), 55);
         assert_eq!(
             add_headers.get("tracestate").unwrap(),
-            "serpress-session=tiny-cow,serpress-service=frontend"
+            "linkup-session=tiny-cow,linkup-service=frontend"
         );
         assert_eq!(add_headers.get("X-Forwarded-Host").unwrap(), "example.com");
 
         let mut already_headers: HashMap<String, String> = HashMap::new();
         already_headers.insert(format!("traceparent"), format!("anything"));
-        already_headers.insert(format!("tracestate"), format!("serpress-session=tiny-cow"));
+        already_headers.insert(format!("tracestate"), format!("linkup-session=tiny-cow"));
         already_headers.insert(format!("X-Forwarded-Host"), format!("example.com"));
         let add_headers = get_additional_headers(
             format!("https://abc.some-tunnel.com/abc-xyz"),
@@ -353,7 +353,7 @@ mod tests {
         assert!(add_headers.get("X-Forwarded-Host").is_none());
         assert_eq!(
             add_headers.get("tracestate").unwrap(),
-            "other-service=32,serpress-session=tiny-cow,serpress-service=frontend"
+            "other-service=32,linkup-session=tiny-cow,linkup-service=frontend"
         );
     }
 
@@ -458,11 +458,11 @@ mod tests {
                 format!("backend")
             )
         );
-        // Test has already been through another serpress server
+        // Test has already been through another linkup server
         let mut service_state_headers: HashMap<String, String> = HashMap::new();
         service_state_headers.insert(
             format!("tracestate"),
-            format!("serpress-service={}", "frontend"),
+            format!("linkup-service={}", "frontend"),
         );
         assert_eq!(
             get_target_url(

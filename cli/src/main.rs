@@ -9,11 +9,11 @@ mod local_server;
 
 use start::start;
 
-const SERPRESS_CONFIG_ENV: &str = "SERPRESS_CONFIG";
-const SERPRESS_PORT: u16 = 9066;
-const SERPRESS_STATE_FILE: &str = ".serpress-state";
-const SERPRESS_PID_FILE: &str = ".serpress-pid";
-const SERPRESS_CLOUDFLARED_PID: &str = ".serpress-cloudflared-pid";
+const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
+const LINKUP_PORT: u16 = 9066;
+const LINKUP_STATE_FILE: &str = ".linkup-state";
+const LINKUP_PID_FILE: &str = ".linkup-pid";
+const LINKUP_CLOUDFLARED_PID: &str = ".linkup-cloudflared-pid";
 
 #[derive(Parser)]
 #[command(author, version, about)]

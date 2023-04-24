@@ -1,5 +1,5 @@
 use futures::executor::block_on;
-use serpress::{new_server_config, server_config_to_yaml, NameKind, ServerConfig, SessionStore};
+use linkup::{new_server_config, server_config_to_yaml, NameKind, ServerConfig, SessionStore};
 use worker::{kv::KvStore, *};
 
 pub struct KvSessionStore {
@@ -8,7 +8,7 @@ pub struct KvSessionStore {
 
 impl KvSessionStore {
     pub fn new() -> Self {
-        let kv = KvStore::create("SERPRESS_SESSIONS").expect("Unable to initialize KvStore");
+        let kv = KvStore::create("LINKUP_SESSIONS").expect("Unable to initialize KvStore");
         Self { kv }
     }
 }
@@ -33,7 +33,7 @@ impl SessionStore for KvSessionStore {
             _ => false,
         };
 
-        let new_name = serpress::new_session_name(name_kind, desired_name, &exists_fn);
+        let new_name = linkup::new_session_name(name_kind, desired_name, &exists_fn);
         let config_str = server_config_to_yaml(config);
 
         block_on(

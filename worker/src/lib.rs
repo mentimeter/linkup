@@ -1,5 +1,5 @@
 use kv_store::KvSessionStore;
-use serpress::*;
+use linkup::*;
 use worker::{kv::KvStore, *};
 
 mod kv_store;
@@ -16,12 +16,12 @@ fn log_request(req: &Request) {
 }
 
 
-async fn serpress_config_handler(req: Request) -> worker::Result<Response> {
+async fn linkup_config_handler(req: Request) -> worker::Result<Response> {
     // let store = KvSessionStore::new();
     Response::ok("yoyo")
 }
 
-async fn serpress_request_handler(req: Request) -> worker::Result<Response> {
+async fn linkup_request_handler(req: Request) -> worker::Result<Response> {
     // let store = KvSessionStore::new();
     Response::ok("ajaja")
 }
@@ -35,11 +35,11 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     let router = Router::new();
 
-    router.post("/serpress", |req, _ctx| async move {
-            serpress_config_handler(req).await
+    router.post("/linkup", |req, _ctx| async move {
+            linkup_config_handler(req).await
         })
         .on("/**", |req, _ctx| async move {
-            serpress_request_handler(req).await
+            linkup_request_handler(req).await
         })
         .run(req, env).await
 }

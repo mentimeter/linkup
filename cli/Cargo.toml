@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-serpress = { path = "../serpress" }
+linkup = { path = "../linkup" }
 clap = { version = "4.1.8", features = ["derive"] }
 thiserror = "1.0.40"
 regex = "1.7.1"

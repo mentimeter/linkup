@@ -4,9 +4,9 @@ use std::{io, collections::HashMap};
 use thiserror::Error;
 use actix_web::{Responder, HttpServer, App, web, HttpResponse, middleware, HttpRequest};
 
-use serpress::*;
+use linkup::*;
 
-use crate::SERPRESS_PORT;
+use crate::LINKUP_PORT;
 
 
 #[derive(Error, Debug)]
@@ -15,7 +15,7 @@ pub enum ProxyError {
     ReqwestProxyError(String),
 }
 
-async fn serpress_config_handler(
+async fn linkup_config_handler(
   session_store: web::Data<MemorySessionStore>,
   req_body: web::Bytes,
 ) -> impl Responder {
@@ -35,7 +35,7 @@ async fn serpress_config_handler(
 }
 
 
-async fn serpress_request_handler(
+async fn linkup_request_handler(
   session_store: web::Data<MemorySessionStore>,
   req: HttpRequest,
   req_body: web::Bytes,
@@ -108,17 +108,17 @@ async fn convert_reqwest_response(response: reqwest::Response) -> Result<HttpRes
 }
 
 #[actix_web::main]
-pub async fn local_serpress_main() -> io::Result<()> {
+pub async fn local_linkup_main() -> io::Result<()> {
   let session_store = web::Data::new(MemorySessionStore::new());
 
   HttpServer::new(move || {
       App::new()
           .app_data(session_store.clone()) // Add shared state
           .wrap(middleware::Logger::default()) // Enable logger
-          .route("/serpress", web::post().to(serpress_config_handler))
-          .default_service(web::route().to(serpress_request_handler))
+          .route("/linkup", web::post().to(linkup_config_handler))
+          .default_service(web::route().to(linkup_request_handler))
   })
-  .bind(("127.0.0.1", SERPRESS_PORT))?
+  .bind(("127.0.0.1", LINKUP_PORT))?
   .run()
   .await
 }

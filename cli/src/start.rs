@@ -7,7 +7,7 @@ use std::{
 use crate::{
     check::check,
     local_config::{config_to_state, LocalState, YamlLocalConfig},
-    CliError, SERPRESS_CONFIG_ENV, SERPRESS_STATE_FILE,
+    CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
 };
 
 pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
@@ -20,7 +20,7 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
 
     // Reuse previous session name if possible
     if let Ok(ps) = previous_state {
-        state.serpress.session_name = ps.serpress.session_name
+        state.linkup.session_name = ps.linkup.session_name
     }
 
     save_state(state)?;
@@ -34,10 +34,10 @@ fn get_config(config_arg: Option<String>) -> Result<YamlLocalConfig, CliError> {
     let config_path =
         match config_arg {
             Some(path) => path,
-            None => match env::var(SERPRESS_CONFIG_ENV) {
+            None => match env::var(LINKUP_CONFIG_ENV) {
                 Ok(val) => val,
                 Err(_) => return Err(CliError::BadConfig(
-                    "No config argument provided and SERPRESS_CONFIG environment variable not set"
+                    "No config argument provided and LINKUP_CONFIG environment variable not set"
                         .to_string(),
                 )),
             },
@@ -73,7 +73,7 @@ pub fn get_state() -> Result<LocalState, CliError> {
     };
 
     let mut path = PathBuf::from(home_dir);
-    path.push(SERPRESS_STATE_FILE);
+    path.push(LINKUP_STATE_FILE);
 
     if let Err(e) = File::open(&path) {
         return Err(CliError::NoState(e.to_string()));
@@ -110,7 +110,7 @@ pub fn save_state(state: LocalState) -> Result<(), CliError> {
     };
 
     let mut path = PathBuf::from(home_dir);
-    path.push(SERPRESS_STATE_FILE);
+    path.push(LINKUP_STATE_FILE);
 
     if let Err(_) = fs::write(&path, yaml_string) {
         return Err(CliError::SaveState(format!(

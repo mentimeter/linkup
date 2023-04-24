@@ -1,17 +1,17 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use serpress::{YamlDomain, YamlPathModifier};
+use linkup::{YamlDomain, YamlPathModifier};
 
 #[derive(Deserialize, Serialize)]
 pub struct LocalState {
-    pub serpress: SerpressState,
+    pub linkup: LinkupState,
     pub domains: Vec<YamlDomain>,
     pub services: Vec<LocalService>,
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct SerpressState {
+pub struct LinkupState {
     pub session_name: String,
     pub remote: Url,
     pub tunnel: Url,
@@ -34,13 +34,13 @@ pub enum ServiceTarget {
 
 #[derive(Deserialize)]
 pub struct YamlLocalConfig {
-    serpress: SerpressConfig,
+    linkup: LinkupConfig,
     services: Vec<YamlLocalService>,
     domains: Vec<YamlDomain>,
 }
 
 #[derive(Deserialize)]
-struct SerpressConfig {
+struct LinkupConfig {
     remote: Url,
 }
 
@@ -53,9 +53,9 @@ struct YamlLocalService {
 }
 
 pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
-    let serpress = SerpressState {
+    let linkup = LinkupState {
         session_name: String::new(),
-        remote: yaml_config.serpress.remote,
+        remote: yaml_config.linkup.remote,
         tunnel: Url::parse("http://localhost").expect("default url parses"),
     };
 
@@ -81,7 +81,7 @@ pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
     let domains = yaml_config.domains;
 
     LocalState {
-        serpress,
+        linkup,
         domains,
         services,
     }
@@ -93,8 +93,8 @@ mod tests {
     use url::Url;
 
     const CONF_STR: &str = r#"
-serpress:
-  remote: https://remote-serpress.example.com
+linkup:
+  remote: https://remote-linkup.example.com
 services:
   - name: frontend
     remote: http://remote-service1.example.com
@@ -122,8 +122,8 @@ domains:
         let local_state = config_to_state(yaml_config);
 
         assert_eq!(
-            local_state.serpress.remote,
-            Url::parse("https://remote-serpress.example.com").unwrap()
+            local_state.linkup.remote,
+            Url::parse("https://remote-linkup.example.com").unwrap()
         );
 
         assert_eq!(local_state.services.len(), 2);

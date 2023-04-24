@@ -1,5 +1,5 @@
 [package]
-name = "serpress-worker"
+name = "linkup-worker"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-serpress = { path = "../serpress" }
+linkup = { path = "../linkup" }
 cfg-if = "0.1.2"
 worker = "0.0.13"
 futures = "0.3"

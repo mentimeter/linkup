@@ -80,7 +80,7 @@ pub struct YamlRoute {
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    #[error("serpress config format error: {0}")]
+    #[error("linkup config format error: {0}")]
     Format(#[from] serde_yaml::Error),
     #[error("no such service: {0}")]
     NoSuchService(String),
