@@ -15,40 +15,31 @@ fn log_request(req: &Request) {
     );
 }
 
+
+async fn serpress_config_handler(req: Request) -> worker::Result<Response> {
+    // let store = KvSessionStore::new();
+    Response::ok("yoyo")
+}
+
+async fn serpress_request_handler(req: Request) -> worker::Result<Response> {
+    // let store = KvSessionStore::new();
+    Response::ok("ajaja")
+}
+
 #[event(fetch)]
-pub async fn main(req: Request, _env: Env, _ctx: worker::Context) -> Result<Response> {
+pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
     log_request(&req);
 
     // Optionally, get more helpful error messages written to the console in the case of a panic.
     utils::set_panic_hook();
 
-    let store = KvSessionStore::new();
+    let router = Router::new();
 
-    // Headers to hashmap
-    let headers = req.headers();
-
-    // get_request_session
-
-    // get_target_url
-
-    // get_additional_headers
-
-    // let head = req.headers();
-    // head.
-
-    let server_conf = new_server_config(String::from(
-        r#"
-    services:
-        - name: core
-    domains:
-        - domain: "serpress.dev" 
-    "#,
-    ));
-
-    let resp = match server_conf {
-        Ok(conf) => "all good",
-        Err(_) => "no good",
-    };
-
-    Response::ok(resp)
+    router.post("/serpress", |req, _ctx| async move {
+            serpress_config_handler(req).await
+        })
+        .on("/**", |req, _ctx| async move {
+            serpress_request_handler(req).await
+        })
+        .run(req, env).await
 }

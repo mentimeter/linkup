@@ -1,16 +1,15 @@
 use futures::executor::block_on;
 use serpress::{new_server_config, server_config_to_yaml, NameKind, ServerConfig, SessionStore};
-use std::sync::Arc;
 use worker::{kv::KvStore, *};
 
 pub struct KvSessionStore {
-    kv: Arc<KvStore>,
+    kv: KvStore,
 }
 
 impl KvSessionStore {
     pub fn new() -> Self {
         let kv = KvStore::create("SERPRESS_SESSIONS").expect("Unable to initialize KvStore");
-        Self { kv: Arc::new(kv) }
+        Self { kv }
     }
 }
 
