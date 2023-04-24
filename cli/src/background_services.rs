@@ -1,6 +1,6 @@
 use std::fs::{remove_file, File};
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{mpsc, Once};
 use std::thread;
@@ -12,7 +12,7 @@ use thiserror::Error;
 use url::Url;
 
 use crate::local_server::local_linkup_main;
-use crate::{CliError, LINKUP_PID_FILE};
+use crate::{CliError, LINKUP_PID_FILE, linkup_file_path};
 use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_PORT};
 
 const LINKUP_CLOUDFLARED_STDOUT: &str = ".linkup-cloudflared-stdout";
@@ -26,7 +26,7 @@ pub enum CheckErr {
 }
 
 pub fn is_tunnel_started() -> Result<(), CheckErr> {
-    if !Path::new(LINKUP_CLOUDFLARED_PID).exists() {
+    if !linkup_file_path(LINKUP_CLOUDFLARED_PID).exists() {
         Err(CheckErr::TunnelNotStarted)
     } else {
         Ok(())
@@ -39,7 +39,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
     })?;
 
     let daemonize = Daemonize::new()
-        .pid_file(LINKUP_CLOUDFLARED_PID)
+        .pid_file(linkup_file_path(LINKUP_CLOUDFLARED_PID))
         .chown_pid_file(true)
         .working_directory(".")
         .stdout(stdout_file);
@@ -49,7 +49,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
             static ONCE: Once = Once::new();
             ONCE.call_once(|| {
                 ctrlc::set_handler(move || {
-                    let _ = remove_file(LINKUP_CLOUDFLARED_PID);
+                    let _ = remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
                     std::process::exit(0);
                 })
                 .expect("Failed to set CTRL+C handler");
@@ -75,7 +75,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
         }
     }
 
-    let stdout_file = File::open(LINKUP_CLOUDFLARED_STDOUT).map_err(|_| {
+    let stdout_file = File::open(linkup_file_path(LINKUP_CLOUDFLARED_STDOUT)).map_err(|_| {
         CliError::StartLocalTunnel("Failed to open stdout file for local tunnel".to_string())
     })?;
 
@@ -102,7 +102,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
 }
 
 pub fn is_local_server_started() -> Result<(), CheckErr> {
-    if !Path::new(LINKUP_PID_FILE).exists() {
+    if !linkup_file_path(LINKUP_PID_FILE).exists() {
         Err(CheckErr::LocalNotStarted)
     } else {
         Ok(())
@@ -111,14 +111,14 @@ pub fn is_local_server_started() -> Result<(), CheckErr> {
 
 pub fn start_local_server() -> Result<(), CliError> {
     let daemonize = Daemonize::new()
-        .pid_file(LINKUP_PID_FILE)
+        .pid_file(linkup_file_path(LINKUP_PID_FILE))
         .chown_pid_file(true)
         .working_directory(".")
         .privileged_action(|| {
             static ONCE: Once = Once::new();
             ONCE.call_once(|| {
                 ctrlc::set_handler(move || {
-                    let _ = remove_file(LINKUP_PID_FILE);
+                    let _ = remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
                     std::process::exit(0);
                 })
                 .expect("Failed to set CTRL+C handler");

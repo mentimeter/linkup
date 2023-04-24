@@ -1,3 +1,5 @@
+use std::{path::{Path, PathBuf}, env};
+
 use clap::{Parser, Subcommand};
 use thiserror::Error;
 
@@ -11,9 +13,23 @@ use start::start;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_PORT: u16 = 9066;
-const LINKUP_STATE_FILE: &str = ".linkup-state";
-const LINKUP_PID_FILE: &str = ".linkup-pid";
-const LINKUP_CLOUDFLARED_PID: &str = ".linkup-cloudflared-pid";
+const LINKUP_DIR: &str = ".linkup";
+const LINKUP_STATE_FILE: &str = "state";
+const LINKUP_PID_FILE: &str = "local-server-pid";
+const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
+
+pub fn linkup_file_path(file: &str) -> PathBuf {
+    let home_dir = match env::var("HOME") {
+        Ok(val) => val,
+        Err(_e) => "/var/tmp".to_string(),
+    };
+
+    let mut path = PathBuf::new();
+    path.push(home_dir);
+    path.push(LINKUP_DIR);
+    path.push(file);
+    path
+}
 
 #[derive(Parser)]
 #[command(author, version, about)]
