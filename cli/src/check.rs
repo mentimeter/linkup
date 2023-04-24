@@ -1,6 +1,5 @@
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
-use serde_yaml;
 
 use linkup::{YamlServerConfig, YamlServerConfigPost, YamlServerService};
 use url::Url;

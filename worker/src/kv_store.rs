@@ -1,6 +1,6 @@
 use futures::executor::block_on;
 use linkup::{new_server_config, server_config_to_yaml, NameKind, ServerConfig, SessionStore};
-use worker::{kv::KvStore, *};
+use worker::kv::KvStore;
 
 pub struct KvSessionStore {
     kv: KvStore,
