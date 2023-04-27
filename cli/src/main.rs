@@ -19,7 +19,7 @@ const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
-const LINKUP_LOCALSERVER_PID_FILE: &str = "local-server-pid";
+const LINKUP_LOCALSERVER_PID_FILE: &str = "localserver-pid";
 const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
 
 pub fn linkup_file_path(file: &str) -> PathBuf {

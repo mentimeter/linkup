@@ -116,6 +116,7 @@ async fn convert_reqwest_response(response: reqwest::Response) -> Result<HttpRes
 pub async fn local_linkup_main() -> io::Result<()> {
     let session_store = web::Data::new(MemorySessionStore::new());
 
+    println!("Starting local server on port {}", LINKUP_LOCALSERVER_PORT);
     HttpServer::new(move || {
         App::new()
             .app_data(session_store.clone()) // Add shared state

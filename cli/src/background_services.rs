@@ -1,7 +1,7 @@
 use std::fs::{remove_file, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio, self};
+use std::process::{self, Command, Stdio};
 use std::sync::{mpsc, Once};
 use std::thread;
 use std::time::Duration;
@@ -17,7 +17,7 @@ use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PORT};
 
 const LINKUP_CLOUDFLARED_STDOUT: &str = "cloudflared-stdout";
 const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";
-const LINKUP_LOCALSERVER_STDOUT: &str = "localserver-stderr";
+const LINKUP_LOCALSERVER_STDOUT: &str = "localserver-stdout";
 const LINKUP_LOCALSERVER_STDERR: &str = "localserver-stderr";
 
 #[derive(Error, Debug)]
@@ -49,51 +49,30 @@ pub fn start_tunnel() -> Result<Url, CliError> {
         .chown_pid_file(true)
         .working_directory(".")
         .stdout(stdout_file)
-        .stderr(stderr_file);
+        .stderr(stderr_file)
+        .privileged_action(|| {
+            static ONCE: Once = Once::new();
+            ONCE.call_once(|| {
+                ctrlc::set_handler(move || {
+                    let _ = remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
+                    std::process::exit(0);
+                })
+                .expect("Failed to set CTRL+C handler");
+            });
+        });
 
     println!("Starting local tunnel");
 
     match daemonize.execute() {
-        Outcome::Child(child_result) => {
-            match child_result {
-                Ok(_) => {
-                    static ONCE: Once = Once::new();
-                    ONCE.call_once(|| {
-                        ctrlc::set_handler(move || {
-                            let _ = remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
-                            std::process::exit(0);
-                        })
-                        .expect("Failed to set CTRL+C handler");
-                    });
-
-                    let child_cmd = Command::new("cloudflared")
-                        .args([
-                            "tunnel",
-                            "--url",
-                            &format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
-                        ])
-                        .stdout(Stdio::null())
-                        .status();
-
-                    match child_cmd {
-                        Ok(_) => {
-                            println!("Child process exited successfully");
-                            process::exit(0);
-                        }
-                        Err(e) => {
-                            println!("Child process exited with error: {}", e);
-                            process::exit(1);
-                        }
-                    }
-                }
-                Err(e) => {
-                    return Err(CliError::StartLocalTunnel(format!(
-                        "Failed to start local tunnel: {}",
-                        e
-                    )))
-                }
+        Outcome::Child(child_result) => match child_result {
+            Ok(_) => daemonized_tunnel_child(),
+            Err(e) => {
+                return Err(CliError::StartLocalTunnel(format!(
+                    "Failed to start local tunnel: {}",
+                    e
+                )))
             }
-        }
+        },
         Outcome::Parent(parent_result) => {
             if parent_result.is_err() {
                 return Err(CliError::StartLocalTunnel(format!(
@@ -108,10 +87,16 @@ pub fn start_tunnel() -> Result<Url, CliError> {
 
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
+        // Either the tunnel will start and we'll get a URL, or the propogated error will end the cli command
         loop {
-            let stderr_file = File::open(linkup_file_path(LINKUP_CLOUDFLARED_STDERR)).map_err(|_| {
-                CliError::StartLocalTunnel("Failed to open stdout file for local tunnel".to_string())
-            }).unwrap();
+            // TODO consider sync_data instead
+            let stderr_file = File::open(linkup_file_path(LINKUP_CLOUDFLARED_STDERR))
+                .map_err(|_| {
+                    CliError::StartLocalTunnel(
+                        "Failed to open stdout file for local tunnel".to_string(),
+                    )
+                })
+                .unwrap();
 
             let buf_reader = BufReader::new(stderr_file);
 
@@ -124,7 +109,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
             }
 
             thread::sleep(Duration::from_millis(100));
-        };
+        }
     });
 
     match rx.recv_timeout(Duration::from_secs(10)) {
@@ -132,9 +117,32 @@ pub fn start_tunnel() -> Result<Url, CliError> {
             println!("Tunnel URL: {}", url);
             Ok(url)
         }
-        Err(e) => Err(CliError::StartLocalTunnel(
-            format!("Failed to obtain tunnel URL within 10 seconds: {}", e),
-        )),
+        Err(e) => Err(CliError::StartLocalTunnel(format!(
+            "Failed to obtain tunnel URL within 10 seconds: {}",
+            e
+        ))),
+    }
+}
+
+fn daemonized_tunnel_child() {
+    let child_cmd = Command::new("cloudflared")
+        .args([
+            "tunnel",
+            "--url",
+            &format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
+        ])
+        .stdout(Stdio::null())
+        .status();
+
+    match child_cmd {
+        Ok(exit_status) => {
+            println!("Child process exited with status {}", exit_status);
+            process::exit(0);
+        }
+        Err(e) => {
+            println!("Child process exited with error: {}", e);
+            process::exit(1);
+        }
     }
 }
 
@@ -171,16 +179,33 @@ pub fn start_local_server() -> Result<(), CliError> {
             });
 
             match local_linkup_main() {
-                Ok(_) => println!("local linkup server finished"),
-                Err(e) => println!("local linkup server finished with error {}", e),
+                Ok(_) => {
+                    println!("local linkup server finished");
+                    process::exit(0);
+                }
+                Err(e) => {
+                    println!("local linkup server finished with error {}", e);
+                    process::exit(1);
+                }
             }
         });
 
-    match daemonize.start() {
-        Ok(_) => Ok(()),
-        Err(e) => Err(CliError::StartLocalServer(format!(
-            "Failed to start local server: {}",
-            e
-        ))),
+    match daemonize.execute() {
+        Outcome::Child(child_result) => match child_result {
+            Ok(_) => Ok(()), // Child server starts in privileged_action
+            Err(e) => {
+                return Err(CliError::StartLocalTunnel(format!(
+                    "Failed to start local server: {}",
+                    e
+                )))
+            }
+        },
+        Outcome::Parent(parent_result) => match parent_result {
+            Err(e) => Err(CliError::StartLocalTunnel(format!(
+                "Failed to start local server: {}",
+                e,
+            ))),
+            Ok(_) => Ok(()),
+        },
     }
 }
