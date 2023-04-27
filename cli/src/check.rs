@@ -9,7 +9,7 @@ use crate::background_services::{
 };
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::start::save_state;
-use crate::LINKUP_PORT;
+use crate::LINKUP_LOCALSERVER_PORT;
 use crate::{start::get_state, CliError};
 
 pub fn check() -> Result<(), CliError> {
@@ -25,8 +25,8 @@ pub fn check() -> Result<(), CliError> {
     }
 
     let (local_server_conf, remote_server_conf) = server_config_from_state(&state);
-    let local_url =
-        Url::parse(&format!("http://localhost:{}", LINKUP_PORT)).expect("linkup url invalid");
+    let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
+        .expect("linkup url invalid");
 
     let server_session_name = load_config(
         &state.linkup.remote,

@@ -1,21 +1,25 @@
-use std::{path::{Path, PathBuf}, env, fs, io::ErrorKind};
+use std::{
+    env, fs,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 
 use clap::{Parser, Subcommand};
 use thiserror::Error;
 
-mod check;
-mod start;
-mod local_config;
 mod background_services;
+mod check;
+mod local_config;
 mod local_server;
+mod start;
 
 use start::start;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
-const LINKUP_PORT: u16 = 9066;
+const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
-const LINKUP_PID_FILE: &str = "local-server-pid";
+const LINKUP_LOCALSERVER_PID_FILE: &str = "local-server-pid";
 const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
 
 pub fn linkup_file_path(file: &str) -> PathBuf {
@@ -42,11 +46,15 @@ fn ensure_linkup_dir() -> Result<(), CliError> {
     path.push(LINKUP_DIR);
 
     match fs::create_dir(&path) {
-       Ok(_) => Ok(()),
-       Err(e ) => match e.kind() {
-           ErrorKind::AlreadyExists => Ok(()),
-           _ => Err(CliError::BadConfig(format!("Could not create linkup dir at {}: {}", path.display(), e)))
-       }
+        Ok(_) => Ok(()),
+        Err(e) => match e.kind() {
+            ErrorKind::AlreadyExists => Ok(()),
+            _ => Err(CliError::BadConfig(format!(
+                "Could not create linkup dir at {}: {}",
+                path.display(),
+                e
+            ))),
+        },
     }
 }
 

@@ -8,7 +8,7 @@ use anyhow::Result;
 use std::fs::File;
 use std::io::Write;
 use std::time::Duration;
-use std::{thread};
+use std::{env, thread};
 
 use boot_cfworker::{boot_worker, kill_worker};
 use boot_server::boot_background_web_server;

@@ -6,8 +6,9 @@ use std::{
 
 use crate::{
     check::check,
+    linkup_file_path,
     local_config::{config_to_state, LocalState, YamlLocalConfig},
-    CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, LINKUP_DIR, linkup_file_path
+    CliError, LINKUP_CONFIG_ENV, LINKUP_DIR, LINKUP_STATE_FILE,
 };
 
 pub fn start(config_arg: Option<String>) -> Result<(), CliError> {

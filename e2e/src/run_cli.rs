@@ -21,10 +21,14 @@ pub fn build_cli_project() -> Result<()> {
         .spawn()?;
 
     // Wait for the child process to finish
-    let _ = cmd.wait()?;
+    let status = cmd.wait()?;
 
     // Restore the original current working directory
     env::set_current_dir(original_cwd)?;
+
+    if !status.success() {
+        Err(anyhow!("Command failed: {}", status,))?;
+    }
 
     Ok(())
 }

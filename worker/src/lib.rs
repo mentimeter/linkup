@@ -36,7 +36,6 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     // let router = Router::new();
 
-
     // router.post("/linkup", |req, _ctx| async move {
     //         linkup_config_handler(req).await
     //     })
