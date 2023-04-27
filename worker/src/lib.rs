@@ -32,7 +32,10 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     // Optionally, get more helpful error messages written to the console in the case of a panic.
     utils::set_panic_hook();
 
-    let router = Router::new();
+    Response::ok("Hello, world!")
+
+    // let router = Router::new();
+
 
     // router.post("/linkup", |req, _ctx| async move {
     //         linkup_config_handler(req).await
@@ -41,5 +44,4 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     //         linkup_request_handler(req).await
     //     })
     //     .run(req, env).await
-    router.run(req, env).await
 }

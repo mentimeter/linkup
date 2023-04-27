@@ -7,7 +7,7 @@ use std::{
 use crate::{
     check::check,
     local_config::{config_to_state, LocalState, YamlLocalConfig},
-    CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
+    CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, LINKUP_DIR, linkup_file_path
 };
 
 pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
@@ -67,19 +67,11 @@ fn get_config(config_arg: Option<String>) -> Result<YamlLocalConfig, CliError> {
 }
 
 pub fn get_state() -> Result<LocalState, CliError> {
-    let home_dir = match env::var("HOME") {
-        Ok(val) => val,
-        Err(e) => return Err(CliError::NoState(e.to_string())),
-    };
-
-    let mut path = PathBuf::from(home_dir);
-    path.push(LINKUP_STATE_FILE);
-
-    if let Err(e) = File::open(&path) {
+    if let Err(e) = File::open(&linkup_file_path(LINKUP_STATE_FILE)) {
         return Err(CliError::NoState(e.to_string()));
     }
 
-    let content = match fs::read_to_string(&path) {
+    let content = match fs::read_to_string(&linkup_file_path(LINKUP_STATE_FILE)) {
         Ok(content) => content,
         Err(e) => return Err(CliError::NoState(e.to_string())),
     };
@@ -100,22 +92,10 @@ pub fn save_state(state: LocalState) -> Result<(), CliError> {
         }
     };
 
-    let home_dir = match env::var("HOME") {
-        Ok(val) => val,
-        Err(_) => {
-            return Err(CliError::SaveState(
-                "Failed to get the HOME environment variable".to_string(),
-            ))
-        }
-    };
-
-    let mut path = PathBuf::from(home_dir);
-    path.push(LINKUP_STATE_FILE);
-
-    if fs::write(&path, yaml_string).is_err() {
+    if let Err(_) = fs::write(&linkup_file_path(LINKUP_STATE_FILE), yaml_string) {
         return Err(CliError::SaveState(format!(
             "Failed to write the state file at {}",
-            path.display()
+            linkup_file_path(LINKUP_STATE_FILE).display()
         )));
     }
 
