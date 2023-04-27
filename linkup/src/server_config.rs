@@ -125,22 +125,15 @@ pub fn new_server_config_post(
 }
 
 fn convert_server_config(yaml_config: YamlServerConfig) -> Result<ServerConfig, ConfigError> {
-    if let Err(e) = validate_not_empty(&yaml_config) {
-        return Err(e);
-    }
-
-    if let Err(e) = validate_service_references(&yaml_config) {
-        return Err(e);
-    }
+    validate_not_empty(&yaml_config)?;
+    validate_service_references(&yaml_config)?;
 
     let mut services: HashMap<String, Service> = HashMap::new();
     let mut domains: HashMap<String, Domain> = HashMap::new();
 
     // Convert YamlServerService to Service
     for yaml_service in yaml_config.services {
-        if let Err(e) = validate_url_origin(&yaml_service.location) {
-            return Err(e);
-        }
+        validate_url_origin(&yaml_service.location)?;
 
         let path_modifiers = match yaml_service.path_modifiers {
             Some(pm) => convert_path_modifiers(pm),
@@ -225,10 +218,14 @@ fn validate_not_empty(server_config: &YamlServerConfig) -> Result<(), ConfigErro
 }
 
 fn validate_service_references(server_config: &YamlServerConfig) -> Result<(), ConfigError> {
-    let service_names: HashSet<&String> = server_config.services.iter().map(|s| &s.name).collect();
+    let service_names: HashSet<&str> = server_config
+        .services
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect();
 
     for domain in &server_config.domains {
-        if !service_names.contains(&domain.default_service) {
+        if !service_names.contains(&domain.default_service.as_str()) {
             return Err(ConfigError::NoSuchService(
                 domain.default_service.to_string(),
             ));
@@ -236,7 +233,7 @@ fn validate_service_references(server_config: &YamlServerConfig) -> Result<(), C
 
         if let Some(routes) = &domain.routes {
             for route in routes {
-                if !service_names.contains(&route.service) {
+                if !service_names.contains(&route.service.as_str()) {
                     return Err(ConfigError::NoSuchService(route.service.to_string()));
                 }
             }
@@ -288,7 +285,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
         .services
         .into_iter()
         .map(|(name, service)| {
-            let path_modifiers = if service.path_modifiers.len() == 0 {
+            let path_modifiers = if service.path_modifiers.is_empty() {
                 None
             } else {
                 Some(
@@ -316,7 +313,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
         .into_iter()
         .map(|(domain, domain_data)| {
             let default_service = domain_data.default_service;
-            let routes = if domain_data.routes.len() == 0 {
+            let routes = if domain_data.routes.is_empty() {
                 None
             } else {
                 Some(

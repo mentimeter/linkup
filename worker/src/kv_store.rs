@@ -1,6 +1,6 @@
 use futures::executor::block_on;
 use linkup::{new_server_config, server_config_to_yaml, NameKind, ServerConfig, SessionStore};
-use worker::{kv::KvStore, *};
+use worker::kv::KvStore;
 
 pub struct KvSessionStore {
     kv: KvStore,
@@ -14,7 +14,7 @@ impl KvSessionStore {
 }
 
 impl SessionStore for KvSessionStore {
-    fn get(&self, name: &String) -> Option<ServerConfig> {
+    fn get(&self, name: &str) -> Option<ServerConfig> {
         let value = match block_on(self.kv.get(name).text()) {
             Ok(Some(v)) => v,
             _ => return None,

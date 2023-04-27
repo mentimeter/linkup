@@ -15,7 +15,6 @@ fn log_request(req: &Request) {
     );
 }
 
-
 async fn linkup_config_handler(req: Request) -> worker::Result<Response> {
     // let store = KvSessionStore::new();
     Response::ok("yoyo")
@@ -35,11 +34,12 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     let router = Router::new();
 
-    router.post("/linkup", |req, _ctx| async move {
-            linkup_config_handler(req).await
-        })
-        .on("/**", |req, _ctx| async move {
-            linkup_request_handler(req).await
-        })
-        .run(req, env).await
+    // router.post("/linkup", |req, _ctx| async move {
+    //         linkup_config_handler(req).await
+    //     })
+    //     .on("/**", |req, _ctx| async move {
+    //         linkup_request_handler(req).await
+    //     })
+    //     .run(req, env).await
+    router.run(req, env).await
 }

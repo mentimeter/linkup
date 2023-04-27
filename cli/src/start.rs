@@ -86,7 +86,7 @@ pub fn get_state() -> Result<LocalState, CliError> {
 
     match serde_yaml::from_str(&content) {
         Ok(config) => Ok(config),
-        Err(e) => return Err(CliError::NoState(e.to_string())),
+        Err(e) => Err(CliError::NoState(e.to_string())),
     }
 }
 
@@ -112,7 +112,7 @@ pub fn save_state(state: LocalState) -> Result<(), CliError> {
     let mut path = PathBuf::from(home_dir);
     path.push(LINKUP_STATE_FILE);
 
-    if let Err(_) = fs::write(&path, yaml_string) {
+    if fs::write(&path, yaml_string).is_err() {
         return Err(CliError::SaveState(format!(
             "Failed to write the state file at {}",
             path.display()

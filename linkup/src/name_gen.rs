@@ -10,13 +10,10 @@ pub fn new_session_name(
 ) -> String {
     let mut key = String::new();
 
-    match desired_name {
-        Some(name) => {
-            if !exists(name.clone()) {
-                key = name;
-            }
+    if let Some(name) = desired_name {
+        if !exists(name.clone()) {
+            key = name;
         }
-        None => {}
     }
 
     if key.is_empty() {
