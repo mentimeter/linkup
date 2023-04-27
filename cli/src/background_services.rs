@@ -15,7 +15,7 @@ use crate::local_server::local_linkup_main;
 use crate::{CliError, LINKUP_PID_FILE, linkup_file_path};
 use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_PORT};
 
-const LINKUP_CLOUDFLARED_STDOUT: &str = ".linkup-cloudflared-stdout";
+const LINKUP_CLOUDFLARED_STDOUT: &str = "cloudflared-stdout";
 
 #[derive(Error, Debug)]
 pub enum CheckErr {
@@ -34,7 +34,7 @@ pub fn is_tunnel_started() -> Result<(), CheckErr> {
 }
 
 pub fn start_tunnel() -> Result<Url, CliError> {
-    let stdout_file = File::create(LINKUP_CLOUDFLARED_STDOUT).map_err(|_| {
+    let stdout_file = File::create(linkup_file_path(LINKUP_CLOUDFLARED_STDOUT)).map_err(|_| {
         CliError::StartLocalTunnel("Failed to create stdout file for local tunnel".to_string())
     })?;
 

@@ -1,4 +1,4 @@
-use std::{path::{Path, PathBuf}, env};
+use std::{path::{Path, PathBuf}, env, fs, io::ErrorKind};
 
 use clap::{Parser, Subcommand};
 use thiserror::Error;
@@ -19,16 +19,35 @@ const LINKUP_PID_FILE: &str = "local-server-pid";
 const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
 
 pub fn linkup_file_path(file: &str) -> PathBuf {
-    let home_dir = match env::var("HOME") {
+    let storage_dir = match env::var("HOME") {
         Ok(val) => val,
         Err(_e) => "/var/tmp".to_string(),
     };
 
     let mut path = PathBuf::new();
-    path.push(home_dir);
+    path.push(storage_dir);
     path.push(LINKUP_DIR);
     path.push(file);
     path
+}
+
+fn ensure_linkup_dir() -> Result<(), CliError> {
+    let storage_dir = match env::var("HOME") {
+        Ok(val) => val,
+        Err(_e) => "/var/tmp".to_string(),
+    };
+
+    let mut path = PathBuf::new();
+    path.push(storage_dir);
+    path.push(LINKUP_DIR);
+
+    match fs::create_dir(&path) {
+       Ok(_) => Ok(()),
+       Err(e ) => match e.kind() {
+           ErrorKind::AlreadyExists => Ok(()),
+           _ => Err(CliError::BadConfig(format!("Could not create linkup dir at {}: {}", path.display(), e)))
+       }
+    }
 }
 
 #[derive(Parser)]
@@ -70,6 +89,8 @@ enum Commands {
 
 fn main() -> Result<(), CliError> {
     let cli = Cli::parse();
+
+    ensure_linkup_dir()?;
 
     match &cli.command {
        Commands::Start{config}=> {
