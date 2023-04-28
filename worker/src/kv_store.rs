@@ -1,6 +1,8 @@
-use linkup::{new_server_config, server_config_to_yaml, NameKind, ServerConfig, SessionStore, random_animal, random_six_char};
-use worker::{kv::KvStore};
-
+use linkup::{
+    new_server_config, random_animal, random_six_char, server_config_to_yaml, NameKind,
+    ServerConfig, SessionStore,
+};
+use worker::{console_log, kv::KvStore};
 
 pub struct KvSessionStore {
     kv: KvStore,
@@ -14,10 +16,13 @@ impl KvSessionStore {
 
 impl KvSessionStore {
     pub async fn get(&self, name: String) -> Option<ServerConfig> {
+        console_log!("get: {}", name);
         let value = match self.kv.get(name.as_str()).text().await {
             Ok(Some(v)) => v,
             _ => return None,
         };
+
+        console_log!("val: {}", value);
         Some(new_server_config(value).unwrap())
     }
 
@@ -27,15 +32,15 @@ impl KvSessionStore {
         name_kind: NameKind,
         desired_name: Option<String>,
     ) -> String {
-
         let new_name = self.new_session_name(name_kind, desired_name).await;
         let config_str = server_config_to_yaml(config);
-
 
         self.kv
             .put(&new_name, &config_str)
             .expect("unable to build kv put")
-            .execute().await.expect("Unable to store ServerConfig in KvStore");
+            .execute()
+            .await
+            .expect("Unable to store ServerConfig in KvStore");
 
         new_name
     }
@@ -47,20 +52,15 @@ impl KvSessionStore {
         }
     }
 
-
-    async fn new_session_name(
-        &self,
-        name_kind: NameKind,
-        desired_name: Option<String>,
-    ) -> String {
+    async fn new_session_name(&self, name_kind: NameKind, desired_name: Option<String>) -> String {
         let mut key = String::new();
-    
+
         if let Some(name) = desired_name {
             if !self.exists(name.clone()).await {
                 key = name;
             }
         }
-    
+
         if key.is_empty() {
             let mut tried_animal_key = false;
             loop {
@@ -70,17 +70,17 @@ impl KvSessionStore {
                 } else {
                     random_six_char()
                 };
-    
+
                 if !self.exists(generated_key.clone()).await {
                     key = generated_key;
                     break;
                 }
             }
         }
-    
+
         key
     }
-    
+
     async fn generate_unique_animal_key(&self, max_attempts: usize) -> String {
         for _ in 0..max_attempts {
             let generated_key = random_animal();

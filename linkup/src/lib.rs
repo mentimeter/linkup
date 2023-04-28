@@ -48,14 +48,14 @@ where
 
     if let Some(referer) = headers.get("referer") {
         let referer_name = first_subdomain(referer);
-        if let Some(config) = store_get(&url_name) {
+        if let Some(config) = store_get(&referer_name) {
             return Ok((referer_name, config));
         }
     }
 
     if let Some(tracestate) = headers.get("tracestate") {
         let trace_name = extract_tracestate_session(tracestate);
-        if let Some(config) = store_get(&url_name) {
+        if let Some(config) = store_get(&trace_name) {
             return Ok((trace_name, config));
         }
     }
@@ -70,7 +70,7 @@ pub async fn async_get_request_session<F, Fut>(
 ) -> Result<(String, ServerConfig), SessionError>
 where
     F: Fn(String) -> Fut,
-    Fut: Future<Output=Option<ServerConfig>>
+    Fut: Future<Output = Option<ServerConfig>>,
 {
     let url_name = first_subdomain(&url);
     if let Some(config) = store_get(url_name.to_string()).await {
@@ -79,14 +79,14 @@ where
 
     if let Some(referer) = headers.get("referer") {
         let referer_name = first_subdomain(referer);
-        if let Some(config) = store_get(url_name.to_string()).await {
+        if let Some(config) = store_get(referer_name.to_string()).await {
             return Ok((referer_name, config));
         }
     }
 
     if let Some(tracestate) = headers.get("tracestate") {
         let trace_name = extract_tracestate_session(tracestate);
-        if let Some(config) = store_get(url_name.to_string()).await {
+        if let Some(config) = store_get(trace_name.to_string()).await {
             return Ok((trace_name, config));
         }
     }

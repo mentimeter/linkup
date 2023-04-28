@@ -33,7 +33,9 @@ async fn linkup_config_handler(mut req: Request, store: KvSessionStore) -> Resul
 
     match new_server_config_post(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name = store.new_session(server_conf, NameKind::Animal, Some(desired_name)).await;
+            let session_name = store
+                .new_session(server_conf, NameKind::Animal, Some(desired_name))
+                .await;
             Response::ok(session_name)
         }
         Err(e) => Response::error(format!("Failed to parse server config: {}", e), 400),
@@ -86,7 +88,9 @@ async fn linkup_request_handler(mut req: Request, store: KvSessionStore) -> Resu
         Err(e) => return Response::error(format!("Failed to proxy request: {}", e), 502),
     };
 
-    convert_reqwest_response_to_cf(response).await
+    let resp_resp = convert_reqwest_response_to_cf(response).await;
+
+    resp_resp
 }
 
 #[event(fetch)]

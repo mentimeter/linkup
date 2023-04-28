@@ -1,6 +1,6 @@
 use reqwest::{Method as ReqwestMethod, Response as ReqwestResponse};
 use std::{collections::HashMap, convert::TryFrom};
-use worker::{Headers as CfHeaders, Method as CfMethod, Response as CfResponse};
+use worker::{console_log, Headers as CfHeaders, Method as CfMethod, Response as CfResponse};
 
 pub fn convert_cf_method_to_reqwest(
     cf_method: &CfMethod,
@@ -54,7 +54,7 @@ pub async fn convert_reqwest_response_to_cf(
         Err(_) => return CfResponse::error("Error creating response body", 500),
     };
     let cf_headers = CfHeaders::from(headers);
-    let cf_response = cf_response.with_headers(cf_headers);
+    let cf_response = cf_response.with_headers(cf_headers.clone());
     let cf_response = cf_response.with_status(status.into());
 
     Ok(cf_response)

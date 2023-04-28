@@ -21,7 +21,6 @@ pub fn check() -> Result<(), CliError> {
 
     if is_tunnel_started().is_err() {
         let tunnel = start_tunnel()?;
-        println!("Tunnel started at {}", tunnel);
         state.linkup.tunnel = tunnel;
     }
 
@@ -43,7 +42,7 @@ pub fn check() -> Result<(), CliError> {
     state.linkup.session_name = server_session_name.clone();
     save_state(state)?;
 
-    println!("Session name: {}", server_session_name);
+    println!("{}", server_session_name);
 
     // final checks services are responding
     // print status
@@ -81,7 +80,6 @@ fn load_config(
             let content = response
                 .text()
                 .map_err(|e| CliError::LoadConfig(desired_name.into(), e.to_string()))?;
-            println!("Config loaded from {}, response {}", endpoint, content);
             Ok(content)
         }
         _ => Err(CliError::LoadConfig(

@@ -1,10 +1,13 @@
 extern crate anyhow;
+extern crate reqwest;
 
 mod boot_cfworker;
 mod boot_server;
 mod run_cli;
 
 use anyhow::Result;
+use reqwest::blocking::Client;
+use reqwest::header::REFERER;
 use std::fs::File;
 use std::io::Write;
 use std::time::Duration;
@@ -80,18 +83,33 @@ fn run_with_cleanup() -> Result<()> {
     let (out, err) = run_cli_binary(vec!["start", "-c", "e2e_conf.yml"])?;
     println!("out: {}", out);
     println!("err: {}", err);
-    // cleanup.add(move || {
-    //     std::fs::remove_dir_all(format!("{}/.linkup", env::var("HOME").unwrap()))
-    //         .map_err(anyhow::Error::from)
-    // });
+    cleanup.add(move || {
+        std::fs::remove_dir_all(format!("{}/.linkup", env::var("HOME").unwrap()))
+            .map_err(anyhow::Error::from)
+    });
 
-    thread::sleep(Duration::from_secs(20));
+    let referer_to = format!("http://{}.example.com", out.trim());
+    println!("referer_to: {}", referer_to);
+    println!("referer_to: {}", referer_to);
+    println!("referer_to: {}", referer_to);
+    println!("referer_to: {}", referer_to);
 
     let mut front_remote = boot_background_web_server(8900, String::from("front_remote"))?;
     cleanup.add(move || front_remote.kill().map_err(anyhow::Error::from));
 
     let mut back_remote = boot_background_web_server(8910, String::from("back_remote"))?;
     cleanup.add(move || back_remote.kill().map_err(anyhow::Error::from));
+
+    let client = Client::new();
+
+    let resp = client
+        .get("http://localhost:8787")
+        .header(REFERER, referer_to)
+        .send()?;
+
+    println!("response: {:?}", resp.bytes().unwrap());
+
+    thread::sleep(Duration::from_secs(20));
 
     Ok(())
 }

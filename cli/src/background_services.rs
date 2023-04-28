@@ -61,8 +61,6 @@ pub fn start_tunnel() -> Result<Url, CliError> {
             });
         });
 
-    println!("Starting local tunnel");
-
     match daemonize.execute() {
         Outcome::Child(child_result) => match child_result {
             Ok(_) => daemonized_tunnel_child(),

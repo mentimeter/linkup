@@ -3,11 +3,6 @@ use rand::Rng;
 
 use crate::NameKind;
 
-
-
-
-
-
 pub fn new_session_name(
     name_kind: NameKind,
     desired_name: Option<String>,
@@ -40,7 +35,6 @@ pub fn new_session_name(
 
     key
 }
-
 
 fn generate_unique_animal_key(max_attempts: usize, exists: &dyn Fn(String) -> bool) -> String {
     for _ in 0..max_attempts {
