@@ -113,10 +113,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
     });
 
     match rx.recv_timeout(Duration::from_secs(10)) {
-        Ok(url) => {
-            println!("Tunnel URL: {}", url);
-            Ok(url)
-        }
+        Ok(url) => Ok(url),
         Err(e) => Err(CliError::StartLocalTunnel(format!(
             "Failed to obtain tunnel URL within 10 seconds: {}",
             e

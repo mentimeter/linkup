@@ -1,48 +1,94 @@
-use futures::executor::block_on;
-use linkup::{new_server_config, server_config_to_yaml, NameKind, ServerConfig, SessionStore};
-use worker::kv::KvStore;
+use linkup::{new_server_config, server_config_to_yaml, NameKind, ServerConfig, SessionStore, random_animal, random_six_char};
+use worker::{kv::KvStore};
+
 
 pub struct KvSessionStore {
     kv: KvStore,
 }
 
 impl KvSessionStore {
-    pub fn new() -> Self {
-        let kv = KvStore::create("LINKUP_SESSIONS").expect("Unable to initialize KvStore");
+    pub fn new(kv: KvStore) -> Self {
         Self { kv }
     }
 }
 
-impl SessionStore for KvSessionStore {
-    fn get(&self, name: &str) -> Option<ServerConfig> {
-        let value = match block_on(self.kv.get(name).text()) {
+impl KvSessionStore {
+    pub async fn get(&self, name: String) -> Option<ServerConfig> {
+        let value = match self.kv.get(name.as_str()).text().await {
             Ok(Some(v)) => v,
             _ => return None,
         };
         Some(new_server_config(value).unwrap())
     }
 
-    fn new(
+    pub async fn new_session(
         &self,
         config: ServerConfig,
         name_kind: NameKind,
         desired_name: Option<String>,
     ) -> String {
-        let exists_fn = |name: String| match block_on(self.kv.get(&name).text()) {
-            Ok(Some(_)) => true,
-            _ => false,
-        };
 
-        let new_name = linkup::new_session_name(name_kind, desired_name, &exists_fn);
+        let new_name = self.new_session_name(name_kind, desired_name).await;
         let config_str = server_config_to_yaml(config);
 
-        block_on(
-            self.kv
-                .put(&new_name, &config_str)
-                .expect("unable to build kv put")
-                .execute(),
-        )
-        .expect("Unable to store ServerConfig in KvStore");
+
+        self.kv
+            .put(&new_name, &config_str)
+            .expect("unable to build kv put")
+            .execute().await.expect("Unable to store ServerConfig in KvStore");
+
         new_name
+    }
+
+    async fn exists(&self, name: String) -> bool {
+        match self.kv.get(&name).text().await {
+            Ok(Some(_)) => true,
+            _ => false,
+        }
+    }
+
+
+    async fn new_session_name(
+        &self,
+        name_kind: NameKind,
+        desired_name: Option<String>,
+    ) -> String {
+        let mut key = String::new();
+    
+        if let Some(name) = desired_name {
+            if !self.exists(name.clone()).await {
+                key = name;
+            }
+        }
+    
+        if key.is_empty() {
+            let mut tried_animal_key = false;
+            loop {
+                let generated_key = if !tried_animal_key && name_kind == NameKind::Animal {
+                    tried_animal_key = true;
+                    self.generate_unique_animal_key(20).await
+                } else {
+                    random_six_char()
+                };
+    
+                if !self.exists(generated_key.clone()).await {
+                    key = generated_key;
+                    break;
+                }
+            }
+        }
+    
+        key
+    }
+    
+    async fn generate_unique_animal_key(&self, max_attempts: usize) -> String {
+        for _ in 0..max_attempts {
+            let generated_key = random_animal();
+            if !self.exists(generated_key.clone()).await {
+                return generated_key;
+            }
+        }
+        // Fallback to SixChar logic
+        random_six_char()
     }
 }

@@ -3,6 +3,11 @@ use rand::Rng;
 
 use crate::NameKind;
 
+
+
+
+
+
 pub fn new_session_name(
     name_kind: NameKind,
     desired_name: Option<String>,
@@ -36,6 +41,7 @@ pub fn new_session_name(
     key
 }
 
+
 fn generate_unique_animal_key(max_attempts: usize, exists: &dyn Fn(String) -> bool) -> String {
     for _ in 0..max_attempts {
         let generated_key = random_animal();
@@ -47,7 +53,7 @@ fn generate_unique_animal_key(max_attempts: usize, exists: &dyn Fn(String) -> bo
     random_six_char()
 }
 
-fn random_animal() -> String {
+pub fn random_animal() -> String {
     let adjective_index = rand::thread_rng().gen_range(0..SHORT_ADJECTIVES.len());
     let animal_index = rand::thread_rng().gen_range(0..ANIMALS.len());
 
@@ -57,7 +63,7 @@ fn random_animal() -> String {
     )
 }
 
-fn random_six_char() -> String {
+pub fn random_six_char() -> String {
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(6)

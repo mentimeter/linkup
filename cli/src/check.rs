@@ -16,11 +16,12 @@ pub fn check() -> Result<(), CliError> {
     let mut state = get_state()?;
 
     if is_local_server_started().is_err() {
-        start_local_server()?
+        start_local_server()?;
     }
 
     if is_tunnel_started().is_err() {
         let tunnel = start_tunnel()?;
+        println!("Tunnel started at {}", tunnel);
         state.linkup.tunnel = tunnel;
     }
 
@@ -39,8 +40,10 @@ pub fn check() -> Result<(), CliError> {
         return Err(CliError::InconsistentState);
     }
 
-    state.linkup.session_name = server_session_name;
+    state.linkup.session_name = server_session_name.clone();
     save_state(state)?;
+
+    println!("Session name: {}", server_session_name);
 
     // final checks services are responding
     // print status
@@ -68,17 +71,17 @@ fn load_config(
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
     let response = client
-        .post(endpoint)
+        .post(endpoint.clone())
         .body(config_post_yaml)
         .send()
         .map_err(|e| CliError::LoadConfig(desired_name.into(), e.to_string()))?;
 
     match response.status() {
         StatusCode::OK => {
-            let content = String::new();
-            response
+            let content = response
                 .text()
                 .map_err(|e| CliError::LoadConfig(desired_name.into(), e.to_string()))?;
+            println!("Config loaded from {}, response {}", endpoint, content);
             Ok(content)
         }
         _ => Err(CliError::LoadConfig(

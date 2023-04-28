@@ -15,12 +15,12 @@ pub fn boot_worker() -> Result<(Child)> {
         .arg("dev")
         // .stdout(Stdio::null())
         .stdout(Stdio::inherit())
-        .stderr(Stdio::null())
         // DEBUG POINT, use inherit stderr to see wrangler output
-        // .stderr(Stdio::inherit())
+        // .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()?;
 
-    thread::sleep(Duration::from_secs(1));
+    thread::sleep(Duration::from_secs(5));
 
     env::set_current_dir(original_cwd)?;
 

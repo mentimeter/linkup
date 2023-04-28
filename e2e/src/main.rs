@@ -75,17 +75,23 @@ fn run_with_cleanup() -> Result<()> {
     boot_worker()?;
     cleanup.add(move || kill_worker());
 
+    thread::sleep(Duration::from_secs(5));
+
     let (out, err) = run_cli_binary(vec!["start", "-c", "e2e_conf.yml"])?;
     println!("out: {}", out);
     println!("err: {}", err);
+    // cleanup.add(move || {
+    //     std::fs::remove_dir_all(format!("{}/.linkup", env::var("HOME").unwrap()))
+    //         .map_err(anyhow::Error::from)
+    // });
+
+    thread::sleep(Duration::from_secs(20));
 
     let mut front_remote = boot_background_web_server(8900, String::from("front_remote"))?;
     cleanup.add(move || front_remote.kill().map_err(anyhow::Error::from));
 
     let mut back_remote = boot_background_web_server(8910, String::from("back_remote"))?;
     cleanup.add(move || back_remote.kill().map_err(anyhow::Error::from));
-
-    thread::sleep(Duration::from_secs(10));
 
     Ok(())
 }

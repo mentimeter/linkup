@@ -54,7 +54,7 @@ async fn linkup_request_handler(
     let (destination_url, service) =
         match get_target_url(url.clone(), headers.clone(), &config, &session_name) {
             Some(result) => result,
-            None => return HttpResponse::NotFound().body("Fallback handler"),
+            None => return HttpResponse::NotFound().body("Not target url for request"),
         };
 
     let extra_headers = get_additional_headers(url, &headers, &session_name, &service);

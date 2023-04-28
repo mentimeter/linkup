@@ -1,5 +1,5 @@
 use rand::Rng;
-use std::collections::HashMap;
+use std::{collections::HashMap, future::Future};
 use thiserror::Error;
 
 mod memory_session_store;
@@ -7,7 +7,7 @@ mod name_gen;
 mod server_config;
 
 pub use memory_session_store::*;
-pub use name_gen::new_session_name;
+pub use name_gen::{new_session_name, random_animal, random_six_char};
 pub use server_config::*;
 use url::Url;
 
@@ -56,6 +56,37 @@ where
     if let Some(tracestate) = headers.get("tracestate") {
         let trace_name = extract_tracestate_session(tracestate);
         if let Some(config) = store_get(&url_name) {
+            return Ok((trace_name, config));
+        }
+    }
+
+    Err(SessionError::NoSuchSession(url))
+}
+
+pub async fn async_get_request_session<F, Fut>(
+    url: String,
+    headers: HashMap<String, String>,
+    store_get: F,
+) -> Result<(String, ServerConfig), SessionError>
+where
+    F: Fn(String) -> Fut,
+    Fut: Future<Output=Option<ServerConfig>>
+{
+    let url_name = first_subdomain(&url);
+    if let Some(config) = store_get(url_name.to_string()).await {
+        return Ok((url_name, config));
+    }
+
+    if let Some(referer) = headers.get("referer") {
+        let referer_name = first_subdomain(referer);
+        if let Some(config) = store_get(url_name.to_string()).await {
+            return Ok((referer_name, config));
+        }
+    }
+
+    if let Some(tracestate) = headers.get("tracestate") {
+        let trace_name = extract_tracestate_session(tracestate);
+        if let Some(config) = store_get(url_name.to_string()).await {
             return Ok((trace_name, config));
         }
     }
