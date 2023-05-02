@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use kv_store::KvSessionStore;
+use kv_store::CfWorkerStringStore;
 use linkup::*;
 use worker::*;
 
@@ -20,7 +20,7 @@ fn log_request(req: &Request) {
     );
 }
 
-async fn linkup_config_handler(mut req: Request, store: KvSessionStore) -> Result<Response> {
+async fn linkup_config_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
         Err(_) => return Response::error("Bad or missing request body", 400),
@@ -33,16 +33,20 @@ async fn linkup_config_handler(mut req: Request, store: KvSessionStore) -> Resul
 
     match new_server_config_post(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name = store
-                .new_session(server_conf, NameKind::Animal, desired_name)
+            let session_name = sessions
+                .store_session(server_conf, NameKind::Animal, desired_name)
                 .await;
-            Response::ok(session_name)
+
+            match session_name {
+                Ok(session_name) => Response::ok(session_name),
+                Err(e) => Response::error(format!("Failed to store server config: {}", e), 500),
+            }
         }
         Err(e) => Response::error(format!("Failed to parse server config: {}", e), 400),
     }
 }
 
-async fn linkup_request_handler(mut req: Request, store: KvSessionStore) -> Result<Response> {
+async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
         Err(_) => return Response::error("Bad or missing request body", 400),
@@ -56,7 +60,7 @@ async fn linkup_request_handler(mut req: Request, store: KvSessionStore) -> Resu
     let headers = req.headers().entries().collect::<HashMap<String, String>>();
 
     let (session_name, config) =
-        match async_get_request_session(url.clone(), headers.clone(), |n| store.get(n)).await {
+        match sessions.get_request_session(url.clone(), headers.clone()).await {
             Ok(result) => result,
             Err(_) => return Response::error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
@@ -105,11 +109,13 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         Err(e) => return Response::error(format!("Failed to get KV store: {}", e), 500),
     };
 
-    let store = KvSessionStore::new(kv);
+    let string_store = CfWorkerStringStore::new(kv);
+
+    let sessions = SessionAllocator::new(Arc::new(string_store));
 
     if req.method() == Method::Post && req.path() == "/linkup" {
-        return linkup_config_handler(req, store).await;
+        return linkup_config_handler(req, sessions).await;
     }
 
-    linkup_request_handler(req, store).await
+    linkup_request_handler(req, sessions).await
 }

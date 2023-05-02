@@ -92,10 +92,10 @@ fn run_with_cleanup() -> Result<()> {
     println!("referer_to: {}", referer_to);
     println!("referer_to: {}", referer_to);
 
-    let mut front_remote = boot_background_web_server(8900, String::from("front_remote"))?;
+    let mut front_remote = boot_background_web_server(8901, String::from("front_remote"))?;
     cleanup.add(move || front_remote.kill().map_err(anyhow::Error::from));
 
-    let mut back_remote = boot_background_web_server(8910, String::from("back_remote"))?;
+    let mut back_remote = boot_background_web_server(8911, String::from("back_remote"))?;
     cleanup.add(move || back_remote.kill().map_err(anyhow::Error::from));
 
     let client = Client::new();
@@ -106,15 +106,20 @@ fn run_with_cleanup() -> Result<()> {
         .send()?;
 
     if resp.status().as_u16() != 200 {
-      return Err(anyhow::Error::msg("status code is not 200"));
+        return Err(anyhow::Error::msg("status code is not 200"));
     }
-    if !String::from_utf8(resp.bytes().unwrap().to_vec()).unwrap().contains("Example Domain") {
-      return Err(anyhow::Error::msg("body does not contain Example Domain"));
+    if !String::from_utf8(resp.bytes().unwrap().to_vec())
+        .unwrap()
+        .contains("Example Domain")
+    {
+        return Err(anyhow::Error::msg("body does not contain Example Domain"));
     }
 
     let (out, err) = run_cli_binary(vec!["local", "frontend"])?;
     println!("out: {}", out);
     println!("err: {}", err);
+
+    thread::sleep(Duration::from_secs(1));
 
     let resp = client
         .get("http://localhost:8787")
@@ -127,8 +132,6 @@ fn run_with_cleanup() -> Result<()> {
     if !String::from_utf8(resp.bytes().unwrap().to_vec()).unwrap().contains("front_remote") {
       return Err(anyhow::Error::msg("session did not route to local domain after local switch"));
     }
-
-    thread::sleep(Duration::from_secs(20));
 
     Ok(())
 }

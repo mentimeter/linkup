@@ -1,40 +1,51 @@
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
-use crate::name_gen::new_session_name;
-use crate::{NameKind, ServerConfig, SessionStore};
+use async_trait::async_trait;
 
-pub struct MemorySessionStore {
-    store: Mutex<HashMap<String, ServerConfig>>,
+use crate::{SessionError, StringStore};
+
+pub struct MemoryStringStore {
+    store: Mutex<HashMap<String, String>>,
 }
 
-impl MemorySessionStore {
+impl MemoryStringStore {
     pub fn new() -> Self {
-        MemorySessionStore {
+        MemoryStringStore {
             store: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl SessionStore for MemorySessionStore {
-    fn get(&self, name: &str) -> Option<ServerConfig> {
+#[async_trait(?Send)]
+impl StringStore for MemoryStringStore {
+    async fn get(&self, key: String) -> Result<Option<String>, SessionError> {
         match self.store.lock() {
-            Ok(l) => l.get(name).cloned(),
-            Err(_) => None,
+            Ok(l) => Ok(l.get(key.as_str()).cloned()),
+            Err(e) => Err(SessionError::GetError(e.to_string())),
         }
     }
 
-    fn new(
-        &self,
-        config: ServerConfig,
-        name_kind: NameKind,
-        desired_name: Option<String>,
-    ) -> String {
-        let exists_fn = |name: String| match self.store.lock() {
-            Ok(l) => l.contains_key(&name),
-            Err(_) => false,
-        };
-        let key = new_session_name(name_kind, desired_name, &exists_fn);
-        self.store.lock().unwrap().insert(key.clone(), config);
-        key
+    async fn exists(&self, key: String) -> Result<bool, SessionError> {
+        let value = match self.store.lock() {
+            Ok(l) => Ok(l.get(&key).cloned()),
+            Err(e) => return Err(SessionError::GetError(e.to_string())),
+        }?;
+
+        match value {
+            Some(_) => Ok(true),
+            _ => Ok(false),
+        }
+    }
+
+    async fn put(&self, key: String, value: String) -> Result<(), SessionError> {
+        match self.store.lock() {
+            Ok(mut l) => Ok(l.insert(key, value.clone())),
+            Err(e) => Err(SessionError::PutError(e.to_string())),
+        }?;
+
+        Ok(())
     }
 }
