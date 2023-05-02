@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io};
+use std::{collections::HashMap, io, sync::{Arc, Mutex}};
 
 use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use thiserror::Error;
@@ -14,9 +14,11 @@ pub enum ProxyError {
 }
 
 async fn linkup_config_handler(
-    session_store: web::Data<MemorySessionStore>,
+    string_store: web::Data<MemoryStringStore>,
     req_body: web::Bytes,
 ) -> impl Responder {
+    let sessions = SessionAllocator::new(string_store.into_inner());
+
     let input_yaml_conf = match String::from_utf8(req_body.to_vec()) {
         Ok(input_yaml_conf) => input_yaml_conf,
         Err(_) => return HttpResponse::BadRequest().body("Invalid request body encoding"),
@@ -24,19 +26,24 @@ async fn linkup_config_handler(
 
     match new_server_config_post(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name = session_store.new(server_conf, NameKind::Animal, Some(desired_name));
-            HttpResponse::Ok().body(session_name)
+            let session_name = sessions.store_session(server_conf, NameKind::Animal, desired_name).await;
+            match session_name {
+                Ok(session_name) => HttpResponse::Ok().body(session_name),
+                Err(e) => HttpResponse::InternalServerError().body(format!("Failed to store server config: {}", e)),
+            }
         }
         Err(e) => HttpResponse::BadRequest().body(format!("Failed to parse server config: {}", e)),
     }
 }
 
 async fn linkup_request_handler(
-    session_store: web::Data<MemorySessionStore>,
+    string_store: web::Data<MemoryStringStore>,
     req: HttpRequest,
     req_body: web::Bytes,
 ) -> impl Responder {
-    let url = req.uri().to_string();
+    let sessions = SessionAllocator::new(string_store.into_inner());
+
+    let url = format!("http://localhost:9066{}", req.uri().to_string());
     let headers = req
         .headers()
         .iter()
@@ -44,7 +51,7 @@ async fn linkup_request_handler(
         .collect::<HashMap<String, String>>();
 
     let session_result =
-        get_request_session(url.clone(), headers.clone(), |n| session_store.get(n));
+        sessions.get_request_session(url.clone(), headers.clone()).await;
 
     let (session_name, config) = match session_result {
         Ok(result) => result,
@@ -63,7 +70,7 @@ async fn linkup_request_handler(
     let client = reqwest::Client::new();
     let response_result = client
         .request(req.method().clone(), &destination_url)
-        .headers(merge_headers(headers, extra_headers))
+        .headers(merge_headers(&headers, &extra_headers))
         .body(req_body)
         .send()
         .await;
@@ -79,8 +86,8 @@ async fn linkup_request_handler(
 }
 
 fn merge_headers(
-    original_headers: HashMap<String, String>,
-    extra_headers: HashMap<String, String>,
+    original_headers: &HashMap<String, String>,
+    extra_headers: &HashMap<String, String>,
 ) -> reqwest::header::HeaderMap {
     let mut header_map = reqwest::header::HeaderMap::new();
     for (key, value) in original_headers
@@ -114,12 +121,16 @@ async fn convert_reqwest_response(response: reqwest::Response) -> Result<HttpRes
 
 #[actix_web::main]
 pub async fn local_linkup_main() -> io::Result<()> {
-    let session_store = web::Data::new(MemorySessionStore::new());
+    env_logger::Builder::new()
+        .filter(None, log::LevelFilter::Info)
+        .init();
+
+    let string_store = web::Data::new(MemoryStringStore::new());
 
     println!("Starting local server on port {}", LINKUP_LOCALSERVER_PORT);
     HttpServer::new(move || {
         App::new()
-            .app_data(session_store.clone()) // Add shared state
+            .app_data(string_store.clone()) // Add shared state
             .wrap(middleware::Logger::default()) // Enable logger
             .route("/linkup", web::post().to(linkup_config_handler))
             .default_service(web::route().to(linkup_request_handler))

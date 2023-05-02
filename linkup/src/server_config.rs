@@ -356,6 +356,7 @@ mod tests {
     use super::*;
 
     const CONF_STR: &str = r#"
+    session_token: abcxyz
     services:
       - name: frontend
         location: http://localhost:8000

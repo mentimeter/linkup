@@ -1,97 +1,43 @@
+use async_trait::async_trait;
 use rand::Rng;
-use std::{collections::HashMap, future::Future};
+use std::collections::HashMap;
 use thiserror::Error;
 
 mod memory_session_store;
 mod name_gen;
 mod server_config;
+mod session_allocator;
 
 pub use memory_session_store::*;
 pub use name_gen::{new_session_name, random_animal, random_six_char};
 pub use server_config::*;
+pub use session_allocator::*;
+
 use url::Url;
 
-pub trait SessionStore {
-    fn get(&self, name: &str) -> Option<ServerConfig>;
-    fn new(
-        &self,
-        config: ServerConfig,
-        name_kind: NameKind,
-        desired_name: Option<String>,
-    ) -> String;
+#[derive(Error, Debug)]
+pub enum SessionError {
+    #[error("no session found for request {0}")]
+    NoSuchSession(String),
+    #[error("Could not get config: {0}")]
+    GetError(String),
+    #[error("Could not put config: {0}")]
+    PutError(String),
+    #[error("Invalid stored config: {0}")]
+    ConfigErr(String),
+}
+
+#[async_trait(?Send)]
+pub trait StringStore {
+    async fn get(&self, key: String) -> Result<Option<String>, SessionError>;
+    async fn exists(&self, key: String) -> Result<bool, SessionError>;
+    async fn put(&self, key: String, value: String) -> Result<(), SessionError>;
 }
 
 #[derive(PartialEq)]
 pub enum NameKind {
     Animal,
     SixChar,
-}
-
-#[derive(Error, Debug)]
-pub enum SessionError {
-    #[error("no session found for request {0}")]
-    NoSuchSession(String), // Add known headers to error
-}
-
-pub fn get_request_session<F>(
-    url: String,
-    headers: HashMap<String, String>,
-    store_get: F,
-) -> Result<(String, ServerConfig), SessionError>
-where
-    F: Fn(&str) -> Option<ServerConfig>,
-{
-    let url_name = first_subdomain(&url);
-    if let Some(config) = store_get(&url_name) {
-        return Ok((url_name, config));
-    }
-
-    if let Some(referer) = headers.get("referer") {
-        let referer_name = first_subdomain(referer);
-        if let Some(config) = store_get(&referer_name) {
-            return Ok((referer_name, config));
-        }
-    }
-
-    if let Some(tracestate) = headers.get("tracestate") {
-        let trace_name = extract_tracestate_session(tracestate);
-        if let Some(config) = store_get(&trace_name) {
-            return Ok((trace_name, config));
-        }
-    }
-
-    Err(SessionError::NoSuchSession(url))
-}
-
-pub async fn async_get_request_session<F, Fut>(
-    url: String,
-    headers: HashMap<String, String>,
-    store_get: F,
-) -> Result<(String, ServerConfig), SessionError>
-where
-    F: Fn(String) -> Fut,
-    Fut: Future<Output = Option<ServerConfig>>,
-{
-    let url_name = first_subdomain(&url);
-    if let Some(config) = store_get(url_name.to_string()).await {
-        return Ok((url_name, config));
-    }
-
-    if let Some(referer) = headers.get("referer") {
-        let referer_name = first_subdomain(referer);
-        if let Some(config) = store_get(referer_name.to_string()).await {
-            return Ok((referer_name, config));
-        }
-    }
-
-    if let Some(tracestate) = headers.get("tracestate") {
-        let trace_name = extract_tracestate_session(tracestate);
-        if let Some(config) = store_get(trace_name.to_string()).await {
-            return Ok((trace_name, config));
-        }
-    }
-
-    Err(SessionError::NoSuchSession(url))
 }
 
 pub fn get_additional_headers(
@@ -284,9 +230,12 @@ fn extrace_tracestate(tracestate: &str, linkup_key: String) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     const CONF_STR: &str = r#"
+    session_token: abcxyz
     services:
       - name: frontend
         location: http://localhost:8000
@@ -305,19 +254,22 @@ mod tests {
         default_service: backend
     "#;
 
-    #[test]
-    fn test_get_request_session_by_subdomain() {
-        let session_store = MemorySessionStore::new();
+    #[tokio::test]
+    async fn test_get_request_session_by_subdomain() {
+        let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
         let config = new_server_config(String::from(CONF_STR)).unwrap();
 
-        let name = session_store.new(config, NameKind::Animal, None);
+        let name = sessions
+            .store_session(config, NameKind::Animal, "".to_string())
+            .await
+            .unwrap();
 
         // Normal subdomain
-        get_request_session(format!("{}.example.com", name), HashMap::new(), |n| {
-            session_store.get(n)
-        })
-        .unwrap();
+        sessions
+            .get_request_session(format!("{}.example.com", name), HashMap::new())
+            .await
+            .unwrap();
 
         // Referer
         let mut referer_headers: HashMap<String, String> = HashMap::new();
@@ -326,10 +278,10 @@ mod tests {
             "referer".to_string(),
             format!("http://{}.example.com", name),
         );
-        get_request_session("example.com".to_string(), referer_headers, |n| {
-            session_store.get(n)
-        })
-        .unwrap();
+        sessions
+            .get_request_session("example.com".to_string(), referer_headers)
+            .await
+            .unwrap();
 
         // Trace state
         let mut trace_headers: HashMap<String, String> = HashMap::new();
@@ -337,17 +289,17 @@ mod tests {
             "tracestate".to_string(),
             format!("some-other=xyz,linkup-session={}", name),
         );
-        get_request_session("example.com".to_string(), trace_headers, |n| {
-            session_store.get(n)
-        })
-        .unwrap();
+        sessions
+            .get_request_session("example.com".to_string(), trace_headers)
+            .await
+            .unwrap();
 
         let mut trace_headers_two: HashMap<String, String> = HashMap::new();
         trace_headers_two.insert("tracestate".to_string(), format!("linkup-session={}", name));
-        get_request_session("example.com".to_string(), trace_headers_two, |n| {
-            session_store.get(n)
-        })
-        .unwrap();
+        sessions
+            .get_request_session("example.com".to_string(), trace_headers_two)
+            .await
+            .unwrap();
     }
 
     #[test]
@@ -416,18 +368,20 @@ mod tests {
         assert_eq!(get_target_domain(&url3, "tiny-cow"), "example.com");
     }
 
-    #[test]
-    fn test_get_target_url() {
-        let session_store = MemorySessionStore::new();
+    #[tokio::test]
+    async fn test_get_target_url() {
+        let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
         let input_config = new_server_config(String::from(CONF_STR)).unwrap();
 
-        let name = session_store.new(input_config, NameKind::Animal, None);
+        let name = sessions
+            .store_session(input_config, NameKind::Animal, "".to_string())
+            .await
+            .unwrap();
 
-        let (name, config) =
-            get_request_session(format!("{}.example.com", name), HashMap::new(), |n| {
-                session_store.get(n)
-            })
+        let (name, config) = sessions
+            .get_request_session(format!("{}.example.com", name), HashMap::new())
+            .await
             .unwrap();
 
         // Standard named subdomain

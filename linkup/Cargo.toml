@@ -12,3 +12,7 @@ url = { version = "2.3.1", features = ["serde"] }
 rand = "0.8"
 getrandom = { version = "0.2.8", features = ["js"] }
 hex = "0.4"
+async-trait = "0.1.68"
+
+[dev-dependencies]
+tokio = { version = "1.28.0", features = ["test-util", "macros"] }
