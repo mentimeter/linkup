@@ -11,8 +11,10 @@ mod background_services;
 mod check;
 mod local_config;
 mod local_server;
+mod remote_local;
 mod start;
 
+use remote_local::{local, remote};
 use start::start;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
@@ -91,8 +93,12 @@ enum Commands {
     },
     Stop {},
     Check {},
-    Local {},
-    Remote {},
+    Local {
+        service_name: String,
+    },
+    Remote {
+        service_name: String,
+    },
 }
 
 fn main() -> Result<(), CliError> {
@@ -112,13 +118,11 @@ fn main() -> Result<(), CliError> {
         println!("Check");
         Err(CliError::BadConfig(String::from("no good")))
        }
-       Commands::Local{} =>{
-         println!("Local");
-        Err(CliError::BadConfig(String::from("no good")))
+       Commands::Local{service_name} =>{
+        local(service_name.clone())
        }
-       Commands::Remote{} => {
-        println!("Remote");
-        Err(CliError::BadConfig(String::from("no good")))
+       Commands::Remote{service_name} => {
+        remote(service_name.clone())
        }
 
     //    _Stop => println!("Stop"),

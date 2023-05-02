@@ -61,6 +61,7 @@ fn load_config(
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
     let config_post = YamlServerConfigPost {
+        session_token: config.session_token,
         desired_name: desired_name.into(),
         services: config.services,
         domains: config.domains,
@@ -120,10 +121,12 @@ fn server_config_from_state(state: &LocalState) -> (YamlServerConfig, YamlServer
 
     (
         YamlServerConfig {
+            session_token: state.linkup.session_token.clone(),
             services: local_server_services,
             domains: state.domains.clone(),
         },
         YamlServerConfig {
+            session_token: state.linkup.session_token.clone(),
             services: remote_server_services,
             domains: state.domains.clone(),
         },

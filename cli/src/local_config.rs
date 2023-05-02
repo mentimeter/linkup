@@ -1,3 +1,4 @@
+use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -13,6 +14,7 @@ pub struct LocalState {
 #[derive(Deserialize, Serialize)]
 pub struct LinkupState {
     pub session_name: String,
+    pub session_token: String,
     pub remote: Url,
     pub tunnel: Url,
 }
@@ -53,8 +55,15 @@ struct YamlLocalService {
 }
 
 pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
+    let random_token: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(16)
+        .map(char::from)
+        .collect();
+
     let linkup = LinkupState {
         session_name: String::new(),
+        session_token: random_token,
         remote: yaml_config.linkup.remote,
         tunnel: Url::parse("http://localhost").expect("default url parses"),
     };

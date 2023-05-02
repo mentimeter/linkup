@@ -10,6 +10,7 @@ use url::Url;
 
 #[derive(Clone)]
 pub struct ServerConfig {
+    pub session_token: String,
     pub services: HashMap<String, Service>,
     pub domains: HashMap<String, Domain>,
     pub domain_selection_order: Vec<String>,
@@ -42,12 +43,14 @@ pub struct Route {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct YamlServerConfigPost {
     pub desired_name: String,
+    pub session_token: String,
     pub services: Vec<YamlServerService>,
     pub domains: Vec<YamlDomain>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct YamlServerConfig {
+    pub session_token: String,
     pub services: Vec<YamlServerService>,
     pub domains: Vec<YamlDomain>,
 }
@@ -112,6 +115,7 @@ pub fn new_server_config_post(
         Err(e) => Err(ConfigError::Format(e)),
         Ok(c) => {
             let server_conf = convert_server_config(YamlServerConfig {
+                session_token: c.session_token,
                 services: c.services,
                 domains: c.domains,
             });
@@ -166,6 +170,7 @@ fn convert_server_config(yaml_config: YamlServerConfig) -> Result<ServerConfig, 
     let domain_names = domains.keys().cloned().collect();
 
     Ok(ServerConfig {
+        session_token: yaml_config.session_token,
         services,
         domains,
         domain_selection_order: choose_domain_ordering(domain_names),
@@ -336,7 +341,11 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
         })
         .collect();
 
-    let yaml_server_config = YamlServerConfig { services, domains };
+    let yaml_server_config = YamlServerConfig {
+        session_token: server_config.session_token,
+        services,
+        domains,
+    };
 
     // This should never fail, due to previous validation
     serde_yaml::to_string(&yaml_server_config).unwrap()

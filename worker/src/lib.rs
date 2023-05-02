@@ -34,7 +34,7 @@ async fn linkup_config_handler(mut req: Request, store: KvSessionStore) -> Resul
     match new_server_config_post(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
             let session_name = store
-                .new_session(server_conf, NameKind::Animal, Some(desired_name))
+                .new_session(server_conf, NameKind::Animal, desired_name)
                 .await;
             Response::ok(session_name)
         }

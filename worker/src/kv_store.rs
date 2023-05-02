@@ -30,19 +30,38 @@ impl KvSessionStore {
         &self,
         config: ServerConfig,
         name_kind: NameKind,
-        desired_name: Option<String>,
+        desired_name: String,
     ) -> String {
-        let new_name = self.new_session_name(name_kind, desired_name).await;
+        let name = self
+            .choose_name(desired_name, config.session_token.clone(), name_kind)
+            .await;
         let config_str = server_config_to_yaml(config);
 
         self.kv
-            .put(&new_name, &config_str)
+            .put(&name, &config_str)
             .expect("unable to build kv put")
             .execute()
             .await
             .expect("Unable to store ServerConfig in KvStore");
 
-        new_name
+        console_log!("put: {}", name);
+        console_log!("val: {}", config_str);
+        name
+    }
+
+    async fn choose_name(
+        &self,
+        desired_name: String,
+        session_token: String,
+        name_kind: NameKind,
+    ) -> String {
+        if let Some(session) = self.get(desired_name.clone()).await {
+            if session.session_token == session_token {
+                return desired_name;
+            }
+        }
+
+        self.new_session_name(name_kind, desired_name).await
     }
 
     async fn exists(&self, name: String) -> bool {
@@ -52,12 +71,12 @@ impl KvSessionStore {
         }
     }
 
-    async fn new_session_name(&self, name_kind: NameKind, desired_name: Option<String>) -> String {
+    async fn new_session_name(&self, name_kind: NameKind, desired_name: String) -> String {
         let mut key = String::new();
 
-        if let Some(name) = desired_name {
-            if !self.exists(name.clone()).await {
-                key = name;
+        if desired_name != "" {
+            if !self.exists(desired_name.clone()).await {
+                key = desired_name;
             }
         }
 
