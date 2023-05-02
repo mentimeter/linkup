@@ -49,21 +49,21 @@ fn run_with_cleanup() -> Result<()> {
     remote: http://localhost:8787
   services:
     - name: frontend
-      remote: http://localhost:8900
+      remote: https://example.com
       local: http://localhost:8901
       path_modifiers:
         - source: /foo/(.*)
           target: /bar/$1
     - name: backend
-      remote: http://localhost:8910
+      remote: http://menti.com
       local: http://localhost:8911
   domains:
-    - domain: example.com
+    - domain: somedomain.com
       default_service: frontend
       routes:
         - path: /api/v1/.*
           service: backend
-    - domain: api.example.com
+    - domain: api.somedomain.com
       default_service: backend
       "#;
 
@@ -88,9 +88,7 @@ fn run_with_cleanup() -> Result<()> {
             .map_err(anyhow::Error::from)
     });
 
-    let referer_to = format!("http://{}.example.com", out.trim());
-    println!("referer_to: {}", referer_to);
-    println!("referer_to: {}", referer_to);
+    let referer_to = format!("http://{}.somedomain.com", out.trim());
     println!("referer_to: {}", referer_to);
     println!("referer_to: {}", referer_to);
 
@@ -104,10 +102,31 @@ fn run_with_cleanup() -> Result<()> {
 
     let resp = client
         .get("http://localhost:8787")
+        .header(REFERER, &referer_to)
+        .send()?;
+
+    if resp.status().as_u16() != 200 {
+      return Err(anyhow::Error::msg("status code is not 200"));
+    }
+    if !String::from_utf8(resp.bytes().unwrap().to_vec()).unwrap().contains("Example Domain") {
+      return Err(anyhow::Error::msg("body does not contain Example Domain"));
+    }
+
+    let (out, err) = run_cli_binary(vec!["local", "frontend"])?;
+    println!("out: {}", out);
+    println!("err: {}", err);
+
+    let resp = client
+        .get("http://localhost:8787")
         .header(REFERER, referer_to)
         .send()?;
 
-    println!("response: {:?}", resp.bytes().unwrap());
+    if resp.status().as_u16() != 200 {
+      return Err(anyhow::Error::msg("status code is not 200"));
+    }
+    if !String::from_utf8(resp.bytes().unwrap().to_vec()).unwrap().contains("front_remote") {
+      return Err(anyhow::Error::msg("session did not route to local domain after local switch"));
+    }
 
     thread::sleep(Duration::from_secs(20));
 

@@ -166,8 +166,21 @@ pub fn get_target_url(
         }
     }
 
-    let target_domain = get_target_domain(&url, session_name);
-    if let Some(domain) = config.domains.get(&target_domain) {
+    let url_target = config.domains.get(&get_target_domain(&url, session_name));
+    let referer_target = config.domains.get(&get_target_domain(
+        &headers
+            .get("referer")
+            .unwrap_or(&"does-not-exist".to_string()),
+        session_name,
+    ));
+
+    let target_domain = if url_target.is_some() {
+        url_target
+    } else {
+        referer_target
+    };
+
+    if let Some(domain) = target_domain {
         let service_name = domain
             .routes
             .iter()

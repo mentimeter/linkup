@@ -83,7 +83,7 @@ fn load_config(
             Ok(content)
         }
         _ => Err(CliError::LoadConfig(
-            url.to_string(),
+            endpoint.to_string(),
             format!("status code: {}", response.status()),
         )),
     }
