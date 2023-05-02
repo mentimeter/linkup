@@ -114,7 +114,7 @@ pub fn get_target_url(
 
     let url_target = config.domains.get(&get_target_domain(&url, session_name));
     let referer_target = config.domains.get(&get_target_domain(
-        &headers
+        headers
             .get("referer")
             .unwrap_or(&"does-not-exist".to_string()),
         session_name,

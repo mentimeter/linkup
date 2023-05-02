@@ -1,12 +1,11 @@
 use std::fs::{remove_file, File};
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 use std::sync::{mpsc, Once};
 use std::thread;
 use std::time::Duration;
 
-use daemonize::{Child, Daemonize, Outcome};
+use daemonize::{Daemonize, Outcome};
 use regex::Regex;
 use thiserror::Error;
 use url::Url;

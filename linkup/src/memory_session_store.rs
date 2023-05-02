@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Mutex};
 
 use async_trait::async_trait;
 
@@ -42,7 +39,7 @@ impl StringStore for MemoryStringStore {
 
     async fn put(&self, key: String, value: String) -> Result<(), SessionError> {
         match self.store.lock() {
-            Ok(mut l) => Ok(l.insert(key, value.clone())),
+            Ok(mut l) => Ok(l.insert(key, value)),
             Err(e) => Err(SessionError::PutError(e.to_string())),
         }?;
 

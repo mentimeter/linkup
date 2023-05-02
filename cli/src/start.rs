@@ -67,11 +67,11 @@ fn get_config(config_arg: Option<String>) -> Result<YamlLocalConfig, CliError> {
 }
 
 pub fn get_state() -> Result<LocalState, CliError> {
-    if let Err(e) = File::open(&linkup_file_path(LINKUP_STATE_FILE)) {
+    if let Err(e) = File::open(linkup_file_path(LINKUP_STATE_FILE)) {
         return Err(CliError::NoState(e.to_string()));
     }
 
-    let content = match fs::read_to_string(&linkup_file_path(LINKUP_STATE_FILE)) {
+    let content = match fs::read_to_string(linkup_file_path(LINKUP_STATE_FILE)) {
         Ok(content) => content,
         Err(e) => return Err(CliError::NoState(e.to_string())),
     };
@@ -92,7 +92,7 @@ pub fn save_state(state: LocalState) -> Result<(), CliError> {
         }
     };
 
-    if let Err(_) = fs::write(&linkup_file_path(LINKUP_STATE_FILE), yaml_string) {
+    if fs::write(linkup_file_path(LINKUP_STATE_FILE), yaml_string).is_err() {
         return Err(CliError::SaveState(format!(
             "Failed to write the state file at {}",
             linkup_file_path(LINKUP_STATE_FILE).display()

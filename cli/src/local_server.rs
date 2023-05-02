@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io, sync::{Arc, Mutex}};
+use std::{collections::HashMap, io};
 
 use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use thiserror::Error;
@@ -26,10 +26,13 @@ async fn linkup_config_handler(
 
     match new_server_config_post(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name = sessions.store_session(server_conf, NameKind::Animal, desired_name).await;
+            let session_name = sessions
+                .store_session(server_conf, NameKind::Animal, desired_name)
+                .await;
             match session_name {
                 Ok(session_name) => HttpResponse::Ok().body(session_name),
-                Err(e) => HttpResponse::InternalServerError().body(format!("Failed to store server config: {}", e)),
+                Err(e) => HttpResponse::InternalServerError()
+                    .body(format!("Failed to store server config: {}", e)),
             }
         }
         Err(e) => HttpResponse::BadRequest().body(format!("Failed to parse server config: {}", e)),
@@ -43,15 +46,16 @@ async fn linkup_request_handler(
 ) -> impl Responder {
     let sessions = SessionAllocator::new(string_store.into_inner());
 
-    let url = format!("http://localhost:9066{}", req.uri().to_string());
+    let url = format!("http://localhost:9066{}", req.uri());
     let headers = req
         .headers()
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
         .collect::<HashMap<String, String>>();
 
-    let session_result =
-        sessions.get_request_session(url.clone(), headers.clone()).await;
+    let session_result = sessions
+        .get_request_session(url.clone(), headers.clone())
+        .await;
 
     let (session_name, config) = match session_result {
         Ok(result) => result,
@@ -90,12 +94,9 @@ fn merge_headers(
     extra_headers: &HashMap<String, String>,
 ) -> reqwest::header::HeaderMap {
     let mut header_map = reqwest::header::HeaderMap::new();
-    for (key, value) in original_headers
-        .into_iter()
-        .chain(extra_headers.into_iter())
-    {
+    for (key, value) in original_headers.iter().chain(extra_headers.iter()) {
         if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
-            if let Ok(header_value) = reqwest::header::HeaderValue::from_str(&value) {
+            if let Ok(header_value) = reqwest::header::HeaderValue::from_str(value) {
                 header_map.append(header_name, header_value);
             }
         }

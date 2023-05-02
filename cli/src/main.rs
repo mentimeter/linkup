@@ -1,8 +1,4 @@
-use std::{
-    env, fs,
-    io::ErrorKind,
-    path::{Path, PathBuf},
-};
+use std::{env, fs, io::ErrorKind, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use thiserror::Error;

@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    extract_tracestate_session, first_subdomain, new_server_config, server_config_to_yaml,
-    NameKind, ServerConfig, SessionError, StringStore, random_six_char, random_animal,
+    extract_tracestate_session, first_subdomain, new_server_config, random_animal, random_six_char,
+    server_config_to_yaml, NameKind, ServerConfig, SessionError, StringStore,
 };
 
 pub struct SessionAllocator {
@@ -63,7 +63,7 @@ impl SessionAllocator {
         session_token: String,
         name_kind: NameKind,
     ) -> Result<String, SessionError> {
-        if desired_name == "" {
+        if desired_name.is_empty() {
             return self.new_session_name(name_kind, desired_name).await;
         }
 
@@ -88,13 +88,15 @@ impl SessionAllocator {
         Ok(Some(config))
     }
 
-    async fn new_session_name(&self, name_kind: NameKind, desired_name: String) -> Result<String , SessionError> {
+    async fn new_session_name(
+        &self,
+        name_kind: NameKind,
+        desired_name: String,
+    ) -> Result<String, SessionError> {
         let mut key = String::new();
 
-        if desired_name != "" {
-            if !self.store.exists(desired_name.clone()).await? {
-                key = desired_name;
-            }
+        if !desired_name.is_empty() && !self.store.exists(desired_name.clone()).await? {
+            key = desired_name;
         }
 
         if key.is_empty() {
@@ -117,7 +119,10 @@ impl SessionAllocator {
         Ok(key)
     }
 
-    async fn generate_unique_animal_key(&self, max_attempts: usize) -> Result<String, SessionError> {
+    async fn generate_unique_animal_key(
+        &self,
+        max_attempts: usize,
+    ) -> Result<String, SessionError> {
         for _ in 0..max_attempts {
             let generated_key = random_animal();
             if !self.store.exists(generated_key.clone()).await? {

@@ -1,7 +1,6 @@
 use crate::{
-    check,
     check::check,
-    local_config::{LocalService, ServiceTarget},
+    local_config::ServiceTarget,
     start::{get_state, save_state},
     CliError,
 };
