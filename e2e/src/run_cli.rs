@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::env;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufReader, Read};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;

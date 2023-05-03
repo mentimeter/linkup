@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io, sync::{Arc, Mutex}};
+use std::{collections::HashMap, io};
 
 use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use thiserror::Error;
@@ -26,10 +26,13 @@ async fn linkup_config_handler(
 
     match new_server_config_post(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name = sessions.store_session(server_conf, NameKind::Animal, desired_name).await;
+            let session_name = sessions
+                .store_session(server_conf, NameKind::Animal, desired_name)
+                .await;
             match session_name {
                 Ok(session_name) => HttpResponse::Ok().body(session_name),
-                Err(e) => HttpResponse::InternalServerError().body(format!("Failed to store server config: {}", e)),
+                Err(e) => HttpResponse::InternalServerError()
+                    .body(format!("Failed to store server config: {}", e)),
             }
         }
         Err(e) => HttpResponse::BadRequest().body(format!("Failed to parse server config: {}", e)),
@@ -50,8 +53,9 @@ async fn linkup_request_handler(
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
         .collect::<HashMap<String, String>>();
 
-    let session_result =
-        sessions.get_request_session(url.clone(), headers.clone()).await;
+    let session_result = sessions
+        .get_request_session(url.clone(), headers.clone())
+        .await;
 
     let (session_name, config) = match session_result {
         Ok(result) => result,

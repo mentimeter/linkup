@@ -1,7 +1,5 @@
-use linkup::{
-    SessionError, StringStore,
-};
-use worker::{kv::KvStore, async_trait::async_trait};
+use linkup::{SessionError, StringStore};
+use worker::{async_trait::async_trait, kv::KvStore};
 
 pub struct CfWorkerStringStore {
     kv: KvStore,
@@ -40,6 +38,8 @@ impl StringStore for CfWorkerStringStore {
             Err(e) => return Err(SessionError::PutError(e.to_string())),
         };
 
-        put.execute().await.map_err(|e| SessionError::PutError(e.to_string()))
+        put.execute()
+            .await
+            .map_err(|e| SessionError::PutError(e.to_string()))
     }
 }

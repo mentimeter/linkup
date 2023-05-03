@@ -1,17 +1,17 @@
 use std::fs::{remove_file, File};
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 use std::sync::{mpsc, Once};
 use std::thread;
 use std::time::Duration;
 
-use daemonize::{Child, Daemonize, Outcome};
+use daemonize::{Daemonize, Outcome};
 use regex::Regex;
 use thiserror::Error;
 use url::Url;
 
 use crate::local_server::local_linkup_main;
+use crate::signal::send_sigint;
 use crate::{linkup_file_path, CliError, LINKUP_LOCALSERVER_PID_FILE};
 use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PORT};
 
@@ -49,17 +49,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
         .chown_pid_file(true)
         .working_directory(".")
         .stdout(stdout_file)
-        .stderr(stderr_file)
-        .privileged_action(|| {
-            static ONCE: Once = Once::new();
-            ONCE.call_once(|| {
-                ctrlc::set_handler(move || {
-                    let _ = remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
-                    std::process::exit(0);
-                })
-                .expect("Failed to set CTRL+C handler");
-            });
-        });
+        .stderr(stderr_file);
 
     match daemonize.execute() {
         Outcome::Child(child_result) => match child_result {
@@ -120,16 +110,37 @@ pub fn start_tunnel() -> Result<Url, CliError> {
 }
 
 fn daemonized_tunnel_child() {
-    let child_cmd = Command::new("cloudflared")
+    let mut child_cmd = Command::new("cloudflared")
         .args([
             "tunnel",
             "--url",
             &format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
         ])
-        .stdout(Stdio::null())
-        .status();
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
 
-    match child_cmd {
+    let pid = child_cmd.id();
+    println!("Tunnel child process started {}", pid);
+
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        ctrlc::set_handler(move || {
+            println!("Killing child process {}", pid);
+            let kill_res = send_sigint(&pid.to_string().as_str());
+            println!("Kill result: {:?}", kill_res);
+
+            let _ = remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
+            std::process::exit(0);
+        })
+        .expect("Failed to set CTRL+C handler");
+    });
+
+    println!("Awaiting child tunnel process exit");
+    let status = child_cmd.wait();
+
+    match status {
         Ok(exit_status) => {
             println!("Child process exited with status {}", exit_status);
             process::exit(0);
@@ -172,8 +183,11 @@ pub fn start_local_server() -> Result<(), CliError> {
                 })
                 .expect("Failed to set CTRL+C handler");
             });
+        });
 
-            match local_linkup_main() {
+    match daemonize.execute() {
+        Outcome::Child(child_result) => match child_result {
+            Ok(_) => match local_linkup_main() {
                 Ok(_) => {
                     println!("local linkup server finished");
                     process::exit(0);
@@ -182,12 +196,7 @@ pub fn start_local_server() -> Result<(), CliError> {
                     println!("local linkup server finished with error {}", e);
                     process::exit(1);
                 }
-            }
-        });
-
-    match daemonize.execute() {
-        Outcome::Child(child_result) => match child_result {
-            Ok(_) => Ok(()), // Child server starts in privileged_action
+            },
             Err(e) => {
                 return Err(CliError::StartLocalTunnel(format!(
                     "Failed to start local server: {}",

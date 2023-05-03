@@ -6,11 +6,11 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-pub fn boot_worker() -> Result<(Child)> {
+pub fn boot_worker() -> Result<Child> {
     let original_cwd = env::current_dir()?;
     env::set_current_dir(Path::new("../worker"))?;
 
-    let mut cmd = Command::new("npx")
+    let cmd = Command::new("npx")
         .arg("wrangler@latest")
         .arg("dev")
         // .stdout(Stdio::null())

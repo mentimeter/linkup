@@ -20,7 +20,8 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
 
     // Reuse previous session name if possible
     if let Ok(ps) = previous_state {
-        state.linkup.session_name = ps.linkup.session_name
+        state.linkup.session_name = ps.linkup.session_name;
+        state.linkup.session_token = ps.linkup.session_token;
     }
 
     save_state(state)?;

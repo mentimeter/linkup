@@ -1,8 +1,4 @@
-use std::{
-    env, fs,
-    io::ErrorKind,
-    path::{Path, PathBuf},
-};
+use std::{env, fs, io::ErrorKind, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use thiserror::Error;
@@ -12,10 +8,13 @@ mod check;
 mod local_config;
 mod local_server;
 mod remote_local;
+mod signal;
 mod start;
+mod stop;
 
 use remote_local::{local, remote};
 use start::start;
+use stop::stop;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
@@ -81,6 +80,8 @@ pub enum CliError {
     StartLocalTunnel(String),
     #[error("could not load config to {0}: {1}")]
     LoadConfig(String, String),
+    #[error("could not stop: {0}")]
+    StopErr(String),
     #[error("your session is in an inconsistent state. Stop your session before trying again.")]
     InconsistentState,
 }
@@ -111,8 +112,7 @@ fn main() -> Result<(), CliError> {
             start(config.clone())
        },
        Commands::Stop{} => {
-        println!("Stop");
-        Err(CliError::BadConfig(String::from("no good")))
+            stop()
        }
        Commands::Check{} => {
         println!("Check");

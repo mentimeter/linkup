@@ -1,15 +1,19 @@
 extern crate anyhow;
+extern crate nix;
 extern crate reqwest;
 
 mod boot_cfworker;
 mod boot_server;
 mod run_cli;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use nix::sys::signal::{kill, Signal};
+use nix::unistd::Pid;
 use reqwest::blocking::Client;
 use reqwest::header::REFERER;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Write;
+use std::str::FromStr;
 use std::time::Duration;
 use std::{env, thread};
 
@@ -84,8 +88,9 @@ fn run_with_cleanup() -> Result<()> {
     println!("out: {}", out);
     println!("err: {}", err);
     cleanup.add(move || {
-        std::fs::remove_dir_all(format!("{}/.linkup", env::var("HOME").unwrap()))
-            .map_err(anyhow::Error::from)
+        print_linkup_files()
+        // std::fs::remove_dir_all(format!("{}/.linkup", env::var("HOME").unwrap()))
+        //     .map_err(anyhow::Error::from)
     });
 
     let referer_to = format!("http://{}.somedomain.com", out.trim());
@@ -127,10 +132,72 @@ fn run_with_cleanup() -> Result<()> {
         .send()?;
 
     if resp.status().as_u16() != 200 {
-      return Err(anyhow::Error::msg("status code is not 200"));
+        return Err(anyhow::Error::msg("status code is not 200"));
     }
-    if !String::from_utf8(resp.bytes().unwrap().to_vec()).unwrap().contains("front_remote") {
-      return Err(anyhow::Error::msg("session did not route to local domain after local switch"));
+    if !String::from_utf8(resp.bytes().unwrap().to_vec())
+        .unwrap()
+        .contains("front_remote")
+    {
+        return Err(anyhow::Error::msg(
+            "session did not route to local domain after local switch",
+        ));
+    }
+
+    let localserver_pid_file = fs::read_to_string(format!(
+        "{}/.linkup/localserver-pid",
+        env::var("HOME").unwrap()
+    ))
+    .unwrap();
+    let cloudflared_pid_file = fs::read_to_string(format!(
+        "{}/.linkup/cloudflared-pid",
+        env::var("HOME").unwrap()
+    ))
+    .unwrap();
+    let localserver_pid = localserver_pid_file.trim();
+    let cloudflared_pid = cloudflared_pid_file.trim();
+
+    run_cli_binary(vec!["stop"])?;
+
+    thread::sleep(Duration::from_secs(2));
+
+    check_process_dead(localserver_pid)?;
+    check_process_dead(cloudflared_pid)?;
+
+    Ok(())
+}
+
+fn check_process_dead(pid_str: &str) -> Result<()> {
+    // Parse the PID string to a i32
+    let pid_num = i32::from_str(pid_str).map_err(|e| anyhow!("Failed to parse PID: {}", e))?;
+
+    // Create a Pid from the i32
+    let pid = Pid::from_raw(pid_num);
+
+    // Use the kill function with a signal of 0 to check if the process is alive
+    match kill(pid, Some(Signal::SIGCHLD)) {
+        Ok(_) => Err(anyhow!("Process is still alive")),
+        Err(_) => Ok(()),
+    }
+}
+
+fn print_linkup_files() -> Result<()> {
+    // Get the home directory
+    let home = env::var("HOME").unwrap();
+    let linkup_dir = format!("{}/.linkup", home);
+
+    // Read the directory entries
+    for entry in fs::read_dir(linkup_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            // Print the file name
+            let file_name = path.file_name().unwrap().to_string_lossy();
+            println!("File name: {}", file_name);
+
+            // Read and print the file content
+            let content = fs::read_to_string(&path)?;
+            println!("File content: {}", content);
+        }
     }
 
     Ok(())
