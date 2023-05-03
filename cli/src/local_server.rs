@@ -46,7 +46,7 @@ async fn linkup_request_handler(
 ) -> impl Responder {
     let sessions = SessionAllocator::new(string_store.into_inner());
 
-    let url = format!("http://localhost:9066{}", req.uri().to_string());
+    let url = format!("http://localhost:9066{}", req.uri());
     let headers = req
         .headers()
         .iter()
@@ -94,12 +94,9 @@ fn merge_headers(
     extra_headers: &HashMap<String, String>,
 ) -> reqwest::header::HeaderMap {
     let mut header_map = reqwest::header::HeaderMap::new();
-    for (key, value) in original_headers
-        .into_iter()
-        .chain(extra_headers.into_iter())
-    {
+    for (key, value) in original_headers.iter().chain(extra_headers.iter()) {
         if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
-            if let Ok(header_value) = reqwest::header::HeaderValue::from_str(&value) {
+            if let Ok(header_value) = reqwest::header::HeaderValue::from_str(value) {
                 header_map.append(header_name, header_value);
             }
         }

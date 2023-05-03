@@ -63,7 +63,7 @@ impl SessionAllocator {
         session_token: String,
         name_kind: NameKind,
     ) -> Result<String, SessionError> {
-        if desired_name == "" {
+        if desired_name.is_empty() {
             return self.new_session_name(name_kind, desired_name).await;
         }
 
@@ -95,10 +95,8 @@ impl SessionAllocator {
     ) -> Result<String, SessionError> {
         let mut key = String::new();
 
-        if desired_name != "" {
-            if !self.store.exists(desired_name.clone()).await? {
-                key = desired_name;
-            }
+        if !desired_name.is_empty() && !self.store.exists(desired_name.clone()).await? {
+            key = desired_name;
         }
 
         if key.is_empty() {
