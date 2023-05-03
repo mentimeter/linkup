@@ -88,9 +88,9 @@ fn run_with_cleanup() -> Result<()> {
     println!("out: {}", out);
     println!("err: {}", err);
     cleanup.add(move || {
-        print_linkup_files()
-        // std::fs::remove_dir_all(format!("{}/.linkup", env::var("HOME").unwrap()))
-        //     .map_err(anyhow::Error::from)
+        print_linkup_files().expect("print_linkup_files failed");
+        std::fs::remove_dir_all(format!("{}/.linkup", env::var("HOME").unwrap()))
+            .map_err(anyhow::Error::from)
     });
 
     let referer_to = format!("http://{}.somedomain.com", out.trim());
