@@ -14,7 +14,6 @@ linkup = { path = "../linkup" }
 cfg-if = "0.1.2"
 worker = "0.0.13"
 futures = "0.3"
-reqwest = { version = "0.11.14", features = ["blocking"] }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
