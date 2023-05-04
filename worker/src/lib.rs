@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use kv_store::CfWorkerStringStore;
 use linkup::*;
@@ -85,6 +85,12 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
             None => return Response::error("No target URL for request", 422),
         };
 
+    if headers.get("sec-websocket-key").is_some() {
+        let mut u = Url::from_str(&destination_url).unwrap();
+        u.set_scheme("wss").unwrap();
+        return Response::redirect(u);
+    }
+
     let extra_headers = get_additional_headers(url, &headers, &session_name, &service);
 
     let mut dest_req_init = RequestInit::new();
@@ -96,7 +102,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Ok(req) => req,
         Err(e) => {
             console_log!("Failed to create destination request: {}", e);
-            return Response::error("Failed to create destination request", 500)
+            return Response::error("Failed to create destination request", 500);
         }
     };
 
@@ -118,6 +124,11 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     let string_store = CfWorkerStringStore::new(kv);
 
     let sessions = SessionAllocator::new(Arc::new(string_store));
+
+    console_log!(
+        "req headers: {:?}",
+        req.headers().entries().collect::<HashMap<String, String>>()
+    );
 
     if req.method() == Method::Post && req.path() == "/linkup" {
         return linkup_config_handler(req, sessions).await;
