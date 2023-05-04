@@ -1,0 +1,88 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to use for the new release"
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          [
+            aarch64-apple-darwin,
+            x86_64-apple-darwin,
+            aarch64-unknown-linux-gnu,
+            x86_64-unknown-linux-gnu,
+          ]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          target: ${{ matrix.target }}
+
+      - name: Install cross
+        run: cargo install cross
+
+      - name: Build Release
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }} --target-dir=target-${{ matrix.target }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.target }}-binary
+          path: target-${{ matrix.target }}/release/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          [
+            aarch64-apple-darwin,
+            x86_64-apple-darwin,
+            aarch64-unknown-linux-gnu,
+            x86_64-unknown-linux-gnu,
+          ]
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: binaries
+          name: ${{ matrix.target }}-binary
+
+      - name: Create Release
+        id: create_release
+        if: ${{ matrix.target == 'aarch64-apple-darwin' }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          release_name: Release ${{ github.event.inputs.tag }}
+          draft: true
+          prerelease: false
+
+      - name: Upload Artifacts to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: binaries/${{ matrix.target }}-binary/your-binary-name
+          asset_name: your-binary-name-${{ matrix.target }}
+          asset_content_type: application/octet-stream
