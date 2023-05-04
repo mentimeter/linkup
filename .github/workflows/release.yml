@@ -8,81 +8,115 @@ on:
         required: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  publish-to-github:
+    name: Publish to Github
+    runs-on: ${{matrix.os}}
     strategy:
       matrix:
-        target:
-          [
-            aarch64-apple-darwin,
-            x86_64-apple-darwin,
-            aarch64-unknown-linux-gnu,
-            x86_64-unknown-linux-gnu,
-          ]
+        include:
+          - build: linux
+            os: ubuntu-latest
+            rust: stable
+            target: x86_64-unknown-linux-gnu
+            cross: false
+          - build: aarch64
+            os: ubuntu-latest
+            rust: stable
+            target: aarch64-unknown-linux-gnu
+            linker: gcc-aarch64-linux-gnu
+            cross: true
+          # - build: arm-v7
+          #   os: ubuntu-latest
+          #   rust: stable
+          #   target: armv7-unknown-linux-gnueabihf
+          #   linker: gcc-arm-linux-gnueabihf
+          #   cross: true
+          # - build: aarch64
+          #   os: ubuntu-latest
+          #   rust: stable
+          #   target: aarch64-unknown-linux-gnu
+          #   linker: gcc-aarch64-linux-gnu
+          #   cross: true
+          - build: macos
+            os: macos-latest
+            rust: stable
+            target: x86_64-apple-darwin
+            cross: false
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.rustup
+            target
+          key: ${{ runner.os }}-${{ matrix.rust }}
+
+      - name: Install Linker
+        if: matrix.cross
+        run: |
+          sudo apt update
+          sudo apt install -y ${{ matrix.linker }}
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-          target: ${{ matrix.target }}
+        run: |
+          rustup install ${{ matrix.rust }}
+          rustup target add ${{ matrix.target }}
+          rustup show
 
-      - name: Install cross
-        run: cargo install cross
+      - name: Build
+        run: cargo build --release --manifest-path cli/Cargo.toml  --target ${{ matrix.target }}
 
-      - name: Build Release
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --target ${{ matrix.target }} --target-dir=target-${{ matrix.target }}
+      - name: Package Artifacts
+        run: |
+          src=$(pwd)
+          stage=
+          case $RUNNER_OS in
+              Linux)
+                  stage=$(mktemp -d)
+                  ;;
+              macOS)
+                  stage=$(mktemp -d -t tmp)
+                  ;;
+          esac
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ matrix.target }}-binary
-          path: target-${{ matrix.target }}/release/*
+          cp target/${{ matrix.target }}/release/linkup $stage/
+          cd $stage
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          [
-            aarch64-apple-darwin,
-            x86_64-apple-darwin,
-            aarch64-unknown-linux-gnu,
-            x86_64-unknown-linux-gnu,
-          ]
-    steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v2
-        with:
-          path: binaries
-          name: ${{ matrix.target }}-binary
+          RELEASE_VERSION=${GITHUB_REF#refs/tags/}
+          ASSET_NAME="sysit-$RELEASE_VERSION-${{ matrix.target }}.tar.gz"
+          ASSET_PATH="$src/$ASSET_NAME"
+          CHECKSUM_PATH="$ASSET_PATH.sha256"
 
-      - name: Create Release
-        id: create_release
-        if: ${{ matrix.target == 'aarch64-apple-darwin' }}
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "ASSET_PATH=$ASSET_PATH" >> $GITHUB_ENV
+          echo "CHECKSUM_PATH=$CHECKSUM_PATH" >> $GITHUB_ENV
+
+          tar czf $ASSET_PATH *
+
+          cd $src
+
+          case $RUNNER_OS in
+              Linux)
+                  sha256sum $ASSET_NAME > $CHECKSUM_PATH
+                  ;;
+              macOS)
+                  shasum -a 256 $ASSET_NAME > $CHECKSUM_PATH
+                  ;;
+          esac
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ github.event.inputs.tag }}
-          release_name: Release ${{ github.event.inputs.tag }}
-          draft: true
-          prerelease: false
-
-      - name: Upload Artifacts to Release
-        uses: actions/upload-release-asset@v1
+          files: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.CHECKSUM_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: binaries/${{ matrix.target }}-binary/your-binary-name
-          asset_name: your-binary-name-${{ matrix.target }}
-          asset_content_type: application/octet-stream
