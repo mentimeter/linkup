@@ -3,6 +3,10 @@ name = "cli"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "linkup"
+path = "src/main.rs"
+
 [dependencies]
 linkup = { path = "../linkup" }
 clap = { version = "4.1.8", features = ["derive"] }

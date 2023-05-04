@@ -35,7 +35,7 @@ pub fn build_cli_project() -> Result<()> {
 
 pub fn run_cli_binary(args: Vec<&str>) -> Result<(String, String)> {
     // Build the path to the compiled binary
-    let binary_path = Path::new("../target/release/cli");
+    let binary_path = Path::new("../target/release/linkup");
 
     // Run the compiled binary with the provided arguments and capture stdout and stderr
     let mut cmd = Command::new(binary_path)
