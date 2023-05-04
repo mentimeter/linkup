@@ -89,7 +89,13 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
 
     let mut dest_req_init = RequestInit::new();
     dest_req_init.with_method(req.method());
-    dest_req_init.with_headers(merge_headers(headers, extra_headers));
+
+    let new_headers = match merge_headers(headers, extra_headers) {
+        Ok(headers) => headers,
+        Err(e) => return Response::error(format!("Failed to merge headers: {}", e), 500),
+    };
+    dest_req_init.with_headers(new_headers);
+
     dest_req_init.with_body(body);
 
     let destination_req = match Request::new_with_init(&destination_url, &dest_req_init) {
