@@ -10,10 +10,12 @@ mod local_server;
 mod remote_local;
 mod signal;
 mod start;
+mod status;
 mod stop;
 
 use remote_local::{local, remote};
 use start::start;
+use status::status;
 use stop::stop;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
@@ -59,19 +61,14 @@ fn ensure_linkup_dir() -> Result<(), CliError> {
     }
 }
 
-#[derive(Parser)]
-#[command(author, version, about)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
-
 #[derive(Error, Debug)]
 pub enum CliError {
     #[error("no valid state file: {0}")]
     NoState(String),
-    #[error("no valid config provided: {0}")]
+    #[error("there was a problem with the provided config: {0}")]
     BadConfig(String),
+    #[error("no valid config file provided: {0}")]
+    NoConfig(String),
     #[error("could not save statefile: {0}")]
     SaveState(String),
     #[error("could not start local server: {0}")]
@@ -82,23 +79,40 @@ pub enum CliError {
     LoadConfig(String, String),
     #[error("could not stop: {0}")]
     StopErr(String),
+    #[error("could not get status: {0}")]
+    StatusErr(String),
     #[error("your session is in an inconsistent state. Stop your session before trying again.")]
     InconsistentState,
 }
 
+#[derive(Parser)]
+#[command(
+    name = "linkup",
+    about = "Connect remote and local dev/preview environments"
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
 #[derive(Subcommand)]
 enum Commands {
+    #[clap(about = "Start a new linkup session")]
     Start {
         #[arg(short, long)]
         config: Option<String>,
     },
+    #[clap(about = "Stop a running linkup session")]
     Stop {},
-    Check {},
-    Local {
-        service_name: String,
-    },
-    Remote {
-        service_name: String,
+    #[clap(about = "Configure your linkup session to route traffic to a local service")]
+    Local { service_name: String },
+    #[clap(about = "Configure your linkup session to route traffic to a remote service")]
+    Remote { service_name: String },
+    #[clap(about = "View linkup component and service status")]
+    Status {
+        // Output status in JSON format
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -108,25 +122,12 @@ fn main() -> Result<(), CliError> {
     ensure_linkup_dir()?;
 
     match &cli.command {
-       Commands::Start{config}=> {
-            start(config.clone())
-       },
-       Commands::Stop{} => {
-            stop()
-       }
-       Commands::Check{} => {
-        println!("Check");
-        Err(CliError::BadConfig(String::from("no good")))
-       }
-       Commands::Local{service_name} =>{
-        local(service_name.clone())
-       }
-       Commands::Remote{service_name} => {
-        remote(service_name.clone())
-       }
-
-    //    _Stop => println!("Stop"),
-    //    _Check => println!("Check"),
-    //    _Local => println!("Local"),
+        Commands::Start { config } => start(config.clone()),
+        Commands::Stop {} => stop(),
+        Commands::Local { service_name } => local(service_name.clone()),
+        Commands::Remote { service_name } => remote(service_name.clone()),
+        Commands::Status {
+            json
+        } => status(*json),
     }
 }

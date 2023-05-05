@@ -37,7 +37,7 @@ fn get_config(config_arg: Option<String>) -> Result<YamlLocalConfig, CliError> {
             Some(path) => path,
             None => match env::var(LINKUP_CONFIG_ENV) {
                 Ok(val) => val,
-                Err(_) => return Err(CliError::BadConfig(
+                Err(_) => return Err(CliError::NoConfig(
                     "No config argument provided and LINKUP_CONFIG environment variable not set"
                         .to_string(),
                 )),

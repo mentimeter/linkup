@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, self};
+
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -19,7 +21,7 @@ pub struct LinkupState {
     pub tunnel: Url,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct LocalService {
     pub name: String,
     pub remote: Url,
@@ -28,10 +30,19 @@ pub struct LocalService {
     pub path_modifiers: Vec<YamlPathModifier>,
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
 pub enum ServiceTarget {
     Local,
     Remote,
+}
+
+impl Display for ServiceTarget {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ServiceTarget::Local => write!(f, "local"),
+            ServiceTarget::Remote => write!(f, "remote"),
+        }
+    }
 }
 
 #[derive(Deserialize)]
