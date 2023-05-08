@@ -33,10 +33,13 @@ impl StringStore for CfWorkerStringStore {
     }
 
     async fn put(&self, key: String, value: String) -> Result<(), SessionError> {
-        let put = match self.kv.put(&key, value) {
+        let mut put = match self.kv.put(&key, value) {
             Ok(p) => p,
             Err(e) => return Err(SessionError::PutError(e.to_string())),
         };
+
+        // Default to expiring sessions after 7 days of inactivity
+        put = put.expiration_ttl(60 * 60 * 24 * 7);
 
         put.execute()
             .await
