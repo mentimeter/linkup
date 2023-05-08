@@ -108,9 +108,7 @@ pub fn session_from_json(input_json: String) -> Result<Session, ConfigError> {
     }
 }
 
-pub fn update_session_req_from_json(
-    input_json: String,
-) -> Result<(String, Session), ConfigError> {
+pub fn update_session_req_from_json(input_json: String) -> Result<(String, Session), ConfigError> {
     let update_session_req_res: Result<UpdateSessionRequest, serde_json::Error> =
         serde_json::from_str(&input_json);
     match update_session_req_res {
@@ -139,9 +137,7 @@ pub fn session_from_yml(input_yaml: String) -> Result<Session, ConfigError> {
     }
 }
 
-pub fn update_session_req_from_yml(
-    input_yaml: String,
-) -> Result<(String, Session), ConfigError> {
+pub fn update_session_req_from_yml(input_yaml: String) -> Result<(String, Session), ConfigError> {
     let update_session_req_res: Result<UpdateSessionRequest, serde_yaml::Error> =
         serde_yaml::from_str(&input_yaml);
     match update_session_req_res {
@@ -208,9 +204,7 @@ fn convert_stored_session(stored_session: StorableSession) -> Result<Session, Co
     })
 }
 
-fn convert_rewrites(
-    stored_rewrites: Vec<StorableRewrite>,
-) -> Result<Vec<Rewrite>, ConfigError> {
+fn convert_rewrites(stored_rewrites: Vec<StorableRewrite>) -> Result<Vec<Rewrite>, ConfigError> {
     stored_rewrites
         .into_iter()
         .map(|path_modifier| {
@@ -440,22 +434,13 @@ mod tests {
             Url::parse("http://localhost:8000").unwrap()
         );
         assert_eq!(
-            server_config
-                .services
-                .get("frontend")
-                .unwrap()
-                .rewrites[0]
+            server_config.services.get("frontend").unwrap().rewrites[0]
                 .source
                 .as_str(),
             "/foo/(.*)"
         );
         assert_eq!(
-            server_config
-                .services
-                .get("frontend")
-                .unwrap()
-                .rewrites[0]
-                .target,
+            server_config.services.get("frontend").unwrap().rewrites[0].target,
             "/bar/$1"
         );
         assert_eq!(

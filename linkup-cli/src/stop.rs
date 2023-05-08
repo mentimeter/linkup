@@ -1,7 +1,12 @@
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 
 use crate::signal::{send_sigint, PidError};
-use crate::{linkup_file_path, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PID_FILE};
+use crate::start::get_state;
+use crate::{
+    linkup_file_path, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_ENV_SEPARATOR,
+    LINKUP_LOCALSERVER_PID_FILE,
+};
 
 pub fn stop() -> Result<(), CliError> {
     let local_stopped = match get_pid(LINKUP_LOCALSERVER_PID_FILE) {
@@ -32,6 +37,14 @@ pub fn stop() -> Result<(), CliError> {
         ))),
     };
 
+    let state = get_state()?;
+    for service in &state.services {
+        match &service.directory {
+            Some(d) => remove_service_env(d.clone())?,
+            None => {}
+        }
+    }
+
     match (local_stopped, tunnel_stopped) {
         (Ok(_), Ok(_)) => Ok(()),
         (Err(e), _) => Err(e),
@@ -48,4 +61,57 @@ fn get_pid(file_name: &str) -> Result<String, PidError> {
         Ok(content) => Ok(content.trim().to_string()),
         Err(e) => Err(PidError::BadPidFile(e.to_string())),
     }
+}
+
+fn remove_service_env(directory: String) -> Result<(), CliError> {
+    let env_path = format!("{}/.env", directory);
+    let temp_env_path = format!("{}/.env.temp", directory);
+
+    let input_file = File::open(&env_path).map_err(|e| {
+        CliError::RemoveServiceEnv(directory.clone(), format!("could not open env file: {}", e))
+    })?;
+    let reader = BufReader::new(input_file);
+
+    let mut output_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&temp_env_path)
+        .map_err(|e| {
+            CliError::RemoveServiceEnv(directory.clone(), format!("could not open env file: {}", e))
+        })?;
+
+    let mut copy = true;
+
+    for line_result in reader.lines() {
+        let line = line_result.map_err(|e| {
+            CliError::RemoveServiceEnv(
+                directory.clone(),
+                format!("could not read line from env file: {}", e),
+            )
+        })?;
+
+        if line.trim() == LINKUP_ENV_SEPARATOR {
+            copy = !copy;
+            continue; // Don't write the separator to the new file
+        }
+
+        if copy {
+            writeln!(output_file, "{}", line).map_err(|e| {
+                CliError::RemoveServiceEnv(
+                    directory.clone(),
+                    format!("could not write line to env file: {}", e),
+                )
+            })?;
+        }
+    }
+
+    fs::rename(&temp_env_path, &env_path).map_err(|e| {
+        CliError::RemoveServiceEnv(
+            directory.clone(),
+            format!("could not set temp env file to master: {}", e),
+        )
+    })?;
+
+    Ok(())
 }

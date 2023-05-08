@@ -102,7 +102,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Ok(req) => req,
         Err(e) => {
             console_log!("Failed to create destination request: {}", e);
-            return Response::error("Failed to create destination request", 500)
+            return Response::error("Failed to create destination request", 500);
         }
     };
 

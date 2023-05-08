@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    extract_tracestate_session, first_subdomain, random_animal, random_six_char,
-    session_to_json, NameKind, Session, SessionError, StringStore, session_from_json,
+    extract_tracestate_session, first_subdomain, random_animal, random_six_char, session_from_json,
+    session_to_json, NameKind, Session, SessionError, StringStore,
 };
 
 pub struct SessionAllocator {

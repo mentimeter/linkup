@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, self};
+use std::fmt::{self, Display, Formatter};
 
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,7 @@ pub struct LocalService {
     pub remote: Url,
     pub local: Url,
     pub current: ServiceTarget,
+    pub directory: Option<String>,
     pub rewrites: Vec<StorableRewrite>,
 }
 
@@ -62,6 +63,7 @@ struct YamlLocalService {
     name: String,
     remote: Url,
     local: Url,
+    directory: Option<String>,
     rewrites: Option<Vec<StorableRewrite>>,
 }
 
@@ -93,6 +95,7 @@ pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
                 remote: yaml_service.remote,
                 local: yaml_service.local,
                 current: ServiceTarget::Remote,
+                directory: yaml_service.directory,
                 rewrites,
             }
         })
@@ -125,6 +128,7 @@ services:
   - name: backend
     remote: http://remote-service2.example.com
     local: http://localhost:8001
+    directory: ../backend
 domains:
   - domain: example.com
     default_service: frontend
@@ -169,6 +173,10 @@ domains:
             Url::parse("http://localhost:8001").unwrap()
         );
         assert_eq!(local_state.services[1].rewrites.len(), 0);
+        assert_eq!(
+            local_state.services[1].directory,
+            Some("../backend".to_string())
+        );
 
         assert_eq!(local_state.domains.len(), 2);
         assert_eq!(local_state.domains[0].domain, "example.com");

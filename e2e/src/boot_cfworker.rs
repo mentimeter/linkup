@@ -10,16 +10,19 @@ pub fn boot_worker() -> Result<Child> {
     let original_cwd = env::current_dir()?;
     env::set_current_dir(Path::new("../worker"))?;
 
-    Command::new("npm").arg("install").arg("wrangler@latest").status()?;
+    Command::new("npm")
+        .arg("install")
+        .arg("wrangler@latest")
+        .status()?;
 
     let cmd = Command::new("npx")
         .arg("wrangler@latest")
         .arg("dev")
-        // .stdout(Stdio::null())
-        .stdout(Stdio::inherit())
+        .stdout(Stdio::null())
+        // .stdout(Stdio::inherit())
         // DEBUG POINT, use inherit stderr to see wrangler output
-        // .stderr(Stdio::null())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::null())
+        // .stderr(Stdio::inherit())
         .spawn()?;
 
     thread::sleep(Duration::from_secs(5));

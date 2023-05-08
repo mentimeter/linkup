@@ -24,6 +24,7 @@ const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
 const LINKUP_LOCALSERVER_PID_FILE: &str = "localserver-pid";
 const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
+const LINKUP_ENV_SEPARATOR: &str = "##### Linkup environment - DO NOT EDIT #####";
 
 pub fn linkup_file_path(file: &str) -> PathBuf {
     let storage_dir = match env::var("HOME") {
@@ -69,6 +70,12 @@ pub enum CliError {
     BadConfig(String),
     #[error("no valid config file provided: {0}")]
     NoConfig(String),
+    #[error("a service directory was provided that contained no .env.dev file: {0}")]
+    NoDevEnv(String),
+    #[error("couldn't set env for service {0}: {1}")]
+    SetServiceEnv(String, String),
+    #[error("couldn't remove env for service {0}: {1}")]
+    RemoveServiceEnv(String, String),
     #[error("could not save statefile: {0}")]
     SaveState(String),
     #[error("could not start local server: {0}")]
@@ -126,8 +133,6 @@ fn main() -> Result<(), CliError> {
         Commands::Stop {} => stop(),
         Commands::Local { service_name } => local(service_name.clone()),
         Commands::Remote { service_name } => remote(service_name.clone()),
-        Commands::Status {
-            json
-        } => status(*json),
+        Commands::Status { json } => status(*json),
     }
 }

@@ -197,12 +197,10 @@ pub fn start_local_server() -> Result<(), CliError> {
                     process::exit(1);
                 }
             },
-            Err(e) => {
-                Err(CliError::StartLocalTunnel(format!(
-                    "Failed to start local server: {}",
-                    e
-                )))
-            }
+            Err(e) => Err(CliError::StartLocalTunnel(format!(
+                "Failed to start local server: {}",
+                e
+            ))),
         },
         Outcome::Parent(parent_result) => match parent_result {
             Err(e) => Err(CliError::StartLocalTunnel(format!(

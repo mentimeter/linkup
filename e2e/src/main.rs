@@ -11,7 +11,7 @@ use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use reqwest::blocking::Client;
 use reqwest::header::REFERER;
-use std::fs::{self, File};
+use std::fs::{self, read_to_string, File};
 use std::io::Write;
 use std::str::FromStr;
 use std::time::Duration;
@@ -61,6 +61,8 @@ fn run_with_cleanup() -> Result<()> {
     - name: backend
       remote: http://menti.com
       local: http://localhost:8911
+      # Set dir to this to test env var copies
+      directory: ./
   domains:
     - domain: somedomain.com
       default_service: frontend
@@ -88,10 +90,17 @@ fn run_with_cleanup() -> Result<()> {
     println!("out: {}", out);
     println!("err: {}", err);
     cleanup.add(move || {
-        print_linkup_files().expect("print_linkup_files failed");
+        // print_linkup_files().expect("print_linkup_files failed");
         std::fs::remove_dir_all(format!("{}/.linkup", env::var("HOME").unwrap()))
             .map_err(anyhow::Error::from)
     });
+
+    let env_file = read_to_string(".env")?;
+    if !env_file.contains("SOME_API_VAR=foobar.com") {
+        return Err(anyhow::Error::msg(
+            "env file does not contain SOME_API_VAR=foobar.com after start",
+        ));
+    }
 
     let referer_to = format!("http://{}.somedomain.com", out.trim());
     println!("referer_to: {}", referer_to);
@@ -162,6 +171,13 @@ fn run_with_cleanup() -> Result<()> {
 
     check_process_dead(localserver_pid)?;
     check_process_dead(cloudflared_pid)?;
+
+    let env_file = read_to_string(".env")?;
+    if env_file.contains("SOME_API_VAR=foobar.com") {
+        return Err(anyhow::Error::msg(
+            "env file should not contain SOME_API_VAR=foobar.com after stop",
+        ));
+    }
 
     Ok(())
 }

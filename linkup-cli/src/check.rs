@@ -1,7 +1,11 @@
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::Path;
+
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
 
-use linkup::{StorableSession, UpdateSessionRequest, StorableService};
+use linkup::{StorableService, StorableSession, UpdateSessionRequest};
 use url::Url;
 
 use crate::background_services::{
@@ -9,8 +13,8 @@ use crate::background_services::{
 };
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::start::save_state;
-use crate::LINKUP_LOCALSERVER_PORT;
 use crate::{start::get_state, CliError};
+use crate::{LINKUP_ENV_SEPARATOR, LINKUP_LOCALSERVER_PORT};
 
 pub fn check() -> Result<(), CliError> {
     let mut state = get_state()?;
@@ -22,6 +26,13 @@ pub fn check() -> Result<(), CliError> {
     if is_tunnel_started().is_err() {
         let tunnel = start_tunnel()?;
         state.linkup.tunnel = tunnel;
+    }
+
+    for service in &state.services {
+        match &service.directory {
+            Some(d) => set_service_env(d.clone())?,
+            None => {}
+        }
     }
 
     let (local_server_conf, remote_server_conf) = server_config_from_state(&state);
@@ -50,11 +61,7 @@ pub fn check() -> Result<(), CliError> {
     Ok(())
 }
 
-fn load_config(
-    url: &Url,
-    desired_name: &str,
-    config: StorableSession,
-) -> Result<String, CliError> {
+fn load_config(url: &Url, desired_name: &str, config: StorableSession) -> Result<String, CliError> {
     let client = Client::new();
     let endpoint = url
         .join("/linkup")
@@ -131,4 +138,49 @@ fn server_config_from_state(state: &LocalState) -> (StorableSession, StorableSes
             domains: state.domains.clone(),
         },
     )
+}
+
+fn set_service_env(directory: String) -> Result<(), CliError> {
+    let dev_env_path = format!("{}/.env.dev", directory);
+    let env_path = format!("{}/.env", directory);
+
+    if !Path::new(&dev_env_path).exists() {
+        return Err(CliError::NoDevEnv(directory));
+    }
+
+    let dev_env_content = fs::read_to_string(&dev_env_path).map_err(|e| {
+        CliError::SetServiceEnv(
+            directory.clone(),
+            format!("could not read dev env file: {}", e),
+        )
+    })?;
+
+    let mut env_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(env_path)
+        .map_err(|e| CliError::SetServiceEnv(directory.clone(), e.to_string()))?;
+
+    writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
+        CliError::SetServiceEnv(
+            directory.clone(),
+            format!("could not write to env file: {}", e),
+        )
+    })?;
+
+    writeln!(env_file, "{}", dev_env_content).map_err(|e| {
+        CliError::SetServiceEnv(
+            directory.clone(),
+            format!("could not write to env file: {}", e),
+        )
+    })?;
+
+    writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
+        CliError::SetServiceEnv(
+            directory.clone(),
+            format!("could not write to env file: {}", e),
+        )
+    })?;
+
+    Ok(())
 }
