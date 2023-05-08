@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    extract_tracestate_session, first_subdomain, session_from_yml, random_animal, random_six_char,
-    session_to_yml, NameKind, Session, SessionError, StringStore,
+    extract_tracestate_session, first_subdomain, random_animal, random_six_char,
+    session_to_json, NameKind, Session, SessionError, StringStore, session_from_json,
 };
 
 pub struct SessionAllocator {
@@ -50,7 +50,7 @@ impl SessionAllocator {
         let name = self
             .choose_name(desired_name, config.session_token.clone(), name_kind)
             .await?;
-        let config_str = session_to_yml(config);
+        let config_str = session_to_json(config);
 
         self.store.put(name.clone(), config_str).await?;
 
@@ -84,7 +84,7 @@ impl SessionAllocator {
         };
 
         let config =
-            session_from_yml(value).map_err(|e| SessionError::ConfigErr(e.to_string()))?;
+            session_from_json(value).map_err(|e| SessionError::ConfigErr(e.to_string()))?;
         Ok(Some(config))
     }
 

@@ -5,12 +5,12 @@ use thiserror::Error;
 
 mod memory_session_store;
 mod name_gen;
-mod server_config;
+mod session;
 mod session_allocator;
 
 pub use memory_session_store::*;
 pub use name_gen::{new_session_name, random_animal, random_six_char};
-pub use server_config::*;
+pub use session::*;
 pub use session_allocator::*;
 
 use url::Url;

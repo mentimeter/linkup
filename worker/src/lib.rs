@@ -20,7 +20,7 @@ fn log_request(req: &Request) {
     );
 }
 
-async fn linkup_config_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
+async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
         Err(_) => return Response::error("Bad or missing request body", 400),
@@ -31,7 +31,7 @@ async fn linkup_config_handler(mut req: Request, sessions: SessionAllocator) -> 
         Err(_) => return Response::error("Invalid request body encoding", 400),
     };
 
-    match update_session_req_from_yml(input_yaml_conf) {
+    match update_session_req_from_json(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
             let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)
@@ -126,7 +126,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     let sessions = SessionAllocator::new(Arc::new(string_store));
 
     if req.method() == Method::Post && req.path() == "/linkup" {
-        return linkup_config_handler(req, sessions).await;
+        return linkup_session_handler(req, sessions).await;
     }
 
     linkup_request_handler(req, sessions).await

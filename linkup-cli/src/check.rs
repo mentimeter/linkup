@@ -60,19 +60,19 @@ fn load_config(
         .join("/linkup")
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
-    let config_post = UpdateSessionRequest {
+    let session_update_req = UpdateSessionRequest {
         session_token: config.session_token,
         desired_name: desired_name.into(),
         services: config.services,
         domains: config.domains,
     };
 
-    let config_post_yaml = serde_yaml::to_string(&config_post)
+    let update_req_json = serde_json::to_string(&session_update_req)
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
     let response = client
         .post(endpoint.clone())
-        .body(config_post_yaml)
+        .body(update_req_json)
         .send()
         .map_err(|e| CliError::LoadConfig(desired_name.into(), e.to_string()))?;
 

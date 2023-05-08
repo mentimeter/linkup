@@ -24,7 +24,7 @@ async fn linkup_config_handler(
         Err(_) => return HttpResponse::BadRequest().body("Invalid request body encoding"),
     };
 
-    match update_session_req_from_yml(input_yaml_conf) {
+    match update_session_req_from_json(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
             let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)

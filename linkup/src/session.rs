@@ -83,8 +83,10 @@ pub struct StorableRoute {
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    #[error("linkup config format error: {0}")]
-    Format(#[from] serde_yaml::Error),
+    #[error("linkup session yml format error: {0}")]
+    YmlFormat(#[from] serde_yaml::Error),
+    #[error("linkup session json format error: {0}")]
+    JsonFormat(#[from] serde_json::Error),
     #[error("no such service: {0}")]
     NoSuchService(String),
     #[error("invalid regex: {0}, {0}")]
@@ -97,11 +99,42 @@ pub enum ConfigError {
     Empty,
 }
 
+pub fn session_from_json(input_json: String) -> Result<Session, ConfigError> {
+    let session_yml_res: Result<StorableSession, serde_json::Error> =
+        serde_json::from_str(&input_json);
+    match session_yml_res {
+        Err(e) => Err(ConfigError::JsonFormat(e)),
+        Ok(c) => convert_stored_session(c),
+    }
+}
+
+pub fn update_session_req_from_json(
+    input_json: String,
+) -> Result<(String, Session), ConfigError> {
+    let update_session_req_res: Result<UpdateSessionRequest, serde_json::Error> =
+        serde_json::from_str(&input_json);
+    match update_session_req_res {
+        Err(e) => Err(ConfigError::JsonFormat(e)),
+        Ok(c) => {
+            let server_conf = convert_stored_session(StorableSession {
+                session_token: c.session_token,
+                services: c.services,
+                domains: c.domains,
+            });
+
+            match server_conf {
+                Err(e) => Err(e),
+                Ok(sc) => Ok((c.desired_name, sc)),
+            }
+        }
+    }
+}
+
 pub fn session_from_yml(input_yaml: String) -> Result<Session, ConfigError> {
     let session_yml_res: Result<StorableSession, serde_yaml::Error> =
         serde_yaml::from_str(&input_yaml);
     match session_yml_res {
-        Err(e) => Err(ConfigError::Format(e)),
+        Err(e) => Err(ConfigError::YmlFormat(e)),
         Ok(c) => convert_stored_session(c),
     }
 }
@@ -112,7 +145,7 @@ pub fn update_session_req_from_yml(
     let update_session_req_res: Result<UpdateSessionRequest, serde_yaml::Error> =
         serde_yaml::from_str(&input_yaml);
     match update_session_req_res {
-        Err(e) => Err(ConfigError::Format(e)),
+        Err(e) => Err(ConfigError::YmlFormat(e)),
         Ok(c) => {
             let server_conf = convert_stored_session(StorableSession {
                 session_token: c.session_token,
@@ -283,7 +316,7 @@ fn choose_domain_ordering(domains: Vec<String>) -> Vec<String> {
     sorted_domains
 }
 
-pub fn session_to_yml(session: Session) -> String {
+fn session_to_storable(session: Session) -> StorableSession {
     let services: Vec<StorableService> = session
         .services
         .into_iter()
@@ -339,14 +372,25 @@ pub fn session_to_yml(session: Session) -> String {
         })
         .collect();
 
-    let storable_session = StorableSession {
+    StorableSession {
         session_token: session.session_token,
         services,
         domains,
-    };
+    }
+}
+
+pub fn session_to_yml(session: Session) -> String {
+    let storable_session = session_to_storable(session);
 
     // This should never fail, due to previous validation
     serde_yaml::to_string(&storable_session).unwrap()
+}
+
+pub fn session_to_json(session: Session) -> String {
+    let storable_session = session_to_storable(session);
+
+    // This should never fail, due to previous validation
+    serde_json::to_string(&storable_session).unwrap()
 }
 
 #[cfg(test)]
