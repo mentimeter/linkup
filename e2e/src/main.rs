@@ -80,7 +80,7 @@ fn run_with_cleanup() -> Result<()> {
     cleanup.add(|| std::fs::remove_file("e2e_conf.yml").map_err(anyhow::Error::from));
 
     boot_worker()?;
-    cleanup.add(move || kill_worker());
+    cleanup.add(kill_worker);
 
     thread::sleep(Duration::from_secs(5));
 

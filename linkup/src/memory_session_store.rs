@@ -16,6 +16,12 @@ impl MemoryStringStore {
     }
 }
 
+impl Default for MemoryStringStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait(?Send)]
 impl StringStore for MemoryStringStore {
     async fn get(&self, key: String) -> Result<Option<String>, SessionError> {
