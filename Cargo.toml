@@ -1,7 +1,7 @@
 [workspace]
 
 members = [
-  "cli",
+  "linkup-cli",
   "worker",
   "linkup",
   "e2e",

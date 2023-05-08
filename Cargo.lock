@@ -415,28 +415,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cli"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "clap",
- "ctrlc",
- "daemonize",
- "env_logger",
- "linkup",
- "log",
- "nix",
- "rand",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "serde_yaml",
- "thiserror",
- "url",
-]
-
-[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1028,6 +1006,28 @@ dependencies = [
  "serde_yaml",
  "thiserror",
  "tokio",
+ "url",
+]
+
+[[package]]
+name = "linkup-cli"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "clap",
+ "ctrlc",
+ "daemonize",
+ "env_logger",
+ "linkup",
+ "log",
+ "nix",
+ "rand",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror",
  "url",
 ]
 

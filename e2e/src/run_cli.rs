@@ -9,10 +9,8 @@ pub fn build_cli_project() -> Result<()> {
     // Store the original current working directory
     let original_cwd = env::current_dir()?;
 
-    // Change the current working directory to the '../cli' folder
-    env::set_current_dir(Path::new("../cli"))?;
+    env::set_current_dir(Path::new("../linkup-cli"))?;
 
-    // Run the 'cargo build --release' command to build the CLI project
     let mut cmd = Command::new("cargo")
         .arg("build")
         .arg("--release")
