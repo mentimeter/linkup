@@ -7,7 +7,6 @@ use crate::{CliError, start::get_state, local_config::{ServiceTarget, LocalState
 #[derive(Deserialize, Serialize)]
 struct Status {
   session: SessionStatus,
-  linkup: HashMap<String, LinkupStatus>,
   services: HashMap<String, ServiceStatus>,
 }
 
@@ -19,22 +18,18 @@ struct SessionStatus {
 }
 
 #[derive(Deserialize, Serialize)]
-struct LinkupStatus {
-  location: String,
-  status: String,
-}
-
-#[derive(Deserialize, Serialize)]
 struct ServiceStatus {
-  connected_to: String,
   status: String,
+  component_kind: String,
+  location: String,
 }
 
 pub fn status(json: bool) -> Result<(), CliError> {
     let state = get_state()?;
 
+    let mut services = linkup_status(&state);
     let service_statuses = service_status(&state)?; 
-    let linkup_statuses = linkup_status(&state);
+    services.extend(service_statuses);
 
     let status = Status {
       session: SessionStatus {
@@ -42,8 +37,7 @@ pub fn status(json: bool) -> Result<(), CliError> {
         session_token: state.linkup.session_token,
         domains: state.domains.iter().map(|d| format!("{}.{}", state.linkup.session_name.clone(), d.domain.clone())).collect(),
       },
-      linkup: linkup_statuses,
-      services: service_statuses,
+      services: services,
     };
 
     if json {
@@ -62,19 +56,12 @@ pub fn status(json: bool) -> Result<(), CliError> {
        }
        println!();
 
-       // Display linkup information
-       println!("Linkup Information:");
-       println!("{:<15} {:<15}", "Location", "Status");
-       for (location, linkup_status) in &status.linkup {
-           println!("{:<15} {:<15}", location, linkup_status.status);
-       }
-       println!();
 
        // Display services information
-       println!("Services Information:");
-       println!("{:<15} {:<15} {:<15}", "Service Name", "Connected To", "Status");
-       for (service_name, service_status) in &status.services {
-           println!("{:<15} {:<15} {:<15}", service_name, service_status.connected_to, service_status.status);
+       println!("Service Information:");
+       println!("{:<15} {:<15} {:<15} {:<15}", "Service Name", "Component Kind", "Status", "Location");
+       for (name, status) in &status.services {
+           println!("{:<15} {:<15} {:<15} {:<15}", name, status.component_kind, status.status, status.location);
        }
        println!();
     }
@@ -82,13 +69,14 @@ pub fn status(json: bool) -> Result<(), CliError> {
     Ok(())
 }
 
-fn linkup_status(state: &LocalState) -> HashMap<String, LinkupStatus> {
-  let mut linkup_status_map: HashMap<String, LinkupStatus> = HashMap::new();
+fn linkup_status(state: &LocalState) -> HashMap<String, ServiceStatus> {
+  let mut linkup_status_map: HashMap<String, ServiceStatus> = HashMap::new();
 
   let local_url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
   linkup_status_map.insert(
     "local server".to_string(),
-    LinkupStatus {
+    ServiceStatus {
+      component_kind: "linkup".to_string(),
       location: local_url.to_string(),
       status: server_status(local_url)
     },
@@ -96,7 +84,8 @@ fn linkup_status(state: &LocalState) -> HashMap<String, LinkupStatus> {
 
   linkup_status_map.insert(
     "remote server".to_string(),
-    LinkupStatus {
+    ServiceStatus {
+      component_kind: "linkup".to_string(),
       location: state.linkup.remote.to_string(),
       status: server_status(state.linkup.remote.to_string())
     },
@@ -105,7 +94,8 @@ fn linkup_status(state: &LocalState) -> HashMap<String, LinkupStatus> {
 
   linkup_status_map.insert(
     "tunnel".to_string(),
-    LinkupStatus {
+    ServiceStatus {
+      component_kind: "linkup".to_string(),
       location: state.linkup.tunnel.to_string(),
       status: server_status(state.linkup.tunnel.to_string())
     },
@@ -129,7 +119,8 @@ fn service_status(state: &LocalState) -> Result<HashMap<String, ServiceStatus>, 
         service_status_map.insert(
             service.name,
             ServiceStatus {
-                connected_to: service.current.to_string(),
+                location: url.to_string(),
+                component_kind: service.current.to_string(),
                 status,
             },
         );
