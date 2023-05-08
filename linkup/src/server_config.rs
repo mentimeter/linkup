@@ -19,7 +19,7 @@ pub struct ServerConfig {
 #[derive(Clone)]
 pub struct Service {
     pub origin: Url,
-    pub path_modifiers: Vec<PathModifier>,
+    pub rewrites: Vec<PathModifier>,
 }
 
 #[derive(Clone)]
@@ -59,7 +59,7 @@ pub struct YamlServerConfig {
 pub struct YamlServerService {
     pub name: String,
     pub location: Url,
-    pub path_modifiers: Option<Vec<YamlPathModifier>>,
+    pub rewrites: Option<Vec<YamlPathModifier>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -139,14 +139,14 @@ fn convert_server_config(yaml_config: YamlServerConfig) -> Result<ServerConfig, 
     for yaml_service in yaml_config.services {
         validate_url_origin(&yaml_service.location)?;
 
-        let path_modifiers = match yaml_service.path_modifiers {
-            Some(pm) => convert_path_modifiers(pm),
+        let rewrites = match yaml_service.rewrites {
+            Some(pm) => convert_rewrites(pm),
             None => Ok(Vec::new()),
         }?;
 
         let service = Service {
             origin: yaml_service.location,
-            path_modifiers,
+            rewrites,
         };
 
         services.insert(yaml_service.name, service);
@@ -177,10 +177,10 @@ fn convert_server_config(yaml_config: YamlServerConfig) -> Result<ServerConfig, 
     })
 }
 
-fn convert_path_modifiers(
-    yaml_path_modifiers: Vec<YamlPathModifier>,
+fn convert_rewrites(
+    yaml_rewrites: Vec<YamlPathModifier>,
 ) -> Result<Vec<PathModifier>, ConfigError> {
-    yaml_path_modifiers
+    yaml_rewrites
         .into_iter()
         .map(|path_modifier| {
             let source = Regex::new(&path_modifier.source);
@@ -290,12 +290,12 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
         .services
         .into_iter()
         .map(|(name, service)| {
-            let path_modifiers = if service.path_modifiers.is_empty() {
+            let rewrites = if service.rewrites.is_empty() {
                 None
             } else {
                 Some(
                     service
-                        .path_modifiers
+                        .rewrites
                         .into_iter()
                         .map(|path_modifier| YamlPathModifier {
                             source: path_modifier.source.to_string(),
@@ -308,7 +308,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
             YamlServerService {
                 name,
                 location: service.origin,
-                path_modifiers,
+                rewrites,
             }
         })
         .collect();
@@ -360,7 +360,7 @@ mod tests {
     services:
       - name: frontend
         location: http://localhost:8000
-        path_modifiers:
+        rewrites:
           - source: /foo/(.*)
             target: /bar/$1
       - name: backend
@@ -402,7 +402,7 @@ mod tests {
                 .services
                 .get("frontend")
                 .unwrap()
-                .path_modifiers[0]
+                .rewrites[0]
                 .source
                 .as_str(),
             "/foo/(.*)"
@@ -412,7 +412,7 @@ mod tests {
                 .services
                 .get("frontend")
                 .unwrap()
-                .path_modifiers[0]
+                .rewrites[0]
                 .target,
             "/bar/$1"
         );
@@ -424,7 +424,7 @@ mod tests {
             .services
             .get("backend")
             .unwrap()
-            .path_modifiers
+            .rewrites
             .is_empty());
 
         // Test domains

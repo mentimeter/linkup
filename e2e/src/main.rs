@@ -55,7 +55,7 @@ fn run_with_cleanup() -> Result<()> {
     - name: frontend
       remote: https://example.com
       local: http://localhost:8901
-      path_modifiers:
+      rewrites:
         - source: /foo/(.*)
           target: /bar/$1
     - name: backend

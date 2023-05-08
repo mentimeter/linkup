@@ -101,7 +101,7 @@ fn server_config_from_state(state: &LocalState) -> (YamlServerConfig, YamlServer
             } else {
                 local_service.local.clone()
             },
-            path_modifiers: Some(local_service.path_modifiers.clone()),
+            rewrites: Some(local_service.rewrites.clone()),
         })
         .collect::<Vec<YamlServerService>>();
 
@@ -115,7 +115,7 @@ fn server_config_from_state(state: &LocalState) -> (YamlServerConfig, YamlServer
             } else {
                 state.linkup.tunnel.clone()
             },
-            path_modifiers: Some(local_service.path_modifiers.clone()),
+            rewrites: Some(local_service.rewrites.clone()),
         })
         .collect::<Vec<YamlServerService>>();
 

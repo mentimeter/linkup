@@ -27,7 +27,7 @@ pub struct LocalService {
     pub remote: Url,
     pub local: Url,
     pub current: ServiceTarget,
-    pub path_modifiers: Vec<YamlPathModifier>,
+    pub rewrites: Vec<YamlPathModifier>,
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
@@ -62,7 +62,7 @@ struct YamlLocalService {
     name: String,
     remote: Url,
     local: Url,
-    path_modifiers: Option<Vec<YamlPathModifier>>,
+    rewrites: Option<Vec<YamlPathModifier>>,
 }
 
 pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
@@ -83,7 +83,7 @@ pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
         .services
         .into_iter()
         .map(|yaml_service| {
-            let path_modifiers = match yaml_service.path_modifiers {
+            let rewrites = match yaml_service.rewrites {
                 Some(modifiers) => modifiers,
                 None => Vec::new(),
             };
@@ -93,7 +93,7 @@ pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
                 remote: yaml_service.remote,
                 local: yaml_service.local,
                 current: ServiceTarget::Remote,
-                path_modifiers,
+                rewrites,
             }
         })
         .collect::<Vec<LocalService>>();
@@ -119,7 +119,7 @@ services:
   - name: frontend
     remote: http://remote-service1.example.com
     local: http://localhost:8000
-    path_modifiers:
+    rewrites:
       - source: /foo/(.*)
         target: /bar/$1
   - name: backend
@@ -158,7 +158,7 @@ domains:
         );
         assert_eq!(local_state.services[0].current, ServiceTarget::Remote);
 
-        assert_eq!(local_state.services[0].path_modifiers.len(), 1);
+        assert_eq!(local_state.services[0].rewrites.len(), 1);
         assert_eq!(local_state.services[1].name, "backend");
         assert_eq!(
             local_state.services[1].remote,
@@ -168,7 +168,7 @@ domains:
             local_state.services[1].local,
             Url::parse("http://localhost:8001").unwrap()
         );
-        assert_eq!(local_state.services[1].path_modifiers.len(), 0);
+        assert_eq!(local_state.services[1].rewrites.len(), 0);
 
         assert_eq!(local_state.domains.len(), 2);
         assert_eq!(local_state.domains[0].domain, "example.com");

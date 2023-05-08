@@ -105,7 +105,7 @@ pub fn get_target_url(
         let service_name = extract_tracestate_service(tracestate_value);
         if !service_name.is_empty() {
             if let Some(service) = config.services.get(&service_name) {
-                // We don't want to re-apply path_modifiers here, they should have been applied already
+                // We don't want to re-apply rewrites here, they should have been applied already
                 let target = redirect(target, &service.origin, None);
                 return Some((String::from(target), service_name));
             }
@@ -142,7 +142,7 @@ pub fn get_target_url(
 
         if let Some(service) = config.services.get(&service_name) {
             let mut new_path = path.to_string();
-            for modifier in &service.path_modifiers {
+            for modifier in &service.rewrites {
                 if modifier.source.is_match(&new_path) {
                     new_path = modifier
                         .source
@@ -239,7 +239,7 @@ mod tests {
     services:
       - name: frontend
         location: http://localhost:8000
-        path_modifiers:
+        rewrites:
           - source: /foo/(.*)
             target: /bar/$1
       - name: backend
@@ -412,7 +412,7 @@ mod tests {
                 "frontend".to_string()
             )
         );
-        // Test path_modifiers
+        // Test rewrites
         assert_eq!(
             get_target_url(
                 format!("http://{}.example.com/foo/b/c/?a=b", &name),
