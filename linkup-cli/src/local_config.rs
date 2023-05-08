@@ -4,12 +4,12 @@ use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{YamlDomain, YamlPathModifier};
+use linkup::{StorableDomain, StorableRewrite};
 
 #[derive(Deserialize, Serialize)]
 pub struct LocalState {
     pub linkup: LinkupState,
-    pub domains: Vec<YamlDomain>,
+    pub domains: Vec<StorableDomain>,
     pub services: Vec<LocalService>,
 }
 
@@ -27,7 +27,7 @@ pub struct LocalService {
     pub remote: Url,
     pub local: Url,
     pub current: ServiceTarget,
-    pub rewrites: Vec<YamlPathModifier>,
+    pub rewrites: Vec<StorableRewrite>,
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
@@ -49,7 +49,7 @@ impl Display for ServiceTarget {
 pub struct YamlLocalConfig {
     linkup: LinkupConfig,
     services: Vec<YamlLocalService>,
-    domains: Vec<YamlDomain>,
+    domains: Vec<StorableDomain>,
 }
 
 #[derive(Deserialize)]
@@ -62,7 +62,7 @@ struct YamlLocalService {
     name: String,
     remote: Url,
     local: Url,
-    rewrites: Option<Vec<YamlPathModifier>>,
+    rewrites: Option<Vec<StorableRewrite>>,
 }
 
 pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {

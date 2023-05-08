@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 #[derive(Clone)]
-pub struct ServerConfig {
+pub struct Session {
     pub session_token: String,
     pub services: HashMap<String, Service>,
     pub domains: HashMap<String, Domain>,
@@ -19,11 +19,11 @@ pub struct ServerConfig {
 #[derive(Clone)]
 pub struct Service {
     pub origin: Url,
-    pub rewrites: Vec<PathModifier>,
+    pub rewrites: Vec<Rewrite>,
 }
 
 #[derive(Clone)]
-pub struct PathModifier {
+pub struct Rewrite {
     pub source: Regex,
     pub target: String,
 }
@@ -41,42 +41,42 @@ pub struct Route {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct YamlServerConfigPost {
+pub struct UpdateSessionRequest {
     pub desired_name: String,
     pub session_token: String,
-    pub services: Vec<YamlServerService>,
-    pub domains: Vec<YamlDomain>,
+    pub services: Vec<StorableService>,
+    pub domains: Vec<StorableDomain>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct YamlServerConfig {
+pub struct StorableSession {
     pub session_token: String,
-    pub services: Vec<YamlServerService>,
-    pub domains: Vec<YamlDomain>,
+    pub services: Vec<StorableService>,
+    pub domains: Vec<StorableDomain>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct YamlServerService {
+pub struct StorableService {
     pub name: String,
     pub location: Url,
-    pub rewrites: Option<Vec<YamlPathModifier>>,
+    pub rewrites: Option<Vec<StorableRewrite>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct YamlPathModifier {
+pub struct StorableRewrite {
     pub source: String,
     pub target: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct YamlDomain {
+pub struct StorableDomain {
     pub domain: String,
     pub default_service: String,
-    pub routes: Option<Vec<YamlRoute>>,
+    pub routes: Option<Vec<StorableRoute>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct YamlRoute {
+pub struct StorableRoute {
     pub path: String,
     pub service: String,
 }
@@ -97,24 +97,24 @@ pub enum ConfigError {
     Empty,
 }
 
-pub fn new_server_config(input_yaml_conf: String) -> Result<ServerConfig, ConfigError> {
-    let yaml_config_res: Result<YamlServerConfig, serde_yaml::Error> =
-        serde_yaml::from_str(&input_yaml_conf);
-    match yaml_config_res {
+pub fn session_from_yml(input_yaml: String) -> Result<Session, ConfigError> {
+    let session_yml_res: Result<StorableSession, serde_yaml::Error> =
+        serde_yaml::from_str(&input_yaml);
+    match session_yml_res {
         Err(e) => Err(ConfigError::Format(e)),
-        Ok(c) => convert_server_config(c),
+        Ok(c) => convert_stored_session(c),
     }
 }
 
-pub fn new_server_config_post(
-    input_yaml_conf: String,
-) -> Result<(String, ServerConfig), ConfigError> {
-    let yaml_config_post_res: Result<YamlServerConfigPost, serde_yaml::Error> =
-        serde_yaml::from_str(&input_yaml_conf);
-    match yaml_config_post_res {
+pub fn update_session_req_from_yml(
+    input_yaml: String,
+) -> Result<(String, Session), ConfigError> {
+    let update_session_req_res: Result<UpdateSessionRequest, serde_yaml::Error> =
+        serde_yaml::from_str(&input_yaml);
+    match update_session_req_res {
         Err(e) => Err(ConfigError::Format(e)),
         Ok(c) => {
-            let server_conf = convert_server_config(YamlServerConfig {
+            let server_conf = convert_stored_session(StorableSession {
                 session_token: c.session_token,
                 services: c.services,
                 domains: c.domains,
@@ -128,49 +128,47 @@ pub fn new_server_config_post(
     }
 }
 
-fn convert_server_config(yaml_config: YamlServerConfig) -> Result<ServerConfig, ConfigError> {
-    validate_not_empty(&yaml_config)?;
-    validate_service_references(&yaml_config)?;
+fn convert_stored_session(stored_session: StorableSession) -> Result<Session, ConfigError> {
+    validate_not_empty(&stored_session)?;
+    validate_service_references(&stored_session)?;
 
     let mut services: HashMap<String, Service> = HashMap::new();
     let mut domains: HashMap<String, Domain> = HashMap::new();
 
-    // Convert YamlServerService to Service
-    for yaml_service in yaml_config.services {
-        validate_url_origin(&yaml_service.location)?;
+    for stored_service in stored_session.services {
+        validate_url_origin(&stored_service.location)?;
 
-        let rewrites = match yaml_service.rewrites {
+        let rewrites = match stored_service.rewrites {
             Some(pm) => convert_rewrites(pm),
             None => Ok(Vec::new()),
         }?;
 
         let service = Service {
-            origin: yaml_service.location,
+            origin: stored_service.location,
             rewrites,
         };
 
-        services.insert(yaml_service.name, service);
+        services.insert(stored_service.name, service);
     }
 
-    // Convert YamlDomain to Domain
-    for yaml_domain in yaml_config.domains {
-        let routes = match yaml_domain.routes {
+    for stored_domain in stored_session.domains {
+        let routes = match stored_domain.routes {
             Some(dr) => convert_domain_routes(dr),
             None => Ok(Vec::new()),
         }?;
 
         let domain = Domain {
-            default_service: yaml_domain.default_service,
+            default_service: stored_domain.default_service,
             routes,
         };
 
-        domains.insert(yaml_domain.domain, domain);
+        domains.insert(stored_domain.domain, domain);
     }
 
     let domain_names = domains.keys().cloned().collect();
 
-    Ok(ServerConfig {
-        session_token: yaml_config.session_token,
+    Ok(Session {
+        session_token: stored_session.session_token,
         services,
         domains,
         domain_selection_order: choose_domain_ordering(domain_names),
@@ -178,15 +176,15 @@ fn convert_server_config(yaml_config: YamlServerConfig) -> Result<ServerConfig, 
 }
 
 fn convert_rewrites(
-    yaml_rewrites: Vec<YamlPathModifier>,
-) -> Result<Vec<PathModifier>, ConfigError> {
-    yaml_rewrites
+    stored_rewrites: Vec<StorableRewrite>,
+) -> Result<Vec<Rewrite>, ConfigError> {
+    stored_rewrites
         .into_iter()
         .map(|path_modifier| {
             let source = Regex::new(&path_modifier.source);
             match source {
                 Err(e) => Err(ConfigError::InvalidRegex(path_modifier.source, e)),
-                Ok(s) => Ok(PathModifier {
+                Ok(s) => Ok(Rewrite {
                     source: s,
                     target: path_modifier.target,
                 }),
@@ -195,8 +193,8 @@ fn convert_rewrites(
         .collect()
 }
 
-fn convert_domain_routes(yaml_routes: Vec<YamlRoute>) -> Result<Vec<Route>, ConfigError> {
-    yaml_routes
+fn convert_domain_routes(stored_routes: Vec<StorableRoute>) -> Result<Vec<Route>, ConfigError> {
+    stored_routes
         .into_iter()
         .map(|route| {
             let path = Regex::new(&route.path);
@@ -211,7 +209,7 @@ fn convert_domain_routes(yaml_routes: Vec<YamlRoute>) -> Result<Vec<Route>, Conf
         .collect()
 }
 
-fn validate_not_empty(server_config: &YamlServerConfig) -> Result<(), ConfigError> {
+fn validate_not_empty(server_config: &StorableSession) -> Result<(), ConfigError> {
     if server_config.services.is_empty() {
         return Err(ConfigError::Empty);
     }
@@ -222,7 +220,7 @@ fn validate_not_empty(server_config: &YamlServerConfig) -> Result<(), ConfigErro
     Ok(())
 }
 
-fn validate_service_references(server_config: &YamlServerConfig) -> Result<(), ConfigError> {
+fn validate_service_references(server_config: &StorableSession) -> Result<(), ConfigError> {
     let service_names: HashSet<&str> = server_config
         .services
         .iter()
@@ -285,8 +283,8 @@ fn choose_domain_ordering(domains: Vec<String>) -> Vec<String> {
     sorted_domains
 }
 
-pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
-    let services: Vec<YamlServerService> = server_config
+pub fn session_to_yml(session: Session) -> String {
+    let services: Vec<StorableService> = session
         .services
         .into_iter()
         .map(|(name, service)| {
@@ -297,7 +295,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
                     service
                         .rewrites
                         .into_iter()
-                        .map(|path_modifier| YamlPathModifier {
+                        .map(|path_modifier| StorableRewrite {
                             source: path_modifier.source.to_string(),
                             target: path_modifier.target,
                         })
@@ -305,7 +303,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
                 )
             };
 
-            YamlServerService {
+            StorableService {
                 name,
                 location: service.origin,
                 rewrites,
@@ -313,7 +311,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
         })
         .collect();
 
-    let domains: Vec<YamlDomain> = server_config
+    let domains: Vec<StorableDomain> = session
         .domains
         .into_iter()
         .map(|(domain, domain_data)| {
@@ -325,7 +323,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
                     domain_data
                         .routes
                         .into_iter()
-                        .map(|route| YamlRoute {
+                        .map(|route| StorableRoute {
                             path: route.path.to_string(),
                             service: route.service,
                         })
@@ -333,7 +331,7 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
                 )
             };
 
-            YamlDomain {
+            StorableDomain {
                 domain,
                 default_service,
                 routes,
@@ -341,14 +339,14 @@ pub fn server_config_to_yaml(server_config: ServerConfig) -> String {
         })
         .collect();
 
-    let yaml_server_config = YamlServerConfig {
-        session_token: server_config.session_token,
+    let storable_session = StorableSession {
+        session_token: session.session_token,
         services,
         domains,
     };
 
     // This should never fail, due to previous validation
-    serde_yaml::to_string(&yaml_server_config).unwrap()
+    serde_yaml::to_string(&storable_session).unwrap()
 }
 
 #[cfg(test)]
@@ -379,16 +377,16 @@ mod tests {
     fn test_convert_server_config() {
         let input_str = String::from(CONF_STR);
 
-        let server_config = new_server_config(input_str).unwrap();
+        let server_config = session_from_yml(input_str).unwrap();
         check_means_same_as_input_conf(&server_config);
 
         // Inverse should mean the same thing
-        let output_conf = server_config_to_yaml(server_config);
-        let second_server_conf = new_server_config(output_conf).unwrap();
+        let output_conf = session_to_yml(server_config);
+        let second_server_conf = session_from_yml(output_conf).unwrap();
         check_means_same_as_input_conf(&second_server_conf);
     }
 
-    fn check_means_same_as_input_conf(server_config: &ServerConfig) {
+    fn check_means_same_as_input_conf(server_config: &Session) {
         // Test services
         assert_eq!(server_config.services.len(), 2);
         assert!(server_config.services.contains_key("frontend"));

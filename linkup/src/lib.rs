@@ -93,7 +93,7 @@ pub fn get_additional_headers(
 pub fn get_target_url(
     url: String,
     headers: HashMap<String, String>,
-    config: &ServerConfig,
+    config: &Session,
     session_name: &str,
 ) -> Option<(String, String)> {
     let target = Url::parse(&url).unwrap();
@@ -258,7 +258,7 @@ mod tests {
     async fn test_get_request_session_by_subdomain() {
         let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
-        let config = new_server_config(String::from(CONF_STR)).unwrap();
+        let config = session_from_yml(String::from(CONF_STR)).unwrap();
 
         let name = sessions
             .store_session(config, NameKind::Animal, "".to_string())
@@ -372,7 +372,7 @@ mod tests {
     async fn test_get_target_url() {
         let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
-        let input_config = new_server_config(String::from(CONF_STR)).unwrap();
+        let input_config = session_from_yml(String::from(CONF_STR)).unwrap();
 
         let name = sessions
             .store_session(input_config, NameKind::Animal, "".to_string())

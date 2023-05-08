@@ -1,7 +1,7 @@
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
 
-use linkup::{YamlServerConfig, YamlServerConfigPost, YamlServerService};
+use linkup::{StorableSession, UpdateSessionRequest, StorableService};
 use url::Url;
 
 use crate::background_services::{
@@ -53,14 +53,14 @@ pub fn check() -> Result<(), CliError> {
 fn load_config(
     url: &Url,
     desired_name: &str,
-    config: YamlServerConfig,
+    config: StorableSession,
 ) -> Result<String, CliError> {
     let client = Client::new();
     let endpoint = url
         .join("/linkup")
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
-    let config_post = YamlServerConfigPost {
+    let config_post = UpdateSessionRequest {
         session_token: config.session_token,
         desired_name: desired_name.into(),
         services: config.services,
@@ -90,11 +90,11 @@ fn load_config(
     }
 }
 
-fn server_config_from_state(state: &LocalState) -> (YamlServerConfig, YamlServerConfig) {
+fn server_config_from_state(state: &LocalState) -> (StorableSession, StorableSession) {
     let local_server_services = state
         .services
         .iter()
-        .map(|local_service| YamlServerService {
+        .map(|local_service| StorableService {
             name: local_service.name.clone(),
             location: if local_service.current == ServiceTarget::Remote {
                 local_service.remote.clone()
@@ -103,12 +103,12 @@ fn server_config_from_state(state: &LocalState) -> (YamlServerConfig, YamlServer
             },
             rewrites: Some(local_service.rewrites.clone()),
         })
-        .collect::<Vec<YamlServerService>>();
+        .collect::<Vec<StorableService>>();
 
     let remote_server_services = state
         .services
         .iter()
-        .map(|local_service| YamlServerService {
+        .map(|local_service| StorableService {
             name: local_service.name.clone(),
             location: if local_service.current == ServiceTarget::Remote {
                 local_service.remote.clone()
@@ -117,15 +117,15 @@ fn server_config_from_state(state: &LocalState) -> (YamlServerConfig, YamlServer
             },
             rewrites: Some(local_service.rewrites.clone()),
         })
-        .collect::<Vec<YamlServerService>>();
+        .collect::<Vec<StorableService>>();
 
     (
-        YamlServerConfig {
+        StorableSession {
             session_token: state.linkup.session_token.clone(),
             services: local_server_services,
             domains: state.domains.clone(),
         },
-        YamlServerConfig {
+        StorableSession {
             session_token: state.linkup.session_token.clone(),
             services: remote_server_services,
             domains: state.domains.clone(),

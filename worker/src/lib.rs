@@ -31,7 +31,7 @@ async fn linkup_config_handler(mut req: Request, sessions: SessionAllocator) -> 
         Err(_) => return Response::error("Invalid request body encoding", 400),
     };
 
-    match new_server_config_post(input_yaml_conf) {
+    match update_session_req_from_yml(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
             let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)

@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    extract_tracestate_session, first_subdomain, new_server_config, random_animal, random_six_char,
-    server_config_to_yaml, NameKind, ServerConfig, SessionError, StringStore,
+    extract_tracestate_session, first_subdomain, session_from_yml, random_animal, random_six_char,
+    session_to_yml, NameKind, Session, SessionError, StringStore,
 };
 
 pub struct SessionAllocator {
@@ -18,7 +18,7 @@ impl SessionAllocator {
         &self,
         url: String,
         headers: HashMap<String, String>,
-    ) -> Result<(String, ServerConfig), SessionError> {
+    ) -> Result<(String, Session), SessionError> {
         let url_name = first_subdomain(&url);
         if let Some(config) = self.get_session_config(url_name.to_string()).await? {
             return Ok((url_name, config));
@@ -43,14 +43,14 @@ impl SessionAllocator {
 
     pub async fn store_session(
         &self,
-        config: ServerConfig,
+        config: Session,
         name_kind: NameKind,
         desired_name: String,
     ) -> Result<String, SessionError> {
         let name = self
             .choose_name(desired_name, config.session_token.clone(), name_kind)
             .await?;
-        let config_str = server_config_to_yaml(config);
+        let config_str = session_to_yml(config);
 
         self.store.put(name.clone(), config_str).await?;
 
@@ -76,7 +76,7 @@ impl SessionAllocator {
         self.new_session_name(name_kind, desired_name).await
     }
 
-    async fn get_session_config(&self, name: String) -> Result<Option<ServerConfig>, SessionError> {
+    async fn get_session_config(&self, name: String) -> Result<Option<Session>, SessionError> {
         let value = match self.store.get(name).await {
             Ok(Some(v)) => v,
             Ok(None) => return Ok(None),
@@ -84,7 +84,7 @@ impl SessionAllocator {
         };
 
         let config =
-            new_server_config(value).map_err(|e| SessionError::ConfigErr(e.to_string()))?;
+            session_from_yml(value).map_err(|e| SessionError::ConfigErr(e.to_string()))?;
         Ok(Some(config))
     }
 
