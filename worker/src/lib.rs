@@ -52,7 +52,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Err(_) => return Response::error("Bad or missing request body", 400),
     };
 
-    let body = if body_bytes.len() > 0 {
+    let body = if !body_bytes.is_empty() {
         let body_string = match String::from_utf8(body_bytes) {
             Ok(body_string) => body_string,
             Err(_) => return Response::error("Invalid request body encoding", 400),
@@ -106,7 +106,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         }
     };
 
-    return Fetch::Request(destination_req).send().await;
+    Fetch::Request(destination_req).send().await
 }
 
 #[event(fetch)]

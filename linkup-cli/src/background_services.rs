@@ -128,7 +128,7 @@ fn daemonized_tunnel_child() {
     ONCE.call_once(|| {
         ctrlc::set_handler(move || {
             println!("Killing child process {}", pid);
-            let kill_res = send_sigint(&pid.to_string().as_str());
+            let kill_res = send_sigint(pid.to_string().as_str());
             println!("Kill result: {:?}", kill_res);
 
             let _ = remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
@@ -198,7 +198,7 @@ pub fn start_local_server() -> Result<(), CliError> {
                 }
             },
             Err(e) => {
-                return Err(CliError::StartLocalTunnel(format!(
+                Err(CliError::StartLocalTunnel(format!(
                     "Failed to start local server: {}",
                     e
                 )))

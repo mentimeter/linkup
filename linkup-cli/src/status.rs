@@ -37,7 +37,7 @@ pub fn status(json: bool) -> Result<(), CliError> {
         session_token: state.linkup.session_token,
         domains: state.domains.iter().map(|d| format!("{}.{}", state.linkup.session_name.clone(), d.domain.clone())).collect(),
       },
-      services: services,
+      services,
     };
 
     if json {
@@ -108,7 +108,7 @@ fn service_status(state: &LocalState) -> Result<HashMap<String, ServiceStatus>, 
   let mut service_status_map: HashMap<String, ServiceStatus> = HashMap::new();
 
 
-    for service in state.services.to_vec() {
+    for service in state.services.iter().cloned() {
         let url = match service.current {
             ServiceTarget::Local => service.local.clone(),
             ServiceTarget::Remote => service.remote.clone(),

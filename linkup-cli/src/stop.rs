@@ -40,12 +40,12 @@ pub fn stop() -> Result<(), CliError> {
 }
 
 fn get_pid(file_name: &str) -> Result<String, PidError> {
-    if let Err(e) = File::open(&linkup_file_path(file_name)) {
+    if let Err(e) = File::open(linkup_file_path(file_name)) {
         return Err(PidError::NoPidFile(e.to_string()));
     }
 
-    match fs::read_to_string(&linkup_file_path(file_name)) {
+    match fs::read_to_string(linkup_file_path(file_name)) {
         Ok(content) => Ok(content.trim().to_string()),
-        Err(e) => return Err(PidError::BadPidFile(e.to_string())),
+        Err(e) => Err(PidError::BadPidFile(e.to_string())),
     }
 }
