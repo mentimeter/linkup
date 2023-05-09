@@ -19,12 +19,12 @@ async fn linkup_config_handler(
 ) -> impl Responder {
     let sessions = SessionAllocator::new(string_store.into_inner());
 
-    let input_yaml_conf = match String::from_utf8(req_body.to_vec()) {
-        Ok(input_yaml_conf) => input_yaml_conf,
+    let input_json_conf = match String::from_utf8(req_body.to_vec()) {
+        Ok(input_json_conf) => input_json_conf,
         Err(_) => return HttpResponse::BadRequest().body("Invalid request body encoding"),
     };
 
-    match update_session_req_from_json(input_yaml_conf) {
+    match update_session_req_from_json(input_json_conf) {
         Ok((desired_name, server_conf)) => {
             let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)
