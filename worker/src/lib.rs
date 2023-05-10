@@ -20,15 +20,23 @@ fn log_request(req: &Request) {
     );
 }
 
+fn plaintext_error(msg: impl Into<String>, status: u16) -> Result<Response> {
+    let mut resp = Response::error(msg, status).unwrap();
+    let headers = resp.headers_mut();
+    _ = headers.set("Content-Type", "text/plain");
+
+    Ok(resp)
+}
+
 async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
-        Err(_) => return Response::error("Bad or missing request body", 400),
+        Err(_) => return plaintext_error("Bad or missing request body", 400),
     };
 
     let input_yaml_conf = match String::from_utf8(body_bytes) {
         Ok(input_yaml_conf) => input_yaml_conf,
-        Err(_) => return Response::error("Invalid request body encoding", 400),
+        Err(_) => return plaintext_error("Invalid request body encoding", 400),
     };
 
     match update_session_req_from_json(input_yaml_conf) {
@@ -39,23 +47,23 @@ async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) ->
 
             match session_name {
                 Ok(session_name) => Response::ok(session_name),
-                Err(e) => Response::error(format!("Failed to store server config: {}", e), 500),
+                Err(e) => plaintext_error(format!("Failed to store server config: {}", e), 500),
             }
         }
-        Err(e) => Response::error(format!("Failed to parse server config: {}", e), 400),
+        Err(e) => plaintext_error(format!("Failed to parse server config: {}", e), 400),
     }
 }
 
 async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
-        Err(_) => return Response::error("Bad or missing request body", 400),
+        Err(_) => return plaintext_error("Bad or missing request body", 400),
     };
 
     let body = if !body_bytes.is_empty() {
         let body_string = match String::from_utf8(body_bytes) {
             Ok(body_string) => body_string,
-            Err(_) => return Response::error("Invalid request body encoding", 400),
+            Err(_) => return plaintext_error("Invalid request body encoding", 400),
         };
         Some(wasm_bindgen::JsValue::from_str(&body_string))
     } else {
@@ -64,7 +72,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
 
     let url = match req.url() {
         Ok(url) => url.to_string(),
-        Err(_) => return Response::error("Bad or missing request url", 400),
+        Err(_) => return plaintext_error("Bad or missing request url", 400),
     };
 
     let headers = req
@@ -76,13 +84,13 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
     let (session_name, config) =
         match sessions.get_request_session(url.clone(), headers.clone()).await {
             Ok(result) => result,
-            Err(_) => return Response::error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
+            Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
 
     let (destination_url, service) =
         match get_target_url(url.clone(), headers.clone(), &config, &session_name) {
             Some(result) => result,
-            None => return Response::error("No target URL for request", 422),
+            None => return plaintext_error("No target URL for request", 422),
         };
 
     let extra_headers = get_additional_headers(url, &headers, &session_name, &service);
@@ -92,7 +100,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
 
     let new_headers = match merge_headers(headers, extra_headers) {
         Ok(headers) => headers,
-        Err(e) => return Response::error(format!("Failed to merge headers: {}", e), 500),
+        Err(e) => return plaintext_error(format!("Failed to merge headers: {}", e), 500),
     };
     dest_req_init.with_headers(new_headers);
 
@@ -102,7 +110,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Ok(req) => req,
         Err(e) => {
             console_log!("Failed to create destination request: {}", e);
-            return Response::error("Failed to create destination request", 500);
+            return plaintext_error("Failed to create destination request", 500);
         }
     };
 
@@ -118,7 +126,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     let kv = match env.kv("LINKUP_SESSIONS") {
         Ok(kv) => kv,
-        Err(e) => return Response::error(format!("Failed to get KV store: {}", e), 500),
+        Err(e) => return plaintext_error(format!("Failed to get KV store: {}", e), 500),
     };
 
     let string_store = CfWorkerStringStore::new(kv);
