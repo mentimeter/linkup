@@ -99,55 +99,215 @@ pub enum ConfigError {
     Empty,
 }
 
-pub fn session_from_json(input_json: String) -> Result<Session, ConfigError> {
-    let session_yml_res: Result<StorableSession, serde_json::Error> =
-        serde_json::from_str(&input_json);
-    match session_yml_res {
-        Err(e) => Err(ConfigError::JsonFormat(e)),
-        Ok(c) => convert_stored_session(c),
+impl TryFrom<StorableRewrite> for Rewrite {
+    type Error = ConfigError;
+
+    fn try_from(value: StorableRewrite) -> Result<Self, Self::Error> {
+        let source: Result<Regex, regex::Error> = Regex::new(&value.source);
+        match source {
+            Err(e) => Err(ConfigError::InvalidRegex(value.source, e)),
+            Ok(s) => Ok(Rewrite {
+                source: s,
+                target: value.target,
+            }),
+        }
+    }
+}
+
+impl TryFrom<StorableRoute> for Route {
+    type Error = ConfigError;
+
+    fn try_from(value: StorableRoute) -> Result<Self, Self::Error> {
+        let path = Regex::new(&value.path);
+        match path {
+            Err(e) => Err(ConfigError::InvalidRegex(value.path, e)),
+            Ok(p) => Ok(Route {
+                path: p,
+                service: value.service,
+            }),
+        }
+    }
+}
+
+impl TryFrom<StorableSession> for Session {
+    type Error = ConfigError;
+
+    fn try_from(value: StorableSession) -> Result<Self, Self::Error> {
+        validate_not_empty(&value)?;
+        validate_service_references(&value)?;
+
+        let mut services: HashMap<String, Service> = HashMap::new();
+        let mut domains: HashMap<String, Domain> = HashMap::new();
+
+        for stored_service in value.services {
+            validate_url_origin(&stored_service.location)?;
+
+            let rewrites = match stored_service.rewrites {
+                Some(pm) => pm.into_iter().map(|r| r.try_into()).collect(),
+                None => Ok(Vec::new()),
+            }?;
+
+            let service = Service {
+                origin: stored_service.location,
+                rewrites,
+            };
+
+            services.insert(stored_service.name, service);
+        }
+
+        for stored_domain in value.domains {
+            let routes = match stored_domain.routes {
+                Some(dr) => dr.into_iter().map(|r| r.try_into()).collect(),
+                None => Ok(Vec::new()),
+            }?;
+
+            let domain = Domain {
+                default_service: stored_domain.default_service,
+                routes,
+            };
+
+            domains.insert(stored_domain.domain, domain);
+        }
+
+        let domain_names = domains.keys().cloned().collect();
+
+        Ok(Session {
+            session_token: value.session_token,
+            services,
+            domains,
+            domain_selection_order: choose_domain_ordering(domain_names),
+        })
+    }
+}
+
+impl TryFrom<serde_json::Value> for Session {
+    type Error = ConfigError;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        let session_yml_res: Result<StorableSession, serde_json::Error> =
+            serde_json::from_value(value);
+
+        match session_yml_res {
+            Err(e) => Err(ConfigError::JsonFormat(e)),
+            Ok(c) => c.try_into(),
+        }
+    }
+}
+
+impl TryFrom<serde_yaml::Value> for Session {
+    type Error = ConfigError;
+
+    fn try_from(value: serde_yaml::Value) -> Result<Self, Self::Error> {
+        let session_yml_res: Result<StorableSession, serde_yaml::Error> =
+            serde_yaml::from_value(value);
+
+        match session_yml_res {
+            Err(e) => Err(ConfigError::YmlFormat(e)),
+            Ok(c) => c.try_into(),
+        }
+    }
+}
+
+impl From<Session> for StorableSession {
+    fn from(value: Session) -> Self {
+        let services: Vec<StorableService> = value
+            .services
+            .into_iter()
+            .map(|(name, service)| {
+                let rewrites = if service.rewrites.is_empty() {
+                    None
+                } else {
+                    Some(
+                        service
+                            .rewrites
+                            .into_iter()
+                            .map(|path_modifier| StorableRewrite {
+                                source: path_modifier.source.to_string(),
+                                target: path_modifier.target,
+                            })
+                            .collect(),
+                    )
+                };
+
+                StorableService {
+                    name,
+                    location: service.origin,
+                    rewrites,
+                }
+            })
+            .collect();
+
+        let domains: Vec<StorableDomain> = value
+            .domains
+            .into_iter()
+            .map(|(domain, domain_data)| {
+                let default_service = domain_data.default_service;
+                let routes = if domain_data.routes.is_empty() {
+                    None
+                } else {
+                    Some(
+                        domain_data
+                            .routes
+                            .into_iter()
+                            .map(|route| StorableRoute {
+                                path: route.path.to_string(),
+                                service: route.service,
+                            })
+                            .collect(),
+                    )
+                };
+
+                StorableDomain {
+                    domain,
+                    default_service,
+                    routes,
+                }
+            })
+            .collect();
+
+        StorableSession {
+            session_token: value.session_token,
+            services,
+            domains,
+        }
     }
 }
 
 pub fn update_session_req_from_json(input_json: String) -> Result<(String, Session), ConfigError> {
     let update_session_req_res: Result<UpdateSessionRequest, serde_json::Error> =
         serde_json::from_str(&input_json);
+
     match update_session_req_res {
         Err(e) => Err(ConfigError::JsonFormat(e)),
         Ok(c) => {
-            let server_conf = convert_stored_session(StorableSession {
+            let server_conf = StorableSession {
                 session_token: c.session_token,
                 services: c.services,
                 domains: c.domains,
-            });
+            }
+            .try_into();
 
             match server_conf {
                 Err(e) => Err(e),
                 Ok(sc) => Ok((c.desired_name, sc)),
             }
         }
-    }
-}
-
-pub fn session_from_yml(input_yaml: String) -> Result<Session, ConfigError> {
-    let session_yml_res: Result<StorableSession, serde_yaml::Error> =
-        serde_yaml::from_str(&input_yaml);
-    match session_yml_res {
-        Err(e) => Err(ConfigError::YmlFormat(e)),
-        Ok(c) => convert_stored_session(c),
     }
 }
 
 pub fn update_session_req_from_yml(input_yaml: String) -> Result<(String, Session), ConfigError> {
     let update_session_req_res: Result<UpdateSessionRequest, serde_yaml::Error> =
         serde_yaml::from_str(&input_yaml);
+
     match update_session_req_res {
         Err(e) => Err(ConfigError::YmlFormat(e)),
         Ok(c) => {
-            let server_conf = convert_stored_session(StorableSession {
+            let server_conf = StorableSession {
                 session_token: c.session_token,
                 services: c.services,
                 domains: c.domains,
-            });
+            }
+            .try_into();
 
             match server_conf {
                 Err(e) => Err(e),
@@ -155,85 +315,6 @@ pub fn update_session_req_from_yml(input_yaml: String) -> Result<(String, Sessio
             }
         }
     }
-}
-
-fn convert_stored_session(stored_session: StorableSession) -> Result<Session, ConfigError> {
-    validate_not_empty(&stored_session)?;
-    validate_service_references(&stored_session)?;
-
-    let mut services: HashMap<String, Service> = HashMap::new();
-    let mut domains: HashMap<String, Domain> = HashMap::new();
-
-    for stored_service in stored_session.services {
-        validate_url_origin(&stored_service.location)?;
-
-        let rewrites = match stored_service.rewrites {
-            Some(pm) => convert_rewrites(pm),
-            None => Ok(Vec::new()),
-        }?;
-
-        let service = Service {
-            origin: stored_service.location,
-            rewrites,
-        };
-
-        services.insert(stored_service.name, service);
-    }
-
-    for stored_domain in stored_session.domains {
-        let routes = match stored_domain.routes {
-            Some(dr) => convert_domain_routes(dr),
-            None => Ok(Vec::new()),
-        }?;
-
-        let domain = Domain {
-            default_service: stored_domain.default_service,
-            routes,
-        };
-
-        domains.insert(stored_domain.domain, domain);
-    }
-
-    let domain_names = domains.keys().cloned().collect();
-
-    Ok(Session {
-        session_token: stored_session.session_token,
-        services,
-        domains,
-        domain_selection_order: choose_domain_ordering(domain_names),
-    })
-}
-
-fn convert_rewrites(stored_rewrites: Vec<StorableRewrite>) -> Result<Vec<Rewrite>, ConfigError> {
-    stored_rewrites
-        .into_iter()
-        .map(|path_modifier| {
-            let source = Regex::new(&path_modifier.source);
-            match source {
-                Err(e) => Err(ConfigError::InvalidRegex(path_modifier.source, e)),
-                Ok(s) => Ok(Rewrite {
-                    source: s,
-                    target: path_modifier.target,
-                }),
-            }
-        })
-        .collect()
-}
-
-fn convert_domain_routes(stored_routes: Vec<StorableRoute>) -> Result<Vec<Route>, ConfigError> {
-    stored_routes
-        .into_iter()
-        .map(|route| {
-            let path = Regex::new(&route.path);
-            match path {
-                Err(e) => Err(ConfigError::InvalidRegex(route.path, e)),
-                Ok(p) => Ok(Route {
-                    path: p,
-                    service: route.service,
-                }),
-            }
-        })
-        .collect()
 }
 
 fn validate_not_empty(server_config: &StorableSession) -> Result<(), ConfigError> {
@@ -310,78 +391,15 @@ fn choose_domain_ordering(domains: Vec<String>) -> Vec<String> {
     sorted_domains
 }
 
-fn session_to_storable(session: Session) -> StorableSession {
-    let services: Vec<StorableService> = session
-        .services
-        .into_iter()
-        .map(|(name, service)| {
-            let rewrites = if service.rewrites.is_empty() {
-                None
-            } else {
-                Some(
-                    service
-                        .rewrites
-                        .into_iter()
-                        .map(|path_modifier| StorableRewrite {
-                            source: path_modifier.source.to_string(),
-                            target: path_modifier.target,
-                        })
-                        .collect(),
-                )
-            };
-
-            StorableService {
-                name,
-                location: service.origin,
-                rewrites,
-            }
-        })
-        .collect();
-
-    let domains: Vec<StorableDomain> = session
-        .domains
-        .into_iter()
-        .map(|(domain, domain_data)| {
-            let default_service = domain_data.default_service;
-            let routes = if domain_data.routes.is_empty() {
-                None
-            } else {
-                Some(
-                    domain_data
-                        .routes
-                        .into_iter()
-                        .map(|route| StorableRoute {
-                            path: route.path.to_string(),
-                            service: route.service,
-                        })
-                        .collect(),
-                )
-            };
-
-            StorableDomain {
-                domain,
-                default_service,
-                routes,
-            }
-        })
-        .collect();
-
-    StorableSession {
-        session_token: session.session_token,
-        services,
-        domains,
-    }
-}
-
 pub fn session_to_yml(session: Session) -> String {
-    let storable_session = session_to_storable(session);
+    let storable_session: StorableSession = session.into();
 
     // This should never fail, due to previous validation
     serde_yaml::to_string(&storable_session).unwrap()
 }
 
 pub fn session_to_json(session: Session) -> String {
-    let storable_session = session_to_storable(session);
+    let storable_session: StorableSession = session.into();
 
     // This should never fail, due to previous validation
     serde_json::to_string(&storable_session).unwrap()
@@ -415,12 +433,14 @@ mod tests {
     fn test_convert_server_config() {
         let input_str = String::from(CONF_STR);
 
-        let server_config = session_from_yml(input_str).unwrap();
+        let server_config_value = serde_yaml::from_str::<serde_yaml::Value>(&input_str).unwrap();
+        let server_config: Session = server_config_value.try_into().unwrap();
         check_means_same_as_input_conf(&server_config);
 
         // Inverse should mean the same thing
         let output_conf = session_to_yml(server_config);
-        let second_server_conf = session_from_yml(output_conf).unwrap();
+        let output_conf_value = serde_yaml::from_str::<serde_yaml::Value>(&output_conf).unwrap();
+        let second_server_conf: Session = output_conf_value.try_into().unwrap();
         check_means_same_as_input_conf(&second_server_conf);
     }
 

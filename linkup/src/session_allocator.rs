@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    extract_tracestate_session, first_subdomain, random_animal, random_six_char, session_from_json,
-    session_to_json, NameKind, Session, SessionError, StringStore,
+    extract_tracestate_session, first_subdomain, random_animal, random_six_char, session_to_json,
+    ConfigError, NameKind, Session, SessionError, StringStore,
 };
 
 pub struct SessionAllocator {
@@ -50,6 +50,7 @@ impl SessionAllocator {
         let name = self
             .choose_name(desired_name, config.session_token.clone(), name_kind)
             .await?;
+
         let config_str = session_to_json(config);
 
         self.store.put(name.clone(), config_str).await?;
@@ -83,9 +84,14 @@ impl SessionAllocator {
             Err(e) => return Err(e),
         };
 
-        let config =
-            session_from_json(value).map_err(|e| SessionError::ConfigErr(e.to_string()))?;
-        Ok(Some(config))
+        let config_value: serde_json::Value =
+            serde_json::from_str(&value).map_err(|e| SessionError::ConfigErr(e.to_string()))?;
+
+        let session_config = config_value
+            .try_into()
+            .map_err(|e: ConfigError| SessionError::ConfigErr(e.to_string()))?;
+
+        Ok(Some(session_config))
     }
 
     async fn new_session_name(

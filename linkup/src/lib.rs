@@ -258,7 +258,8 @@ mod tests {
     async fn test_get_request_session_by_subdomain() {
         let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
-        let config = session_from_yml(String::from(CONF_STR)).unwrap();
+        let config_value: serde_yaml::Value = serde_yaml::from_str(CONF_STR).unwrap();
+        let config: Session = config_value.try_into().unwrap();
 
         let name = sessions
             .store_session(config, NameKind::Animal, "".to_string())
@@ -372,7 +373,8 @@ mod tests {
     async fn test_get_target_url() {
         let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
-        let input_config = session_from_yml(String::from(CONF_STR)).unwrap();
+        let input_config_value: serde_yaml::Value = serde_yaml::from_str(CONF_STR).unwrap();
+        let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
             .store_session(input_config, NameKind::Animal, "".to_string())
