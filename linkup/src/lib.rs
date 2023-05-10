@@ -44,7 +44,6 @@ pub fn get_additional_headers(
     url: String,
     headers: &HashMap<String, String>,
     session_name: &str,
-    service: &str,
 ) -> HashMap<String, String> {
     let mut additional_headers = HashMap::new();
 
@@ -66,14 +65,13 @@ pub fn get_additional_headers(
 
     let tracestate = headers.get("tracestate");
     let linkup_session = format!("linkup-session={}", session_name);
-    let linkup_service = format!("linkup-service={}", service);
     match tracestate {
         Some(ts) if !ts.contains(&linkup_session) => {
-            let new_tracestate = format!("{},{},{}", ts, linkup_session, linkup_service);
+            let new_tracestate = format!("{},{}", ts, linkup_session);
             additional_headers.insert("tracestate".to_string(), new_tracestate);
         }
         None => {
-            let new_tracestate = format!("{},{}", linkup_session, linkup_service);
+            let new_tracestate = linkup_session;
             additional_headers.insert("tracestate".to_string(), new_tracestate);
         }
         _ => {}
@@ -89,28 +87,28 @@ pub fn get_additional_headers(
     additional_headers
 }
 
+pub fn common_response_headers() -> HashMap<String, String> {
+    let mut headers = HashMap::new();
+
+    headers.insert("Access-Control-Allow-Methods".to_string(), "GET, POST, PUT, PATCH, DELETE, HEAD, CONNECT, TRACE, OPTIONS".to_string());
+    headers.insert("Access-Control-Allow-Origin".to_string(), "*".to_string());
+    headers.insert("Access-Control-Allow-Headers".to_string(), "*".to_string());
+    headers.insert("Access-Control-Max-Age".to_string(), "86400".to_string());
+    // This can be discussed / tweaked later, probably PR-only sessions should respect cache headers, but dev ones not.
+    headers.insert("Cache-Control".to_string(), "no-store, must-revalidate".to_string());
+
+    headers
+}
+
 // Returns a url for the destination service and the service name, if the request could be served by the config
 pub fn get_target_url(
     url: String,
     headers: HashMap<String, String>,
     config: &Session,
     session_name: &str,
-) -> Option<(String, String)> {
+) -> Option<String> {
     let target = Url::parse(&url).unwrap();
-    let tracestate = headers.get("tracestate");
     let path = target.path();
-
-    // If the request hit linkup before, we shouldn't need to do routing again.
-    if let Some(tracestate_value) = tracestate {
-        let service_name = extract_tracestate_service(tracestate_value);
-        if !service_name.is_empty() {
-            if let Some(service) = config.services.get(&service_name) {
-                // We don't want to re-apply rewrites here, they should have been applied already
-                let target = redirect(target, &service.origin, None);
-                return Some((String::from(target), service_name));
-            }
-        }
-    }
 
     let url_target = config.domains.get(&get_target_domain(&url, session_name));
     let referer_target = config.domains.get(&get_target_domain(
@@ -152,7 +150,7 @@ pub fn get_target_url(
             }
 
             let target = redirect(target, &service.origin, Some(new_path));
-            return Some((String::from(target), service_name));
+            return Some(String::from(target));
         }
     }
 
@@ -207,10 +205,6 @@ fn first_subdomain(url: &str) -> String {
 
 fn extract_tracestate_session(tracestate: &str) -> String {
     extrace_tracestate(tracestate, String::from("linkup-session"))
-}
-
-fn extract_tracestate_service(tracestate: &str) -> String {
-    extrace_tracestate(tracestate, String::from("linkup-service"))
 }
 
 fn extrace_tracestate(tracestate: &str, linkup_key: String) -> String {
@@ -311,13 +305,12 @@ mod tests {
             "https://tiny-cow.example.com/abc-xyz".to_string(),
             &headers,
             &session_name,
-            "frontend",
         );
 
         assert_eq!(add_headers.get("traceparent").unwrap().len(), 55);
         assert_eq!(
             add_headers.get("tracestate").unwrap(),
-            "linkup-session=tiny-cow,linkup-service=frontend"
+            "linkup-session=tiny-cow"
         );
         assert_eq!(add_headers.get("X-Forwarded-Host").unwrap(), "example.com");
 
@@ -332,7 +325,6 @@ mod tests {
             "https://abc.some-tunnel.com/abc-xyz".to_string(),
             &already_headers,
             &session_name,
-            "frontend",
         );
 
         assert!(add_headers.get("traceparent").is_none());
@@ -347,14 +339,13 @@ mod tests {
             "https://abc.some-tunnel.com/abc-xyz".to_string(),
             &already_headers_two,
             &session_name,
-            "frontend",
         );
 
         assert!(add_headers.get("traceparent").is_none());
         assert!(add_headers.get("X-Forwarded-Host").is_none());
         assert_eq!(
             add_headers.get("tracestate").unwrap(),
-            "other-service=32,linkup-session=tiny-cow,linkup-service=frontend"
+            "other-service=32,linkup-session=tiny-cow"
         );
     }
 
@@ -395,10 +386,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (
                 "http://localhost:8000/?a=b".to_string(),
-                "frontend".to_string()
-            )
         );
         // With path
         assert_eq!(
@@ -409,10 +397,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (
                 "http://localhost:8000/a/b/c/?a=b".to_string(),
-                "frontend".to_string()
-            )
         );
         // Test rewrites
         assert_eq!(
@@ -423,24 +408,18 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (
                 "http://localhost:8000/bar/b/c/?a=b".to_string(),
-                "frontend".to_string()
-            )
         );
         // Test domain routes
         assert_eq!(
             get_target_url(
-                format!("http://{}.example.com/api/v1/?a=b", &name),
+                format!("http://{}.example.com/api/v1/abc?a=b", &name),
                 HashMap::new(),
                 &config,
                 &name
             )
             .unwrap(),
-            (
                 "http://localhost:8001/api/v1/?a=b".to_string(),
-                "backend".to_string()
-            )
         );
         // Test no named subdomain
         assert_eq!(
@@ -451,29 +430,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (
                 "http://localhost:8001/api/v1/?a=b".to_string(),
-                "backend".to_string()
-            )
-        );
-        // Test has already been through another linkup server
-        let mut service_state_headers: HashMap<String, String> = HashMap::new();
-        service_state_headers.insert(
-            "tracestate".to_string(),
-            "linkup-service=frontend".to_string(),
-        );
-        assert_eq!(
-            get_target_url(
-                "https://literally-any-url.com/foo/a/b".to_string(),
-                service_state_headers,
-                &config,
-                &name
-            )
-            .unwrap(),
-            (
-                "http://localhost:8000/foo/a/b".to_string(),
-                "frontend".to_string()
-            )
         );
     }
 }

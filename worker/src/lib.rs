@@ -60,16 +60,6 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Err(_) => return plaintext_error("Bad or missing request body", 400),
     };
 
-    let body = if !body_bytes.is_empty() {
-        let body_string = match String::from_utf8(body_bytes) {
-            Ok(body_string) => body_string,
-            Err(_) => return plaintext_error("Invalid request body encoding", 400),
-        };
-        Some(wasm_bindgen::JsValue::from_str(&body_string))
-    } else {
-        None
-    };
-
     let url = match req.url() {
         Ok(url) => url.to_string(),
         Err(_) => return plaintext_error("Bad or missing request url", 400),
@@ -87,34 +77,34 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
 
-    let (destination_url, service) =
-        match get_target_url(url.clone(), headers.clone(), &config, &session_name) {
-            Some(result) => result,
-            None => return plaintext_error("No target URL for request", 422),
-        };
-
-    let extra_headers = get_additional_headers(url, &headers, &session_name, &service);
-
-    let mut dest_req_init = RequestInit::new();
-    dest_req_init.with_method(req.method());
-
-    let new_headers = match merge_headers(headers, extra_headers) {
-        Ok(headers) => headers,
-        Err(e) => return plaintext_error(format!("Failed to merge headers: {}", e), 500),
-    };
-    dest_req_init.with_headers(new_headers);
-
-    dest_req_init.with_body(body);
-
-    let destination_req = match Request::new_with_init(&destination_url, &dest_req_init) {
-        Ok(req) => req,
-        Err(e) => {
-            console_log!("Failed to create destination request: {}", e);
-            return plaintext_error("Failed to create destination request", 500);
-        }
+    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
+    {
+        Some(result) => result,
+        None => return plaintext_error("No target URL for request", 422),
     };
 
-    Fetch::Request(destination_req).send().await
+    let extra_headers = get_additional_headers(url, &headers, &session_name);
+
+    let method = match convert_cf_method_to_reqwest(&req.method()) {
+        Ok(method) => method,
+        Err(_) => return plaintext_error("Bad request method", 400),
+    };
+
+    // // Proxy the request using the destination_url and the merged headers
+    let client = reqwest::Client::new();
+    let response_result = client
+        .request(method, &destination_url)
+        .headers(merge_headers(headers, extra_headers))
+        .body(body_bytes)
+        .send()
+        .await;
+
+    let response = match response_result {
+        Ok(response) => response,
+        Err(e) => return plaintext_error(format!("Failed to proxy request: {}", e), 502),
+    };
+
+    convert_reqwest_response_to_cf(response, common_response_headers()).await
 }
 
 #[event(fetch)]

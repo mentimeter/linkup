@@ -62,13 +62,13 @@ async fn linkup_request_handler(
         Err(_) => return HttpResponse::UnprocessableEntity().body("Unprocessable Content"),
     };
 
-    let (destination_url, service) =
+    let destination_url  =
         match get_target_url(url.clone(), headers.clone(), &config, &session_name) {
             Some(result) => result,
             None => return HttpResponse::NotFound().body("Not target url for request"),
         };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name, &service);
+    let extra_headers = get_additional_headers(url, &headers, &session_name);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
