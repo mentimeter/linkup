@@ -17,6 +17,7 @@ pub struct LocalState {
 pub struct LinkupState {
     pub session_name: String,
     pub session_token: String,
+    pub config_path: String,
     pub remote: Url,
     pub tunnel: Url,
 }
@@ -67,7 +68,7 @@ struct YamlLocalService {
     rewrites: Option<Vec<StorableRewrite>>,
 }
 
-pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
+pub fn config_to_state(yaml_config: YamlLocalConfig, config_path: String) -> LocalState {
     let random_token: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(16)
@@ -77,6 +78,7 @@ pub fn config_to_state(yaml_config: YamlLocalConfig) -> LocalState {
     let linkup = LinkupState {
         session_name: String::new(),
         session_token: random_token,
+        config_path,
         remote: yaml_config.linkup.remote,
         tunnel: Url::parse("http://localhost").expect("default url parses"),
     };
@@ -143,7 +145,9 @@ domains:
     fn test_config_to_state() {
         let input_str = String::from(CONF_STR);
         let yaml_config = serde_yaml::from_str(&input_str).unwrap();
-        let local_state = config_to_state(yaml_config);
+        let local_state = config_to_state(yaml_config, "./path/to/config.yaml".to_string());
+
+        assert_eq!(local_state.linkup.config_path, "./path/to/config.yaml");
 
         assert_eq!(
             local_state.linkup.remote,

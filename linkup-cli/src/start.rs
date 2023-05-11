@@ -14,9 +14,10 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
     // TODO: run `stop` to kill the previous local server?
 
     let previous_state = get_state();
-    let input_config = get_config(config_arg)?;
+    let config_path = config_path(config_arg)?;
+    let input_config = get_config(config_path.clone())?;
 
-    let mut state = config_to_state(input_config);
+    let mut state = config_to_state(input_config, config_path);
 
     // Reuse previous session name if possible
     if let Ok(ps) = previous_state {
@@ -31,19 +32,20 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
     Ok(())
 }
 
-fn get_config(config_arg: Option<String>) -> Result<YamlLocalConfig, CliError> {
-    let config_path =
-        match config_arg {
-            Some(path) => path,
-            None => match env::var(LINKUP_CONFIG_ENV) {
-                Ok(val) => val,
-                Err(_) => return Err(CliError::NoConfig(
-                    "No config argument provided and LINKUP_CONFIG environment variable not set"
-                        .to_string(),
-                )),
-            },
-        };
+fn config_path(config_arg: Option<String>) -> Result<String, CliError> {
+    match config_arg {
+        Some(path) => Ok(path),
+        None => match env::var(LINKUP_CONFIG_ENV) {
+            Ok(val) => Ok(val),
+            Err(_) => Err(CliError::NoConfig(
+                "No config argument provided and LINKUP_CONFIG environment variable not set"
+                    .to_string(),
+            )),
+        },
+    }
+}
 
+fn get_config(config_path: String) -> Result<YamlLocalConfig, CliError> {
     let content = match fs::read_to_string(&config_path) {
         Ok(content) => content,
         Err(_) => {

@@ -1,6 +1,6 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
@@ -30,7 +30,7 @@ pub fn check() -> Result<(), CliError> {
 
     for service in &state.services {
         match &service.directory {
-            Some(d) => set_service_env(d.clone())?,
+            Some(d) => set_service_env(d.clone(), state.linkup.config_path.clone())?,
             None => {}
         }
     }
@@ -140,9 +140,16 @@ fn server_config_from_state(state: &LocalState) -> (StorableSession, StorableSes
     )
 }
 
-fn set_service_env(directory: String) -> Result<(), CliError> {
-    let dev_env_path = format!("{}/.env.dev", directory);
-    let env_path = format!("{}/.env", directory);
+fn set_service_env(directory: String, config_path: String) -> Result<(), CliError> {
+    let config_dir = Path::new(&config_path).parent().ok_or_else(|| {
+        CliError::SetServiceEnv(
+            directory.clone(),
+            "config_path does not have a parent directory".to_string(),
+        )
+    })?;
+
+    let dev_env_path = PathBuf::from(config_dir).join(&directory).join(".env.dev");
+    let env_path = PathBuf::from(config_dir).join(&directory).join(".env");
 
     if !Path::new(&dev_env_path).exists() {
         return Err(CliError::NoDevEnv(directory));
@@ -154,6 +161,12 @@ fn set_service_env(directory: String) -> Result<(), CliError> {
             format!("could not read dev env file: {}", e),
         )
     })?;
+
+    if let Ok(env_content) = fs::read_to_string(&env_path) {
+        if env_content.contains(LINKUP_ENV_SEPARATOR) {
+            return Ok(());
+        }
+    }
 
     let mut env_file = OpenOptions::new()
         .create(true)
