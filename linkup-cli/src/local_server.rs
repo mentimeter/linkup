@@ -1,6 +1,8 @@
 use std::{collections::HashMap, io};
 
-use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{
+    http::header, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+};
 use thiserror::Error;
 
 use linkup::*;
@@ -21,7 +23,11 @@ async fn linkup_config_handler(
 
     let input_json_conf = match String::from_utf8(req_body.to_vec()) {
         Ok(input_json_conf) => input_json_conf,
-        Err(_) => return HttpResponse::BadRequest().body("Invalid request body encoding"),
+        Err(_) => {
+            return HttpResponse::BadRequest()
+                .append_header(header::ContentType::plaintext())
+                .body("Invalid request body encoding - local server")
+        }
     };
 
     match update_session_req_from_json(input_json_conf) {
@@ -32,10 +38,16 @@ async fn linkup_config_handler(
             match session_name {
                 Ok(session_name) => HttpResponse::Ok().body(session_name),
                 Err(e) => HttpResponse::InternalServerError()
+                    .append_header(header::ContentType::plaintext())
                     .body(format!("Failed to store server config: {}", e)),
             }
         }
-        Err(e) => HttpResponse::BadRequest().body(format!("Failed to parse server config: {}", e)),
+        Err(e) => HttpResponse::BadRequest()
+            .append_header(header::ContentType::plaintext())
+            .body(format!(
+                "Failed to parse server config: {} - local server",
+                e
+            )),
     }
 }
 
@@ -59,14 +71,22 @@ async fn linkup_request_handler(
 
     let (session_name, config) = match session_result {
         Ok(result) => result,
-        Err(_) => return HttpResponse::UnprocessableEntity().body("Unprocessable Content"),
+        Err(_) => {
+            return HttpResponse::UnprocessableEntity()
+                .append_header(header::ContentType::plaintext())
+                .body("Unprocessable Content - local server")
+        }
     };
 
-    let destination_url  =
-        match get_target_url(url.clone(), headers.clone(), &config, &session_name) {
-            Some(result) => result,
-            None => return HttpResponse::NotFound().body("Not target url for request"),
-        };
+    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
+    {
+        Some(result) => result,
+        None => {
+            return HttpResponse::NotFound()
+                .append_header(header::ContentType::plaintext())
+                .body("Not target url for request - local server")
+        }
+    };
 
     let extra_headers = get_additional_headers(url, &headers, &session_name);
 
@@ -79,14 +99,23 @@ async fn linkup_request_handler(
         .send()
         .await;
 
-    let response = match response_result {
-        Ok(response) => response,
-        Err(_) => return HttpResponse::BadGateway().finish(),
-    };
+    let response =
+        match response_result {
+            Ok(response) => response,
+            Err(_) => return HttpResponse::BadGateway()
+                .append_header(header::ContentType::plaintext())
+                .body(
+                    "Bad Gateway from local server, could you have forgotten to start the server?",
+                ),
+        };
 
     convert_reqwest_response(response)
         .await
-        .unwrap_or_else(|_| HttpResponse::InternalServerError().finish())
+        .unwrap_or_else(|_| {
+            HttpResponse::InternalServerError()
+                .append_header(header::ContentType::plaintext())
+                .body("Could not convert response from reqwest - local server")
+        })
 }
 
 fn merge_headers(

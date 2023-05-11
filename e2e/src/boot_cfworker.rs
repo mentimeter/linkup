@@ -32,6 +32,30 @@ pub fn boot_worker() -> Result<Child> {
     Ok(cmd)
 }
 
+pub fn wait_worker_started() -> Result<()> {
+    let mut count = 0;
+
+    loop {
+        let output = Command::new("bash")
+            .arg("-c")
+            .arg("lsof -i tcp:8787")
+            .output()
+            .expect("Failed to execute command");
+
+        if output.status.success() {
+            println!("Worker started.");
+            break;
+        } else if count == 20 {
+            return Err(anyhow::anyhow!("Command failed after 20 retries"));
+        } else {
+            count += 1;
+            thread::sleep(Duration::from_millis(500));
+        }
+    }
+
+    Ok(())
+}
+
 pub fn kill_worker() -> Result<()> {
     // Run pgrep to find the process ID of the wrangler process
     let pgrep_output = Command::new("pgrep").arg("wrangler").output()?;

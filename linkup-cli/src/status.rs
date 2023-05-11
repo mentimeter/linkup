@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::{
@@ -11,18 +10,18 @@ use crate::{
 #[derive(Deserialize, Serialize)]
 struct Status {
     session: SessionStatus,
-    services: HashMap<String, ServiceStatus>,
+    services: Vec<ServiceStatus>,
 }
 
 #[derive(Deserialize, Serialize)]
 struct SessionStatus {
     session_name: String,
-    session_token: String,
     domains: Vec<String>,
 }
 
 #[derive(Deserialize, Serialize)]
 struct ServiceStatus {
+    name: String,
     status: String,
     component_kind: String,
     location: String,
@@ -35,14 +34,25 @@ pub fn status(json: bool) -> Result<(), CliError> {
     let service_statuses = service_status(&state)?;
     services.extend(service_statuses);
 
+    // Filter out domains that are subdomains of other domains
+    let filtered_domains = state
+        .domains
+        .iter()
+        .filter(|&d| {
+            !state
+                .domains
+                .iter()
+                .any(|other| other.domain != d.domain && d.domain.ends_with(&other.domain))
+        })
+        .map(|d| d.domain.clone())
+        .collect::<Vec<String>>();
+
     let status = Status {
         session: SessionStatus {
             session_name: state.linkup.session_name.clone(),
-            session_token: state.linkup.session_token,
-            domains: state
-                .domains
+            domains: filtered_domains
                 .iter()
-                .map(|d| format!("{}.{}", state.linkup.session_name.clone(), d.domain.clone()))
+                .map(|d| format!("{}.{}", state.linkup.session_name.clone(), d.clone()))
                 .collect(),
         },
         services,
@@ -54,7 +64,6 @@ pub fn status(json: bool) -> Result<(), CliError> {
         // Display session information
         println!("Session Information:");
         println!("  Session Name: {}", status.session.session_name);
-        println!("  Session Token: {}", status.session.session_token);
         println!("  Domains: ");
         for domain in &status.session.domains {
             println!("    {}", domain);
@@ -67,10 +76,10 @@ pub fn status(json: bool) -> Result<(), CliError> {
             "{:<15} {:<15} {:<15} {:<15}",
             "Service Name", "Component Kind", "Status", "Location"
         );
-        for (name, status) in &status.services {
+        for status in &status.services {
             println!(
                 "{:<15} {:<15} {:<15} {:<15}",
-                name, status.component_kind, status.status, status.location
+                status.name, status.component_kind, status.status, status.location
             );
         }
         println!();
@@ -79,42 +88,38 @@ pub fn status(json: bool) -> Result<(), CliError> {
     Ok(())
 }
 
-fn linkup_status(state: &LocalState) -> HashMap<String, ServiceStatus> {
-    let mut linkup_status_map: HashMap<String, ServiceStatus> = HashMap::new();
+fn linkup_status(state: &LocalState) -> Vec<ServiceStatus> {
+    let mut linkup_statuses: Vec<ServiceStatus> = Vec::new();
 
     let local_url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
-    linkup_status_map.insert(
-        "local server".to_string(),
-        ServiceStatus {
-            component_kind: "linkup".to_string(),
-            location: local_url.to_string(),
-            status: server_status(local_url),
-        },
-    );
+    linkup_statuses.push(ServiceStatus {
+        name: "local_server".to_string(),
+        component_kind: "linkup".to_string(),
+        location: local_url.to_string(),
+        status: server_status(local_url),
+    });
 
-    linkup_status_map.insert(
-        "remote server".to_string(),
-        ServiceStatus {
-            component_kind: "linkup".to_string(),
-            location: state.linkup.remote.to_string(),
-            status: server_status(state.linkup.remote.to_string()),
-        },
-    );
+    // linkup_statuses.append(local_status);
 
-    linkup_status_map.insert(
-        "tunnel".to_string(),
-        ServiceStatus {
-            component_kind: "linkup".to_string(),
-            location: state.linkup.tunnel.to_string(),
-            status: server_status(state.linkup.tunnel.to_string()),
-        },
-    );
+    linkup_statuses.push(ServiceStatus {
+        name: "remote_server".to_string(),
+        component_kind: "linkup".to_string(),
+        location: state.linkup.remote.to_string(),
+        status: server_status(state.linkup.remote.to_string()),
+    });
 
-    linkup_status_map
+    linkup_statuses.push(ServiceStatus {
+        name: "tunnel".to_string(),
+        component_kind: "linkup".to_string(),
+        location: state.linkup.tunnel.to_string(),
+        status: server_status(state.linkup.tunnel.to_string()),
+    });
+
+    linkup_statuses
 }
 
-fn service_status(state: &LocalState) -> Result<HashMap<String, ServiceStatus>, CliError> {
-    let mut service_status_map: HashMap<String, ServiceStatus> = HashMap::new();
+fn service_status(state: &LocalState) -> Result<Vec<ServiceStatus>, CliError> {
+    let mut service_statuses: Vec<ServiceStatus> = Vec::new();
 
     for service in state.services.iter().cloned() {
         let url = match service.current {
@@ -124,17 +129,15 @@ fn service_status(state: &LocalState) -> Result<HashMap<String, ServiceStatus>, 
 
         let status = server_status(url.to_string());
 
-        service_status_map.insert(
-            service.name,
-            ServiceStatus {
-                location: url.to_string(),
-                component_kind: service.current.to_string(),
-                status,
-            },
-        );
+        service_statuses.push(ServiceStatus {
+            name: service.name,
+            location: url.to_string(),
+            component_kind: service.current.to_string(),
+            status,
+        });
     }
 
-    Ok(service_status_map)
+    Ok(service_statuses)
 }
 
 fn server_status(url: String) -> String {

@@ -1,5 +1,6 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 
 use crate::signal::{send_sigint, PidError};
 use crate::start::get_state;
@@ -39,9 +40,13 @@ pub fn stop() -> Result<(), CliError> {
 
     let state = get_state()?;
     for service in &state.services {
-        match &service.directory {
-            Some(d) => remove_service_env(d.clone())?,
-            None => {}
+        let remove_res = match &service.directory {
+            Some(d) => remove_service_env(d.clone(), state.linkup.config_path.clone()),
+            None => Ok(()),
+        };
+
+        if let Err(e) = remove_res {
+            println!("Could not remove env for service {}: {}", service.name, e);
         }
     }
 
@@ -63,9 +68,16 @@ fn get_pid(file_name: &str) -> Result<String, PidError> {
     }
 }
 
-fn remove_service_env(directory: String) -> Result<(), CliError> {
-    let env_path = format!("{}/.env", directory);
-    let temp_env_path = format!("{}/.env.temp", directory);
+fn remove_service_env(directory: String, config_path: String) -> Result<(), CliError> {
+    let config_dir = Path::new(&config_path).parent().ok_or_else(|| {
+        CliError::SetServiceEnv(
+            directory.clone(),
+            "config_path does not have a parent directory".to_string(),
+        )
+    })?;
+
+    let env_path = PathBuf::from(config_dir).join(&directory).join(".env");
+    let temp_env_path = PathBuf::from(config_dir).join(&directory).join(".env.temp");
 
     let input_file = File::open(&env_path).map_err(|e| {
         CliError::RemoveServiceEnv(directory.clone(), format!("could not open env file: {}", e))

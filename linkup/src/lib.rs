@@ -90,12 +90,18 @@ pub fn get_additional_headers(
 pub fn common_response_headers() -> HashMap<String, String> {
     let mut headers = HashMap::new();
 
-    headers.insert("Access-Control-Allow-Methods".to_string(), "GET, POST, PUT, PATCH, DELETE, HEAD, CONNECT, TRACE, OPTIONS".to_string());
+    headers.insert(
+        "Access-Control-Allow-Methods".to_string(),
+        "GET, POST, PUT, PATCH, DELETE, HEAD, CONNECT, TRACE, OPTIONS".to_string(),
+    );
     headers.insert("Access-Control-Allow-Origin".to_string(), "*".to_string());
     headers.insert("Access-Control-Allow-Headers".to_string(), "*".to_string());
     headers.insert("Access-Control-Max-Age".to_string(), "86400".to_string());
     // This can be discussed / tweaked later, probably PR-only sessions should respect cache headers, but dev ones not.
-    headers.insert("Cache-Control".to_string(), "no-store, must-revalidate".to_string());
+    headers.insert(
+        "Cache-Control".to_string(),
+        "no-store, must-revalidate".to_string(),
+    );
 
     headers
 }
@@ -111,6 +117,15 @@ pub fn get_target_url(
     let path = target.path();
 
     let url_target = config.domains.get(&get_target_domain(&url, session_name));
+
+    // Forwarded hosts persist over the tunnel
+    let forwarded_host_target = config.domains.get(
+        headers
+            .get("x-forwarded-host")
+            .unwrap_or(&"does-not-exist".to_string()),
+    );
+
+    // This is more for e2e tests to work
     let referer_target = config.domains.get(&get_target_domain(
         headers
             .get("referer")
@@ -120,6 +135,8 @@ pub fn get_target_url(
 
     let target_domain = if url_target.is_some() {
         url_target
+    } else if forwarded_host_target.is_some() {
+        forwarded_host_target
     } else {
         referer_target
     };
@@ -386,7 +403,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-                "http://localhost:8000/?a=b".to_string(),
+            "http://localhost:8000/?a=b".to_string(),
         );
         // With path
         assert_eq!(
@@ -397,7 +414,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-                "http://localhost:8000/a/b/c/?a=b".to_string(),
+            "http://localhost:8000/a/b/c/?a=b".to_string(),
         );
         // Test rewrites
         assert_eq!(
@@ -408,7 +425,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-                "http://localhost:8000/bar/b/c/?a=b".to_string(),
+            "http://localhost:8000/bar/b/c/?a=b".to_string(),
         );
         // Test domain routes
         assert_eq!(
@@ -419,7 +436,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-                "http://localhost:8001/api/v1/?a=b".to_string(),
+            "http://localhost:8001/api/v1/?a=b".to_string(),
         );
         // Test no named subdomain
         assert_eq!(
@@ -430,7 +447,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-                "http://localhost:8001/api/v1/?a=b".to_string(),
+            "http://localhost:8001/api/v1/?a=b".to_string(),
         );
     }
 }

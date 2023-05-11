@@ -107,6 +107,35 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
     convert_reqwest_response_to_cf(response, common_response_headers()).await
 }
 
+async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Result<Response> {
+    let url = match req.url() {
+        Ok(url) => url.to_string(),
+        Err(_) => return plaintext_error("Bad or missing request url", 400),
+    };
+
+    let headers = req
+        .headers()
+        .clone()
+        .entries()
+        .collect::<HashMap<String, String>>();
+
+    let (session_name, config) =
+        match sessions.get_request_session(url.clone(), headers.clone()).await {
+            Ok(result) => result,
+            Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
+        };
+
+    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
+    {
+        Some(result) => result,
+        None => return plaintext_error("No target URL for request", 422),
+    };
+
+    let redirect_dest = Url::parse(&destination_url)?;
+
+    Response::redirect(redirect_dest)
+}
+
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
     log_request(&req);
@@ -122,6 +151,10 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     let string_store = CfWorkerStringStore::new(kv);
 
     let sessions = SessionAllocator::new(Arc::new(string_store));
+
+    // if req.headers().get("upgrade").unwrap() == Some("websocket".to_string()) {
+    //     return linkup_ws_handler(req, sessions).await;
+    // }
 
     if req.method() == Method::Post && req.path() == "/linkup" {
         return linkup_session_handler(req, sessions).await;

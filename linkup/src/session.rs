@@ -28,13 +28,13 @@ pub struct Rewrite {
     pub target: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Domain {
     pub default_service: String,
     pub routes: Vec<Route>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Route {
     pub path: Regex,
     pub service: String,

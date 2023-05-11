@@ -21,6 +21,8 @@ use boot_cfworker::{boot_worker, kill_worker};
 use boot_server::boot_background_web_server;
 use run_cli::{build_cli_project, run_cli_binary};
 
+use crate::boot_cfworker::wait_worker_started;
+
 type CleanupFunc = Box<dyn FnOnce() -> Result<()> + 'static + Send>;
 
 struct Cleanup {
@@ -83,8 +85,7 @@ fn run_with_cleanup() -> Result<()> {
 
     boot_worker()?;
     cleanup.add(kill_worker);
-
-    thread::sleep(Duration::from_secs(5));
+    wait_worker_started()?;
 
     let (out, err) = run_cli_binary(vec!["start", "-c", "e2e_conf.yml"])?;
     println!("out: {}", out);
