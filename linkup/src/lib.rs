@@ -90,12 +90,18 @@ pub fn get_additional_headers(
 pub fn common_response_headers() -> HashMap<String, String> {
     let mut headers = HashMap::new();
 
-    headers.insert("Access-Control-Allow-Methods".to_string(), "GET, POST, PUT, PATCH, DELETE, HEAD, CONNECT, TRACE, OPTIONS".to_string());
+    headers.insert(
+        "Access-Control-Allow-Methods".to_string(),
+        "GET, POST, PUT, PATCH, DELETE, HEAD, CONNECT, TRACE, OPTIONS".to_string(),
+    );
     headers.insert("Access-Control-Allow-Origin".to_string(), "*".to_string());
     headers.insert("Access-Control-Allow-Headers".to_string(), "*".to_string());
     headers.insert("Access-Control-Max-Age".to_string(), "86400".to_string());
     // This can be discussed / tweaked later, probably PR-only sessions should respect cache headers, but dev ones not.
-    headers.insert("Cache-Control".to_string(), "no-store, must-revalidate".to_string());
+    headers.insert(
+        "Cache-Control".to_string(),
+        "no-store, must-revalidate".to_string(),
+    );
 
     headers
 }
@@ -229,30 +235,48 @@ mod tests {
     use super::*;
 
     const CONF_STR: &str = r#"
-    session_token: abcxyz
-    services:
-      - name: frontend
-        location: http://localhost:8000
-        rewrites:
-          - source: /foo/(.*)
-            target: /bar/$1
-      - name: backend
-        location: http://localhost:8001/
-    domains:
-      - domain: example.com
-        default_service: frontend
-        routes:
-          - path: /api/v1/.*
-            service: backend
-      - domain: api.example.com
-        default_service: backend
+    {
+        "session_token": "abcxyz",
+        "services": [
+            {
+                "name": "frontend",
+                "location": "http://localhost:8000",
+                "rewrites": [
+                    {
+                        "source": "/foo/(.*)",
+                        "target": "/bar/$1"
+                    }
+                ]
+            },
+            {
+                "name": "backend",
+                "location": "http://localhost:8001/"
+            }
+        ],
+        "domains": [
+            {
+                "domain": "example.com",
+                "default_service": "frontend",
+                "routes": [
+                    {
+                        "path": "/api/v1/.*",
+                        "service": "backend"
+                    }
+                ]
+            },
+            {
+                "domain": "api.example.com",
+                "default_service": "backend"
+            }
+        ]
+    }
     "#;
 
     #[tokio::test]
     async fn test_get_request_session_by_subdomain() {
         let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
-        let config_value: serde_yaml::Value = serde_yaml::from_str(CONF_STR).unwrap();
+        let config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let config: Session = config_value.try_into().unwrap();
 
         let name = sessions
@@ -364,7 +388,7 @@ mod tests {
     async fn test_get_target_url() {
         let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
-        let input_config_value: serde_yaml::Value = serde_yaml::from_str(CONF_STR).unwrap();
+        let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
@@ -386,7 +410,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-                "http://localhost:8000/?a=b".to_string(),
+            "http://localhost:8000/?a=b".to_string(),
         );
         // With path
         assert_eq!(
@@ -397,7 +421,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-                "http://localhost:8000/a/b/c/?a=b".to_string(),
+            "http://localhost:8000/a/b/c/?a=b".to_string(),
         );
         // Test rewrites
         assert_eq!(
@@ -408,18 +432,18 @@ mod tests {
                 &name
             )
             .unwrap(),
-                "http://localhost:8000/bar/b/c/?a=b".to_string(),
+            "http://localhost:8000/bar/b/c/?a=b".to_string(),
         );
         // Test domain routes
         assert_eq!(
             get_target_url(
-                format!("http://{}.example.com/api/v1/abc?a=b", &name),
+                format!("http://{}.example.com/api/v1/?a=b", &name),
                 HashMap::new(),
                 &config,
                 &name
             )
             .unwrap(),
-                "http://localhost:8001/api/v1/?a=b".to_string(),
+            "http://localhost:8001/api/v1/?a=b".to_string(),
         );
         // Test no named subdomain
         assert_eq!(
@@ -430,7 +454,7 @@ mod tests {
                 &name
             )
             .unwrap(),
-                "http://localhost:8001/api/v1/?a=b".to_string(),
+            "http://localhost:8001/api/v1/?a=b".to_string(),
         );
     }
 }

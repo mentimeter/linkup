@@ -83,8 +83,6 @@ pub struct StorableRoute {
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    #[error("linkup session yml format error: {0}")]
-    YmlFormat(#[from] serde_yaml::Error),
     #[error("linkup session json format error: {0}")]
     JsonFormat(#[from] serde_json::Error),
     #[error("no such service: {0}")]
@@ -194,20 +192,6 @@ impl TryFrom<serde_json::Value> for Session {
     }
 }
 
-impl TryFrom<serde_yaml::Value> for Session {
-    type Error = ConfigError;
-
-    fn try_from(value: serde_yaml::Value) -> Result<Self, Self::Error> {
-        let session_yml_res: Result<StorableSession, serde_yaml::Error> =
-            serde_yaml::from_value(value);
-
-        match session_yml_res {
-            Err(e) => Err(ConfigError::YmlFormat(e)),
-            Ok(c) => c.try_into(),
-        }
-    }
-}
-
 impl From<Session> for StorableSession {
     fn from(value: Session) -> Self {
         let services: Vec<StorableService> = value
@@ -279,28 +263,6 @@ pub fn update_session_req_from_json(input_json: String) -> Result<(String, Sessi
 
     match update_session_req_res {
         Err(e) => Err(ConfigError::JsonFormat(e)),
-        Ok(c) => {
-            let server_conf = StorableSession {
-                session_token: c.session_token,
-                services: c.services,
-                domains: c.domains,
-            }
-            .try_into();
-
-            match server_conf {
-                Err(e) => Err(e),
-                Ok(sc) => Ok((c.desired_name, sc)),
-            }
-        }
-    }
-}
-
-pub fn update_session_req_from_yml(input_yaml: String) -> Result<(String, Session), ConfigError> {
-    let update_session_req_res: Result<UpdateSessionRequest, serde_yaml::Error> =
-        serde_yaml::from_str(&input_yaml);
-
-    match update_session_req_res {
-        Err(e) => Err(ConfigError::YmlFormat(e)),
         Ok(c) => {
             let server_conf = StorableSession {
                 session_token: c.session_token,
@@ -391,13 +353,6 @@ fn choose_domain_ordering(domains: Vec<String>) -> Vec<String> {
     sorted_domains
 }
 
-pub fn session_to_yml(session: Session) -> String {
-    let storable_session: StorableSession = session.into();
-
-    // This should never fail, due to previous validation
-    serde_yaml::to_string(&storable_session).unwrap()
-}
-
 pub fn session_to_json(session: Session) -> String {
     let storable_session: StorableSession = session.into();
 
@@ -410,36 +365,54 @@ mod tests {
     use super::*;
 
     const CONF_STR: &str = r#"
-    session_token: abcxyz
-    services:
-      - name: frontend
-        location: http://localhost:8000
-        rewrites:
-          - source: /foo/(.*)
-            target: /bar/$1
-      - name: backend
-        location: http://localhost:8001/
-    domains:
-      - domain: example.com
-        default_service: frontend
-        routes:
-          - path: /api/v1/.*
-            service: backend
-      - domain: api.example.com
-        default_service: backend
+    {
+        "session_token": "abcxyz",
+        "services": [
+            {
+                "name": "frontend",
+                "location": "http://localhost:8000",
+                "rewrites": [
+                    {
+                        "source": "/foo/(.*)",
+                        "target": "/bar/$1"
+                    }
+                ]
+            },
+            {
+                "name": "backend",
+                "location": "http://localhost:8001/"
+            }
+        ],
+        "domains": [
+            {
+                "domain": "example.com",
+                "default_service": "frontend",
+                "routes": [
+                    {
+                        "path": "/api/v1/.*",
+                        "service": "backend"
+                    }
+                ]
+            },
+            {
+                "domain": "api.example.com",
+                "default_service": "backend"
+            }
+        ]
+    }
     "#;
 
     #[test]
     fn test_convert_server_config() {
         let input_str = String::from(CONF_STR);
 
-        let server_config_value = serde_yaml::from_str::<serde_yaml::Value>(&input_str).unwrap();
+        let server_config_value = serde_json::from_str::<serde_json::Value>(&input_str).unwrap();
         let server_config: Session = server_config_value.try_into().unwrap();
         check_means_same_as_input_conf(&server_config);
 
         // Inverse should mean the same thing
-        let output_conf = session_to_yml(server_config);
-        let output_conf_value = serde_yaml::from_str::<serde_yaml::Value>(&output_conf).unwrap();
+        let output_conf = session_to_json(server_config);
+        let output_conf_value = serde_json::from_str::<serde_json::Value>(&output_conf).unwrap();
         let second_server_conf: Session = output_conf_value.try_into().unwrap();
         check_means_same_as_input_conf(&second_server_conf);
     }
