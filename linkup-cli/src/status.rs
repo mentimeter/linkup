@@ -85,6 +85,12 @@ pub fn status(json: bool) -> Result<(), CliError> {
         println!();
     }
 
+    if status.services.iter().any(|s| s.component_kind == "linkup" && s.status != "ok") {
+        println!();
+        println!("Some linkup services are not running correctly. Please check the status of the services.");
+        std::process::exit(1);
+    }
+
     Ok(())
 }
 
