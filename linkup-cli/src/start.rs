@@ -34,9 +34,17 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
 
 fn config_path(config_arg: Option<String>) -> Result<String, CliError> {
     match config_arg {
-        Some(path) => Ok(path),
+        Some(path) => {
+            let absolute_path = fs::canonicalize(path)
+                .map_err(|_| CliError::NoConfig("Unable to resolve absolute path".to_string()))?;
+            Ok(absolute_path.to_string_lossy().into_owned())
+        }
         None => match env::var(LINKUP_CONFIG_ENV) {
-            Ok(val) => Ok(val),
+            Ok(val) => {
+                let absolute_path = fs::canonicalize(val)
+                    .map_err(|_| CliError::NoConfig("Unable to resolve absolute path".to_string()))?;
+                Ok(absolute_path.to_string_lossy().into_owned())
+            }
             Err(_) => Err(CliError::NoConfig(
                 "No config argument provided and LINKUP_CONFIG environment variable not set"
                     .to_string(),
