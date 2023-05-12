@@ -15,7 +15,7 @@ struct Status {
 
 #[derive(Deserialize, Serialize)]
 struct SessionStatus {
-    session_name: String,
+    name: String,
     domains: Vec<String>,
 }
 
@@ -49,7 +49,7 @@ pub fn status(json: bool) -> Result<(), CliError> {
 
     let status = Status {
         session: SessionStatus {
-            session_name: state.linkup.session_name.clone(),
+            name: state.linkup.session_name.clone(),
             domains: filtered_domains
                 .iter()
                 .map(|d| format!("{}.{}", state.linkup.session_name.clone(), d.clone()))
@@ -63,7 +63,7 @@ pub fn status(json: bool) -> Result<(), CliError> {
     } else {
         // Display session information
         println!("Session Information:");
-        println!("  Session Name: {}", status.session.session_name);
+        println!("  Session Name: {}", status.session.name);
         println!("  Domains: ");
         for domain in &status.session.domains {
             println!("    {}", domain);
