@@ -1,0 +1,13 @@
+name = "linkup-worker"
+main = "build/worker/shim.mjs"
+compatibility_date = "2022-01-20"
+
+kv_namespaces = [
+  { binding = "LINKUP_SESSIONS", id = "xxx", preview_id = "xxx"  },
+]
+
+[vars]
+WORKERS_RS_VERSION = "0.0.16"
+
+[build]
+command = "cargo install -q worker-build --version 0.0.9 && worker-build --release"

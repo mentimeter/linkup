@@ -6,4 +6,4 @@
 **/*.rs.bk
 
 # We don't want to save KV IDs in our source code
-worker/wrangler.toml
+wrangler.toml
