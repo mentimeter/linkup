@@ -246,30 +246,48 @@ mod tests {
     use super::*;
 
     const CONF_STR: &str = r#"
-    session_token: abcxyz
-    services:
-      - name: frontend
-        location: http://localhost:8000
-        rewrites:
-          - source: /foo/(.*)
-            target: /bar/$1
-      - name: backend
-        location: http://localhost:8001/
-    domains:
-      - domain: example.com
-        default_service: frontend
-        routes:
-          - path: /api/v1/.*
-            service: backend
-      - domain: api.example.com
-        default_service: backend
+    {
+        "session_token": "abcxyz",
+        "services": [
+            {
+                "name": "frontend",
+                "location": "http://localhost:8000",
+                "rewrites": [
+                    {
+                        "source": "/foo/(.*)",
+                        "target": "/bar/$1"
+                    }
+                ]
+            },
+            {
+                "name": "backend",
+                "location": "http://localhost:8001/"
+            }
+        ],
+        "domains": [
+            {
+                "domain": "example.com",
+                "default_service": "frontend",
+                "routes": [
+                    {
+                        "path": "/api/v1/.*",
+                        "service": "backend"
+                    }
+                ]
+            },
+            {
+                "domain": "api.example.com",
+                "default_service": "backend"
+            }
+        ]
+    }
     "#;
 
     #[tokio::test]
     async fn test_get_request_session_by_subdomain() {
         let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
-        let config_value: serde_yaml::Value = serde_yaml::from_str(CONF_STR).unwrap();
+        let config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let config: Session = config_value.try_into().unwrap();
 
         let name = sessions
@@ -381,7 +399,7 @@ mod tests {
     async fn test_get_target_url() {
         let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
 
-        let input_config_value: serde_yaml::Value = serde_yaml::from_str(CONF_STR).unwrap();
+        let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
@@ -430,7 +448,7 @@ mod tests {
         // Test domain routes
         assert_eq!(
             get_target_url(
-                format!("http://{}.example.com/api/v1/abc?a=b", &name),
+                format!("http://{}.example.com/api/v1/?a=b", &name),
                 HashMap::new(),
                 &config,
                 &name
