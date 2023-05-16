@@ -38,8 +38,8 @@ enum ServerStatus {
 impl ServerStatus {
     fn colored(&self) -> ColoredString {
         match self {
-            ServerStatus::Ok => "ok".green(),
-            ServerStatus::Error => "error".red(),
+            ServerStatus::Ok => "ok".blue(),
+            ServerStatus::Error => "error".yellow(),
             ServerStatus::Timeout => "timeout".yellow(),
         }
     }
