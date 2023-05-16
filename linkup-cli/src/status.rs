@@ -1,5 +1,4 @@
 use colored::{ColoredString, Colorize};
-use reqwest::{blocking::Response, Error};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
