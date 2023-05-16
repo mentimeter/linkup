@@ -1,4 +1,5 @@
 use colored::{ColoredString, Colorize};
+use reqwest::{blocking::Response, Error};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -41,6 +42,16 @@ impl ServerStatus {
             ServerStatus::Ok => "ok".green(),
             ServerStatus::Error => "error".red(),
             ServerStatus::Timeout => "timeout".yellow(),
+        }
+    }
+}
+
+impl From<Result<reqwest::blocking::Response, reqwest::Error>> for ServerStatus {
+    fn from(res: Result<reqwest::blocking::Response, reqwest::Error>) -> Self {
+        match res {
+            Ok(res) if res.status().is_server_error() => ServerStatus::Error,
+            Ok(_) => ServerStatus::Ok,
+            Err(_) => ServerStatus::Timeout,
         }
     }
 }
@@ -179,9 +190,5 @@ fn server_status(url: String) -> ServerStatus {
 
     let response = client.get(url).send();
 
-    match response {
-        Ok(res) if res.status().is_server_error() => ServerStatus::Error,
-        Ok(_) => ServerStatus::Ok,
-        Err(_) => ServerStatus::Timeout,
-    }
+    response.into()
 }
