@@ -1,3 +1,4 @@
+use colored::{ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -22,9 +23,26 @@ struct SessionStatus {
 #[derive(Deserialize, Serialize)]
 struct ServiceStatus {
     name: String,
-    status: String,
+    status: ServerStatus,
     component_kind: String,
     location: String,
+}
+
+#[derive(Deserialize, Serialize, PartialEq)]
+enum ServerStatus {
+    Ok,
+    Error,
+    Timeout,
+}
+
+impl ServerStatus {
+    fn colored(&self) -> ColoredString {
+        match self {
+            ServerStatus::Ok => "ok".green(),
+            ServerStatus::Error => "error".red(),
+            ServerStatus::Timeout => "timeout".yellow(),
+        }
+    }
 }
 
 pub fn status(json: bool) -> Result<(), CliError> {
@@ -79,13 +97,20 @@ pub fn status(json: bool) -> Result<(), CliError> {
         for status in &status.services {
             println!(
                 "{:<15} {:<15} {:<15} {:<15}",
-                status.name, status.component_kind, status.status, status.location
+                status.name,
+                status.component_kind,
+                status.status.colored(),
+                status.location
             );
         }
         println!();
     }
 
-    if status.services.iter().any(|s| s.component_kind == "linkup" && s.status != "ok") {
+    if status
+        .services
+        .iter()
+        .any(|s| s.component_kind == "linkup" && s.status != ServerStatus::Ok)
+    {
         println!();
         println!("Some linkup services are not running correctly. Please check the status of the services.");
         std::process::exit(1);
@@ -146,7 +171,7 @@ fn service_status(state: &LocalState) -> Result<Vec<ServiceStatus>, CliError> {
     Ok(service_statuses)
 }
 
-fn server_status(url: String) -> String {
+fn server_status(url: String) -> ServerStatus {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))
         .build()
@@ -155,8 +180,8 @@ fn server_status(url: String) -> String {
     let response = client.get(url).send();
 
     match response {
-        Ok(res) if res.status().is_server_error() => "error".to_string(),
-        Ok(_) => "ok".to_string(),
-        Err(_) => "timeout".to_string(),
+        Ok(res) if res.status().is_server_error() => ServerStatus::Error,
+        Ok(_) => ServerStatus::Ok,
+        Err(_) => ServerStatus::Timeout,
     }
 }
