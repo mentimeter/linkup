@@ -8,20 +8,20 @@ name = "linkup"
 path = "src/main.rs"
 
 [dependencies]
-linkup = { path = "../linkup" }
-clap = { version = "4.1.8", features = ["derive"] }
-thiserror = "1.0.40"
-regex = "1.7.1"
-serde = "1.0.156"
-serde_yaml = "0.9.19"
-url = { version = "2.3.1", features = ["serde"] }
-daemonize = "0.5.0"
 actix-web = "4.3.1"
+clap = { version = "4.1.8", features = ["derive"] }
+colored = "2"
 ctrlc = { version = "3.0", features = ["termination"] }
-reqwest = { version = "0.11.14", default-features = false, features = ["blocking", "rustls-tls"] }
-rand = "0.8.5"
+daemonize = "0.5.0"
 env_logger = "0.10.0"
+linkup = { path = "../linkup" }
 log = "0.4.17"
 nix = "0.26.2"
+rand = "0.8.5"
+regex = "1.7.1"
+reqwest = { version = "0.11.14", default-features = false, features = ["blocking", "rustls-tls"] }
+serde = "1.0.156"
 serde_json = "1.0.96"
-colored = "2"
+serde_yaml = "0.9.19"
+thiserror = "1.0.40"
+url = { version = "2.3.1", features = ["serde"] }
