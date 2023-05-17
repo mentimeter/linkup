@@ -58,9 +58,13 @@ impl From<Result<reqwest::blocking::Response, reqwest::Error>> for ServerStatus 
 pub fn status(json: bool) -> Result<(), CliError> {
     let state = get_state()?;
 
-    let mut services = linkup_status(&state);
-    let service_statuses = service_status(&state)?;
-    services.extend(service_statuses);
+    let (tx, rx) = std::sync::mpsc::channel();
+    linkup_status(tx.clone(), &state);
+    service_status(tx.clone(), &state);
+
+    drop(tx);
+
+    let services = rx.iter().collect::<Vec<ServiceStatus>>();
 
     // Filter out domains that are subdomains of other domains
     let filtered_domains = state
@@ -129,11 +133,8 @@ pub fn status(json: bool) -> Result<(), CliError> {
     Ok(())
 }
 
-fn linkup_status(state: &LocalState) -> Vec<ServiceStatus> {
-    let mut linkup_statuses: Vec<ServiceStatus> = Vec::new();
+fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState) {
     let local_url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
-
-    let (tx, rx) = std::sync::mpsc::channel();
 
     let local_tx = tx.clone();
     thread::spawn(move || {
@@ -161,7 +162,8 @@ fn linkup_status(state: &LocalState) -> Vec<ServiceStatus> {
         remote_tx.send(service_status).unwrap();
     });
 
-    let tunnel_tx = tx.clone();
+    // NOTE(augustoccesar): last usage of tx on this context, no need to clone it
+    let tunnel_tx = tx;
     let tunnel = state.linkup.tunnel.to_string();
     thread::spawn(move || {
         let service_status = ServiceStatus {
@@ -173,20 +175,9 @@ fn linkup_status(state: &LocalState) -> Vec<ServiceStatus> {
 
         tunnel_tx.send(service_status).unwrap();
     });
-
-    drop(tx);
-
-    while let Ok(service_status) = rx.recv() {
-        linkup_statuses.push(service_status);
-    }
-
-    linkup_statuses
 }
 
-fn service_status(state: &LocalState) -> Result<Vec<ServiceStatus>, CliError> {
-    let mut service_statuses: Vec<ServiceStatus> = Vec::new();
-    let (tx, rx) = std::sync::mpsc::channel();
-
+fn service_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState) {
     for service in state.services.iter().cloned() {
         let tx = tx.clone();
 
@@ -206,14 +197,6 @@ fn service_status(state: &LocalState) -> Result<Vec<ServiceStatus>, CliError> {
             tx.send(service_status).unwrap();
         });
     }
-
-    drop(tx);
-
-    while let Ok(s) = rx.recv() {
-        service_statuses.push(s);
-    }
-
-    Ok(service_statuses)
 }
 
 fn server_status(url: String) -> ServerStatus {
