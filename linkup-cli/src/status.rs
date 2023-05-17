@@ -1,6 +1,6 @@
 use colored::{ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{thread, time::Duration};
 
 use crate::{
     local_config::{LocalState, ServiceTarget},
@@ -131,51 +131,86 @@ pub fn status(json: bool) -> Result<(), CliError> {
 
 fn linkup_status(state: &LocalState) -> Vec<ServiceStatus> {
     let mut linkup_statuses: Vec<ServiceStatus> = Vec::new();
-
     let local_url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
-    linkup_statuses.push(ServiceStatus {
-        name: "local_server".to_string(),
-        component_kind: "linkup".to_string(),
-        location: local_url.to_string(),
-        status: server_status(local_url),
+
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let local_tx = tx.clone();
+    thread::spawn(move || {
+        let service_status = ServiceStatus {
+            name: "local_server".to_string(),
+            component_kind: "linkup".to_string(),
+            location: local_url.clone(),
+            status: server_status(local_url),
+        };
+
+        local_tx.send(service_status).unwrap();
     });
 
-    // linkup_statuses.append(local_status);
+    let remote_tx = tx.clone();
+    // TODO(augustoccesar): having to clone this remote on the ServiceStatus feels unnecessary. Look if it can be reference
+    let remote = state.linkup.remote.to_string();
+    thread::spawn(move || {
+        let service_status = ServiceStatus {
+            name: "remote_server".to_string(),
+            component_kind: "linkup".to_string(),
+            location: remote.clone(),
+            status: server_status(remote),
+        };
 
-    linkup_statuses.push(ServiceStatus {
-        name: "remote_server".to_string(),
-        component_kind: "linkup".to_string(),
-        location: state.linkup.remote.to_string(),
-        status: server_status(state.linkup.remote.to_string()),
+        remote_tx.send(service_status).unwrap();
     });
 
-    linkup_statuses.push(ServiceStatus {
-        name: "tunnel".to_string(),
-        component_kind: "linkup".to_string(),
-        location: state.linkup.tunnel.to_string(),
-        status: server_status(state.linkup.tunnel.to_string()),
+    let tunnel_tx = tx.clone();
+    let tunnel = state.linkup.tunnel.to_string();
+    thread::spawn(move || {
+        let service_status = ServiceStatus {
+            name: "tunnel".to_string(),
+            component_kind: "linkup".to_string(),
+            location: tunnel.clone(),
+            status: server_status(tunnel),
+        };
+
+        tunnel_tx.send(service_status).unwrap();
     });
+
+    drop(tx);
+
+    while let Ok(service_status) = rx.recv() {
+        linkup_statuses.push(service_status);
+    }
 
     linkup_statuses
 }
 
 fn service_status(state: &LocalState) -> Result<Vec<ServiceStatus>, CliError> {
     let mut service_statuses: Vec<ServiceStatus> = Vec::new();
+    let (tx, rx) = std::sync::mpsc::channel();
 
     for service in state.services.iter().cloned() {
-        let url = match service.current {
-            ServiceTarget::Local => service.local.clone(),
-            ServiceTarget::Remote => service.remote.clone(),
-        };
+        let tx = tx.clone();
 
-        let status = server_status(url.to_string());
+        thread::spawn(move || {
+            let url = match service.current {
+                ServiceTarget::Local => service.local.clone(),
+                ServiceTarget::Remote => service.remote.clone(),
+            };
 
-        service_statuses.push(ServiceStatus {
-            name: service.name,
-            location: url.to_string(),
-            component_kind: service.current.to_string(),
-            status,
+            let service_status = ServiceStatus {
+                name: service.name,
+                location: url.to_string(),
+                component_kind: service.current.to_string(),
+                status: server_status(url.to_string()),
+            };
+
+            tx.send(service_status).unwrap();
         });
+    }
+
+    drop(tx);
+
+    while let Ok(s) = rx.recv() {
+        service_statuses.push(s);
     }
 
     Ok(service_statuses)
