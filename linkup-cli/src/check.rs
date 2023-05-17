@@ -1,6 +1,9 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+use std::thread;
+
 
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
@@ -19,11 +22,18 @@ use crate::{LINKUP_ENV_SEPARATOR, LINKUP_LOCALSERVER_PORT};
 pub fn check() -> Result<(), CliError> {
     let mut state = get_state()?;
 
+    let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
+        .expect("linkup url invalid");
+
     if is_local_server_started().is_err() {
+        println!("starting linkup local server...");
         start_local_server()?;
     }
 
+    wait_till_ok(format!("{}linkup-check", local_url))?;
+
     if is_tunnel_started().is_err() {
+        println!("starting tunnel...");
         let tunnel = start_tunnel()?;
         state.linkup.tunnel = tunnel;
     }
@@ -36,8 +46,6 @@ pub fn check() -> Result<(), CliError> {
     }
 
     let (local_server_conf, remote_server_conf) = server_config_from_state(&state);
-    let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
-        .expect("linkup url invalid");
 
     let server_session_name = load_config(
         &state.linkup.remote,
@@ -50,10 +58,16 @@ pub fn check() -> Result<(), CliError> {
         return Err(CliError::InconsistentState);
     }
 
+    let tunnel_url = state.linkup.tunnel.clone();
+
     state.linkup.session_name = server_session_name.clone();
     save_state(state)?;
 
     println!("{}", server_session_name);
+
+    // If the tunnel is checked too quickly, it dies ¯\_(ツ)_/¯
+    thread::sleep(Duration::from_millis(1000));
+    wait_till_ok(format!("{}linkup-check", tunnel_url))?;
 
     // final checks services are responding
     // print status
@@ -141,6 +155,30 @@ fn server_config_from_state(state: &LocalState) -> (StorableSession, StorableSes
             cache_routes: state.linkup.cache_routes.clone(),
         },
     )
+}
+
+pub fn wait_till_ok(url: String) -> Result<(), CliError> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(1))
+        .build()
+        .map_err(|err| CliError::StartLinkupTimeout(err.to_string()))?;
+
+    let start = Instant::now();
+    loop {
+        if start.elapsed() > Duration::from_secs(15) {
+            return Err(CliError::StartLinkupTimeout(format!("{} took too long to load", url)));
+        }
+
+        let response = client.get(&url).send();
+
+        if let Ok(resp) = response {
+            if resp.status() == StatusCode::OK {
+                return Ok(());
+            }
+        }
+
+        thread::sleep(Duration::from_millis(2000));
+    }
 }
 
 fn set_service_env(directory: String, config_path: String) -> Result<(), CliError> {

@@ -159,6 +159,10 @@ async fn convert_reqwest_response(
     Ok(response_builder.body(body))
 }
 
+async fn always_ok() -> impl Responder {
+    HttpResponse::Ok().finish()
+}
+
 #[actix_web::main]
 pub async fn local_linkup_main() -> io::Result<()> {
     env_logger::Builder::new()
@@ -173,6 +177,7 @@ pub async fn local_linkup_main() -> io::Result<()> {
             .app_data(string_store.clone()) // Add shared state
             .wrap(middleware::Logger::default()) // Enable logger
             .route("/linkup", web::post().to(linkup_config_handler))
+            .route("/linkup-check", web::route().to(always_ok))
             .default_service(web::route().to(linkup_request_handler))
     })
     .bind(("127.0.0.1", LINKUP_LOCALSERVER_PORT))?

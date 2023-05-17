@@ -82,6 +82,8 @@ pub enum CliError {
     StartLocalServer(String),
     #[error("could not start local tunnel: {0}")]
     StartLocalTunnel(String),
+    #[error("linkup component did not start in time: {0}")]
+    StartLinkupTimeout(String),
     #[error("could not load config to {0}: {1}")]
     LoadConfig(String, String),
     #[error("could not stop: {0}")]
