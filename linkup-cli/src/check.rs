@@ -72,6 +72,7 @@ fn load_config(url: &Url, desired_name: &str, config: StorableSession) -> Result
         desired_name: desired_name.into(),
         services: config.services,
         domains: config.domains,
+        cache_routes: config.cache_routes,
     };
 
     let update_req_json = serde_json::to_string(&session_update_req)
@@ -131,11 +132,13 @@ fn server_config_from_state(state: &LocalState) -> (StorableSession, StorableSes
             session_token: state.linkup.session_token.clone(),
             services: local_server_services,
             domains: state.domains.clone(),
+            cache_routes: state.linkup.cache_routes.clone(),
         },
         StorableSession {
             session_token: state.linkup.session_token.clone(),
             services: remote_server_services,
             domains: state.domains.clone(),
+            cache_routes: state.linkup.cache_routes.clone(),
         },
     )
 }

@@ -104,7 +104,9 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Err(e) => return plaintext_error(format!("Failed to proxy request: {}", e), 502),
     };
 
-    convert_reqwest_response_to_cf(response, common_response_headers()).await
+    let extra_resp_headers = additional_response_headers(req.path(), config.cache_routes);
+
+    convert_reqwest_response_to_cf(response, extra_resp_headers).await
 }
 
 async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Result<Response> {

@@ -41,8 +41,9 @@ fn config_path(config_arg: Option<String>) -> Result<String, CliError> {
         }
         None => match env::var(LINKUP_CONFIG_ENV) {
             Ok(val) => {
-                let absolute_path = fs::canonicalize(val)
-                    .map_err(|_| CliError::NoConfig("Unable to resolve absolute path".to_string()))?;
+                let absolute_path = fs::canonicalize(val).map_err(|_| {
+                    CliError::NoConfig("Unable to resolve absolute path".to_string())
+                })?;
                 Ok(absolute_path.to_string_lossy().into_owned())
             }
             Err(_) => Err(CliError::NoConfig(

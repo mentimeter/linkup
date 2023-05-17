@@ -14,6 +14,7 @@ pub struct Session {
     pub services: HashMap<String, Service>,
     pub domains: HashMap<String, Domain>,
     pub domain_selection_order: Vec<String>,
+    pub cache_routes: Option<Vec<Regex>>,
 }
 
 #[derive(Clone)]
@@ -46,6 +47,7 @@ pub struct UpdateSessionRequest {
     pub session_token: String,
     pub services: Vec<StorableService>,
     pub domains: Vec<StorableDomain>,
+    pub cache_routes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -53,6 +55,7 @@ pub struct StorableSession {
     pub session_token: String,
     pub services: Vec<StorableService>,
     pub domains: Vec<StorableDomain>,
+    pub cache_routes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -169,11 +172,22 @@ impl TryFrom<StorableSession> for Session {
 
         let domain_names = domains.keys().cloned().collect();
 
+        let cache_routes = match value.cache_routes {
+            Some(cr) => Some(
+                cr.into_iter()
+                    .map(|r| Regex::new(&r))
+                    .collect::<Result<Vec<Regex>, regex::Error>>()
+                    .map_err(|e| ConfigError::InvalidRegex("cache route".to_string(), e))?,
+            ),
+            None => None,
+        };
+
         Ok(Session {
             session_token: value.session_token,
             services,
             domains,
             domain_selection_order: choose_domain_ordering(domain_names),
+            cache_routes,
         })
     }
 }
@@ -249,10 +263,17 @@ impl From<Session> for StorableSession {
             })
             .collect();
 
+        let cache_routes = value.cache_routes.map(|cr| {
+            cr.into_iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<String>>()
+        });
+
         StorableSession {
             session_token: value.session_token,
             services,
             domains,
+            cache_routes,
         }
     }
 }
@@ -268,6 +289,7 @@ pub fn update_session_req_from_json(input_json: String) -> Result<(String, Sessi
                 session_token: c.session_token,
                 services: c.services,
                 domains: c.domains,
+                cache_routes: c.cache_routes,
             }
             .try_into();
 
@@ -398,6 +420,9 @@ mod tests {
                 "domain": "api.example.com",
                 "default_service": "backend"
             }
+        ],
+        "cache_routes": [
+            "/static/.*"
         ]
     }
     "#;
@@ -483,6 +508,12 @@ mod tests {
             .unwrap()
             .routes
             .is_empty());
+
+        assert_eq!(server_config.cache_routes.as_ref().unwrap().len(), 1);
+        assert_eq!(
+            server_config.cache_routes.as_ref().unwrap()[0].as_str(),
+            "/static/.*"
+        );
     }
 
     #[test]

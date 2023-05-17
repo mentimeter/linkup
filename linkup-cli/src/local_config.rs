@@ -20,6 +20,7 @@ pub struct LinkupState {
     pub config_path: String,
     pub remote: Url,
     pub tunnel: Url,
+    pub cache_routes: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -57,6 +58,7 @@ pub struct YamlLocalConfig {
 #[derive(Deserialize)]
 struct LinkupConfig {
     remote: Url,
+    cache_routes: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +83,7 @@ pub fn config_to_state(yaml_config: YamlLocalConfig, config_path: String) -> Loc
         config_path,
         remote: yaml_config.linkup.remote,
         tunnel: Url::parse("http://localhost").expect("default url parses"),
+        cache_routes: yaml_config.linkup.cache_routes,
     };
 
     let services = yaml_config

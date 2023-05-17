@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use rand::Rng;
+use regex::Regex;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -87,7 +88,10 @@ pub fn get_additional_headers(
     additional_headers
 }
 
-pub fn common_response_headers() -> HashMap<String, String> {
+pub fn additional_response_headers(
+    path: String,
+    cache_routes: Option<Vec<Regex>>,
+) -> HashMap<String, String> {
     let mut headers = HashMap::new();
 
     headers.insert(
@@ -97,11 +101,21 @@ pub fn common_response_headers() -> HashMap<String, String> {
     headers.insert("Access-Control-Allow-Origin".to_string(), "*".to_string());
     headers.insert("Access-Control-Allow-Headers".to_string(), "*".to_string());
     headers.insert("Access-Control-Max-Age".to_string(), "86400".to_string());
-    // This can be discussed / tweaked later, probably PR-only sessions should respect cache headers, but dev ones not.
-    headers.insert(
-        "Cache-Control".to_string(),
-        "no-store, must-revalidate".to_string(),
-    );
+
+    // only insert the cache-control header if the path does not match any of the cache routes
+    if let Some(routes) = cache_routes {
+        if !routes.iter().any(|route| route.is_match(&path)) {
+            headers.insert(
+                "Cache-Control".to_string(),
+                "no-store".to_string(),
+            );
+        }
+    } else {
+        headers.insert(
+            "Cache-Control".to_string(),
+            "no-store".to_string(),
+        );
+    }
 
     headers
 }

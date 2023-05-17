@@ -109,7 +109,10 @@ async fn linkup_request_handler(
                 ),
         };
 
-    convert_reqwest_response(response)
+    let extra_resp_headers =
+        additional_response_headers(req.path().to_string(), config.cache_routes);
+
+    convert_reqwest_response(response, extra_resp_headers)
         .await
         .unwrap_or_else(|_| {
             HttpResponse::InternalServerError()
@@ -133,7 +136,10 @@ fn merge_headers(
     header_map
 }
 
-async fn convert_reqwest_response(response: reqwest::Response) -> Result<HttpResponse, ProxyError> {
+async fn convert_reqwest_response(
+    response: reqwest::Response,
+    extra_headers: HashMap<String, String>,
+) -> Result<HttpResponse, ProxyError> {
     let status_code = response.status();
     let headers = response.headers().clone();
     let body = response
@@ -144,6 +150,10 @@ async fn convert_reqwest_response(response: reqwest::Response) -> Result<HttpRes
     let mut response_builder = HttpResponse::build(status_code);
     for (key, value) in headers.iter() {
         response_builder.append_header((key, value));
+    }
+
+    for (key, value) in extra_headers.iter() {
+        response_builder.insert_header((key.to_owned(), value.to_owned()));
     }
 
     Ok(response_builder.body(body))
