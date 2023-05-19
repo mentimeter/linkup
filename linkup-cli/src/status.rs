@@ -1,6 +1,6 @@
 use colored::{ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{thread, time::Duration};
 
 use crate::{
     local_config::{LocalState, ServiceTarget},
@@ -58,9 +58,18 @@ impl From<Result<reqwest::blocking::Response, reqwest::Error>> for ServerStatus 
 pub fn status(json: bool) -> Result<(), CliError> {
     let state = get_state()?;
 
-    let mut services = linkup_status(&state);
-    let service_statuses = service_status(&state)?;
-    services.extend(service_statuses);
+    let (tx, rx) = std::sync::mpsc::channel();
+    linkup_status(tx.clone(), &state);
+    service_status(tx.clone(), &state);
+
+    drop(tx);
+
+    let mut services = rx.iter().collect::<Vec<ServiceStatus>>();
+    services.sort_by(|a, b| {
+        a.component_kind
+            .cmp(&b.component_kind)
+            .then(a.name.cmp(&b.name))
+    });
 
     // Filter out domains that are subdomains of other domains
     let filtered_domains = state
@@ -129,56 +138,70 @@ pub fn status(json: bool) -> Result<(), CliError> {
     Ok(())
 }
 
-fn linkup_status(state: &LocalState) -> Vec<ServiceStatus> {
-    let mut linkup_statuses: Vec<ServiceStatus> = Vec::new();
-
+fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState) {
     let local_url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
-    linkup_statuses.push(ServiceStatus {
-        name: "local_server".to_string(),
-        component_kind: "linkup".to_string(),
-        location: local_url.to_string(),
-        status: server_status(local_url),
-    });
 
-    // linkup_statuses.append(local_status);
-
-    linkup_statuses.push(ServiceStatus {
-        name: "remote_server".to_string(),
-        component_kind: "linkup".to_string(),
-        location: state.linkup.remote.to_string(),
-        status: server_status(state.linkup.remote.to_string()),
-    });
-
-    linkup_statuses.push(ServiceStatus {
-        name: "tunnel".to_string(),
-        component_kind: "linkup".to_string(),
-        location: state.linkup.tunnel.to_string(),
-        status: server_status(state.linkup.tunnel.to_string()),
-    });
-
-    linkup_statuses
-}
-
-fn service_status(state: &LocalState) -> Result<Vec<ServiceStatus>, CliError> {
-    let mut service_statuses: Vec<ServiceStatus> = Vec::new();
-
-    for service in state.services.iter().cloned() {
-        let url = match service.current {
-            ServiceTarget::Local => service.local.clone(),
-            ServiceTarget::Remote => service.remote.clone(),
+    let local_tx = tx.clone();
+    thread::spawn(move || {
+        let service_status = ServiceStatus {
+            name: "local_server".to_string(),
+            component_kind: "linkup".to_string(),
+            location: local_url.clone(),
+            status: server_status(local_url),
         };
 
-        let status = server_status(url.to_string());
+        local_tx.send(service_status).unwrap();
+    });
 
-        service_statuses.push(ServiceStatus {
-            name: service.name,
-            location: url.to_string(),
-            component_kind: service.current.to_string(),
-            status,
+    let remote_tx = tx.clone();
+    // TODO(augustoccesar): having to clone this remote on the ServiceStatus feels unnecessary. Look if it can be reference
+    let remote = state.linkup.remote.to_string();
+    thread::spawn(move || {
+        let service_status = ServiceStatus {
+            name: "remote_server".to_string(),
+            component_kind: "linkup".to_string(),
+            location: remote.clone(),
+            status: server_status(remote),
+        };
+
+        remote_tx.send(service_status).unwrap();
+    });
+
+    // NOTE(augustoccesar): last usage of tx on this context, no need to clone it
+    let tunnel_tx = tx;
+    let tunnel = state.linkup.tunnel.to_string();
+    thread::spawn(move || {
+        let service_status = ServiceStatus {
+            name: "tunnel".to_string(),
+            component_kind: "linkup".to_string(),
+            location: tunnel.clone(),
+            status: server_status(tunnel),
+        };
+
+        tunnel_tx.send(service_status).unwrap();
+    });
+}
+
+fn service_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState) {
+    for service in state.services.iter().cloned() {
+        let tx = tx.clone();
+
+        thread::spawn(move || {
+            let url = match service.current {
+                ServiceTarget::Local => service.local.clone(),
+                ServiceTarget::Remote => service.remote.clone(),
+            };
+
+            let service_status = ServiceStatus {
+                name: service.name,
+                location: url.to_string(),
+                component_kind: service.current.to_string(),
+                status: server_status(url.to_string()),
+            };
+
+            tx.send(service_status).unwrap();
         });
     }
-
-    Ok(service_statuses)
 }
 
 fn server_status(url: String) -> ServerStatus {
