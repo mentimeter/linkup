@@ -64,7 +64,12 @@ pub fn status(json: bool) -> Result<(), CliError> {
 
     drop(tx);
 
-    let services = rx.iter().collect::<Vec<ServiceStatus>>();
+    let mut services = rx.iter().collect::<Vec<ServiceStatus>>();
+    services.sort_by(|a, b| {
+        a.component_kind
+            .cmp(&b.component_kind)
+            .then(a.name.cmp(&b.name))
+    });
 
     // Filter out domains that are subdomains of other domains
     let filtered_domains = state
