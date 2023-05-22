@@ -1,9 +1,8 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 use std::thread;
-
+use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
@@ -166,7 +165,10 @@ pub fn wait_till_ok(url: String) -> Result<(), CliError> {
     let start = Instant::now();
     loop {
         if start.elapsed() > Duration::from_secs(15) {
-            return Err(CliError::StartLinkupTimeout(format!("{} took too long to load", url)));
+            return Err(CliError::StartLinkupTimeout(format!(
+                "{} took too long to load",
+                url
+            )));
         }
 
         let response = client.get(&url).send();

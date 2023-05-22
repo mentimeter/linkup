@@ -167,7 +167,6 @@ pub fn get_target_url(
                 }
             })
             .unwrap_or_else(|| domain.default_service.clone());
-        println!("target service: {:#?}", service_name);
 
         if let Some(service) = config.services.get(&service_name) {
             let mut new_path = path.to_string();

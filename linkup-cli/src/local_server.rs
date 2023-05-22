@@ -69,6 +69,10 @@ async fn linkup_request_handler(
         .get_request_session(url.clone(), headers.clone())
         .await;
 
+    if session_result.is_err() {
+        println!("Failed to get session: {:?}", session_result);
+    }
+
     let (session_name, config) = match session_result {
         Ok(result) => result,
         Err(_) => {

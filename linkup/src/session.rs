@@ -8,7 +8,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Session {
     pub session_token: String,
     pub services: HashMap<String, Service>,
@@ -17,13 +17,13 @@ pub struct Session {
     pub cache_routes: Option<Vec<Regex>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Service {
     pub origin: Url,
     pub rewrites: Vec<Rewrite>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Rewrite {
     pub source: Regex,
     pub target: String,
