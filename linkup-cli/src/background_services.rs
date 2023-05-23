@@ -61,47 +61,56 @@ pub fn start_tunnel() -> Result<Url, CliError> {
                 )))
             }
         },
-        Outcome::Parent(parent_result) => {
-            if parent_result.is_err() {
+        Outcome::Parent(parent_result) => match parent_result {
+            Ok(_) => (),
+            Err(error) => {
                 return Err(CliError::StartLocalTunnel(format!(
                     "Failed to start local tunnel: {}",
-                    parent_result.err().unwrap(),
-                )));
+                    error
+                )))
             }
-        }
+        },
     }
 
-    let re = Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com").unwrap();
+    let re =
+        Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com").expect("Failed to compile regex");
 
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         // Either the tunnel will start and we'll get a URL, or the propogated error will end the cli command
         loop {
             // TODO consider sync_data instead
-            let stderr_file = File::open(linkup_file_path(LINKUP_CLOUDFLARED_STDERR))
-                .map_err(|_| {
+            let stderr_file =
+                File::open(linkup_file_path(LINKUP_CLOUDFLARED_STDERR)).map_err(|_| {
                     CliError::StartLocalTunnel(
                         "Failed to open stdout file for local tunnel".to_string(),
                     )
-                })
-                .unwrap();
+                });
 
-            let buf_reader = BufReader::new(stderr_file);
+            match stderr_file {
+                Ok(file) => {
+                    let buf_reader: BufReader<File> = BufReader::new(file);
 
-            for line in buf_reader.lines() {
-                let line = line.unwrap_or_default();
-                if let Some(mat) = re.find(&line) {
-                    let _ = tx.send(Url::parse(mat.as_str()).expect("Failed to parse tunnel URL"));
-                    return;
+                    for line in buf_reader.lines() {
+                        let line = line.unwrap_or_default();
+                        if let Some(mat) = re.find(&line) {
+                            let url = Url::parse(mat.as_str()).expect("Failed to parse tunnel URL");
+                            tx.send(Ok(url)).expect("Failed to send tunnel URL");
+                            return;
+                        }
+                    }
                 }
-            }
+                Err(err) => {
+                    tx.send(Err(err)).expect("Failed to send stderr_file error");
+                }
+            };
 
             thread::sleep(Duration::from_millis(100));
         }
     });
 
     match rx.recv_timeout(Duration::from_secs(10)) {
-        Ok(url) => Ok(url),
+        Ok(result) => result,
         Err(e) => Err(CliError::StartLocalTunnel(format!(
             "Failed to obtain tunnel URL within 10 seconds: {}",
             e
@@ -119,7 +128,7 @@ fn daemonized_tunnel_child() {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .unwrap();
+        .expect("Failed to start cloudflared tunnel");
 
     let pid = child_cmd.id();
     println!("Tunnel child process started {}", pid);

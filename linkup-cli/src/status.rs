@@ -96,7 +96,10 @@ pub fn status(json: bool) -> Result<(), CliError> {
     };
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&status).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&status).expect("Failed to serialize status")
+        );
     } else {
         // Display session information
         println!("Session Information:");
@@ -149,7 +152,9 @@ fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState)
             status: server_status(local_url),
         };
 
-        local_tx.send(service_status).unwrap();
+        local_tx
+            .send(service_status)
+            .expect("Failed to send linkup local server status")
     });
 
     let remote_tx = tx.clone();
@@ -163,7 +168,9 @@ fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState)
             status: server_status(remote),
         };
 
-        remote_tx.send(service_status).unwrap();
+        remote_tx
+            .send(service_status)
+            .expect("Failed to send linkup remote server status");
     });
 
     // NOTE(augustoccesar): last usage of tx on this context, no need to clone it
@@ -177,7 +184,9 @@ fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState)
             status: server_status(tunnel),
         };
 
-        tunnel_tx.send(service_status).unwrap();
+        tunnel_tx
+            .send(service_status)
+            .expect("Failed to send linkup tunnel status");
     });
 }
 
@@ -198,7 +207,8 @@ fn service_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState
                 status: server_status(url.to_string()),
             };
 
-            tx.send(service_status).unwrap();
+            tx.send(service_status)
+                .expect("Failed to send service status");
         });
     }
 }
@@ -206,10 +216,10 @@ fn service_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState
 fn server_status(url: String) -> ServerStatus {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))
-        .build()
-        .unwrap();
+        .build();
 
-    let response = client.get(url).send();
-
-    response.into()
+    match client {
+        Ok(client) => client.get(url).send().into(),
+        Err(_) => ServerStatus::Error,
+    }
 }
