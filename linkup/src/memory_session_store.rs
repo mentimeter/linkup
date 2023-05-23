@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Mutex, RwLock},
+    sync::{RwLock},
 };
 
 use async_trait::async_trait;

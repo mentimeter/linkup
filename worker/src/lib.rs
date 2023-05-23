@@ -1,3 +1,4 @@
+use regex::Regex;
 use std::{collections::HashMap, sync::Arc};
 
 use kv_store::CfWorkerStringStore;
@@ -54,12 +55,45 @@ async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) ->
     }
 }
 
-async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
-    let body_bytes = match req.bytes().await {
-        Ok(bytes) => bytes,
-        Err(_) => return plaintext_error("Bad or missing request body", 400),
-    };
+async fn get_cached_req(
+    req: &Request,
+    cache_routes: &Option<Vec<Regex>>,
+) -> Result<Option<Response>> {
+    let path = req.path();
 
+    if let Some(routes) = cache_routes {
+        if routes.iter().any(|route| route.is_match(&path)) {
+            let url = req.url()?;
+            Cache::default().get(url.to_string(), false).await
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+async fn set_cached_req(
+    req: &Request,
+    mut resp: Response,
+    cache_routes: Option<Vec<Regex>>,
+) -> Result<Response> {
+    let path = req.path();
+
+    if let Some(routes) = cache_routes {
+        if routes.iter().any(|route| route.is_match(&path)) {
+            let url = req.url()?;
+            let cache_resp = resp.cloned()?;
+            Cache::default().put(url.to_string(), cache_resp).await?;
+
+            return Ok(resp);
+        }
+    }
+
+    Ok(resp)
+}
+
+async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),
         Err(_) => return plaintext_error("Bad or missing request url", 400),
@@ -76,6 +110,15 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
             Ok(result) => result,
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
+
+    if let Some(cached_response) = get_cached_req(&req, &config.cache_routes).await? {
+        return Ok(cached_response);
+    }
+
+    let body_bytes = match req.bytes().await {
+        Ok(bytes) => bytes,
+        Err(_) => return plaintext_error("Bad or missing request body", 400),
+    };
 
     let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
     {
@@ -104,9 +147,12 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Err(e) => return plaintext_error(format!("Failed to proxy request: {}", e), 502),
     };
 
-    let extra_resp_headers = additional_response_headers(req.path(), config.cache_routes);
 
-    convert_reqwest_response_to_cf(response, extra_resp_headers).await
+    let mut cf_resp = convert_reqwest_response_to_cf(response, additional_response_headers()).await?;
+
+    cf_resp = set_cached_req(&req, cf_resp, config.cache_routes).await?;
+
+    Ok(cf_resp)
 }
 
 async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Result<Response> {

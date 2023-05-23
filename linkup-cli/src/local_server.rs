@@ -114,7 +114,7 @@ async fn linkup_request_handler(
         };
 
     let extra_resp_headers =
-        additional_response_headers(req.path().to_string(), config.cache_routes);
+        additional_response_headers();
 
     convert_reqwest_response(response, extra_resp_headers)
         .await
