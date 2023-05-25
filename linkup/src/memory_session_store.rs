@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{RwLock},
-};
+use std::{collections::HashMap, sync::RwLock};
 
 use async_trait::async_trait;
 

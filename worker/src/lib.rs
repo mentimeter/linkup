@@ -147,8 +147,8 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Err(e) => return plaintext_error(format!("Failed to proxy request: {}", e), 502),
     };
 
-
-    let mut cf_resp = convert_reqwest_response_to_cf(response, additional_response_headers()).await?;
+    let mut cf_resp =
+        convert_reqwest_response_to_cf(response, additional_response_headers()).await?;
 
     cf_resp = set_cached_req(&req, cf_resp, config.cache_routes).await?;
 

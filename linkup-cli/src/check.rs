@@ -10,9 +10,8 @@ use reqwest::StatusCode;
 use linkup::{StorableService, StorableSession, UpdateSessionRequest};
 use url::Url;
 
-use crate::background_services::{
-    is_local_server_started, is_tunnel_started, start_local_server, start_tunnel,
-};
+use crate::background_free_cf_tunnel::start_free_tunnel;
+use crate::background_services::{is_local_server_started, is_tunnel_started, start_local_server};
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::start::save_state;
 use crate::{start::get_state, CliError};
@@ -33,7 +32,7 @@ pub fn check() -> Result<(), CliError> {
 
     if is_tunnel_started().is_err() {
         println!("starting tunnel...");
-        let tunnel = start_tunnel()?;
+        let tunnel = start_free_tunnel()?;
         state.linkup.tunnel = tunnel;
     }
 
