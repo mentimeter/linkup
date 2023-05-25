@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    check::check,
+    background_booting::boot_background_services,
     linkup_file_path,
     local_config::{config_to_state, LocalState, YamlLocalConfig},
     CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
@@ -27,7 +27,7 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
 
     save_state(state)?;
 
-    check()?;
+    boot_background_services()?;
 
     Ok(())
 }

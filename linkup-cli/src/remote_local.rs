@@ -1,5 +1,5 @@
 use crate::{
-    check::check,
+    background_booting::boot_background_services,
     local_config::ServiceTarget,
     start::{get_state, save_state},
     CliError,
@@ -19,7 +19,7 @@ pub fn remote(service_name: String) -> Result<(), CliError> {
     service.current = ServiceTarget::Remote;
 
     save_state(state)?;
-    check()?;
+    boot_background_services()?;
 
     Ok(())
 }
@@ -38,6 +38,6 @@ pub fn local(service_name: String) -> Result<(), CliError> {
     service.current = ServiceTarget::Local;
 
     save_state(state)?;
-    check()?;
+    boot_background_services()?;
     Ok(())
 }
