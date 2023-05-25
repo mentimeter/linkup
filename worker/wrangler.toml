@@ -1,6 +1,7 @@
 name = "linkup-worker"
 main = "build/worker/shim.mjs"
 compatibility_date = "2022-01-20"
+logpush = true
 
 kv_namespaces = [
   { binding = "LINKUP_SESSIONS", id = "xxx-some-value", preview_id = "xxx-some-value"  },
