@@ -9,7 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 actix-web = "4.3.1"
-chrono = "0.4.24"
 clap = { version = "4.1.8", features = ["derive"] }
 colored = "2"
 ctrlc = { version = "3.0", features = ["termination"] }

@@ -3,10 +3,9 @@ use std::{env, fs, io::ErrorKind, path::PathBuf};
 use clap::{Parser, Subcommand};
 use thiserror::Error;
 
-mod background_authed_cf_tunnel;
 mod background_booting;
 mod background_local_server;
-mod background_quick_cf_tunnel;
+mod background_tunnel;
 mod local_config;
 mod local_server;
 mod remote_local;

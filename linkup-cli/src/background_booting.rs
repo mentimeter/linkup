@@ -10,11 +10,10 @@ use reqwest::StatusCode;
 use linkup::{StorableService, StorableSession, UpdateSessionRequest};
 use url::Url;
 
-use crate::background_authed_cf_tunnel::start_authed_tunnel;
 use crate::background_local_server::{
     is_local_server_started, is_tunnel_started, start_local_server,
 };
-use crate::background_quick_cf_tunnel::start_quick_tunnel;
+use crate::background_tunnel::start_tunnel;
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::start::save_state;
 use crate::{start::get_state, CliError};
@@ -35,15 +34,8 @@ pub fn boot_background_services() -> Result<(), CliError> {
 
     if is_tunnel_started().is_err() {
         println!("starting tunnel...");
-        // if TUNNEL_ORIGIN_CERT is set, use an authed tunnel
-        // if let Ok(cloudflare_tunnel_host) = std::env::var("LINKUP_CLOUDFLARE_TUNNEL_HOST") {
-        //     let tunnel = start_authed_tunnel(cloudflare_tunnel_host)?;
-        //     state.linkup.tunnel = tunnel;
-        // }
-        //  else {
-            let tunnel = start_quick_tunnel()?;
-            state.linkup.tunnel = tunnel;
-        // }
+        let tunnel = start_tunnel()?;
+        state.linkup.tunnel = tunnel;
     }
 
     for service in &state.services {
@@ -74,7 +66,7 @@ pub fn boot_background_services() -> Result<(), CliError> {
     println!("{}", server_session_name);
 
     // If the tunnel is checked too quickly, it dies ¯\_(ツ)_/¯
-    thread::sleep(Duration::from_millis(2000));
+    thread::sleep(Duration::from_millis(1000));
     wait_till_ok(format!("{}linkup-check", tunnel_url))?;
 
     // final checks services are responding
@@ -173,7 +165,7 @@ pub fn wait_till_ok(url: String) -> Result<(), CliError> {
 
     let start = Instant::now();
     loop {
-        if start.elapsed() > Duration::from_secs(30) {
+        if start.elapsed() > Duration::from_secs(20) {
             return Err(CliError::StartLinkupTimeout(format!(
                 "{} took too long to load",
                 url

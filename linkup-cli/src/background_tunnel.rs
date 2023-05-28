@@ -1,14 +1,9 @@
-use chrono::offset::Utc;
-use chrono::DateTime;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
 use std::fs::{remove_file, File};
 use std::io::{BufRead, BufReader};
 use std::process::{self, Command, Stdio};
 use std::sync::{mpsc, Once};
 use std::thread;
 use std::time::Duration;
-use std::time::SystemTime;
 
 use daemonize::{Daemonize, Outcome};
 use regex::Regex;
@@ -22,39 +17,25 @@ use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PORT};
 const LINKUP_CLOUDFLARED_STDOUT: &str = "cloudflared-stdout";
 const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";
 
-pub fn start_authed_tunnel(cloudflare_tunnel_host: String) -> Result<Url, CliError> {
-    println!("Starting authed tunnel...");
-    // generate a string of the format "2023-05-23-abcd"
-    let now: DateTime<Utc> = SystemTime::now().into();
-    let rng = thread_rng();
-    let random_chars: String = rng
-        .sample_iter(&Alphanumeric)
-        .take(4)
-        .map(char::from)
-        .map(|c| c.to_lowercase().collect::<String>())
-        .collect();
+const TUNNEL_START_WAIT: u64 = 20;
 
-    let tunnel_name = format!("{}-{}", now.format("%Y-%m-%d"), random_chars);
+pub fn start_tunnel() -> Result<Url, CliError> {
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match try_start_tunnel() {
+            Ok(url) => return Ok(url),
+            Err(err) => {
+                println!("Tunnel failed to boot within the time limit. Retrying...");
+                if attempt >= 3 {
+                    return Err(err);
+                }
+            }
+        }
+    }
+}
 
-    // cloudflared tunnel create
-    let create_result = Command::new("cloudflared")
-        .args(["tunnel", "create", tunnel_name.as_str()])
-        .status();
-    println!("create_result: {:?}", create_result);
-
-    // cloudflared tunnel route dns tunnel-name
-
-    let create_result = Command::new("cloudflared")
-        .args([
-            "tunnel",
-            "route",
-            "dns",
-            tunnel_name.as_str(),
-            format!("{}.{}", tunnel_name, cloudflare_tunnel_host).as_str(),
-        ])
-        .status();
-    println!("create_result: {:?}", create_result);
-
+fn try_start_tunnel() -> Result<Url, CliError> {
     let stdout_file = File::create(linkup_file_path(LINKUP_CLOUDFLARED_STDOUT)).map_err(|_| {
         CliError::StartLocalTunnel("Failed to create stdout file for local tunnel".to_string())
     })?;
@@ -71,7 +52,7 @@ pub fn start_authed_tunnel(cloudflare_tunnel_host: String) -> Result<Url, CliErr
 
     match daemonize.execute() {
         Outcome::Child(child_result) => match child_result {
-            Ok(_) => daemonized_tunnel_child(tunnel_name.clone()),
+            Ok(_) => daemonized_tunnel_child(),
             Err(e) => {
                 return Err(CliError::StartLocalTunnel(format!(
                     "Failed to start local tunnel: {}",
@@ -89,18 +70,18 @@ pub fn start_authed_tunnel(cloudflare_tunnel_host: String) -> Result<Url, CliErr
             }
         },
     }
-    let url = Url::parse(format!("https://{}.{}", tunnel_name, cloudflare_tunnel_host).as_str())
-        .expect("Failed to parse tunnel URL");
-    return Ok(url);
 
-    let re =
+    let tunnel_url_re =
         Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com").expect("Failed to compile regex");
+    let tunnel_started_re =
+        Regex::new(r"Registered tunnel connection").expect("Failed to compile regex");
 
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
-        // Either the tunnel will start and we'll get a URL, or the propogated error will end the cli command
+        let mut url = None;
+        let mut found_started = false;
+
         loop {
-            // TODO consider sync_data instead
             let stderr_file =
                 File::open(linkup_file_path(LINKUP_CLOUDFLARED_STDERR)).map_err(|_| {
                     CliError::StartLocalTunnel(
@@ -114,9 +95,19 @@ pub fn start_authed_tunnel(cloudflare_tunnel_host: String) -> Result<Url, CliErr
 
                     for line in buf_reader.lines() {
                         let line = line.unwrap_or_default();
-                        if let Some(mat) = re.find(&line) {
-                            let url = Url::parse(mat.as_str()).expect("Failed to parse tunnel URL");
-                            tx.send(Ok(url)).expect("Failed to send tunnel URL");
+                        if let Some(url_match) = tunnel_url_re.find(&line) {
+                            let found_url =
+                                Url::parse(url_match.as_str()).expect("Failed to parse tunnel URL");
+                            url = Some(found_url);
+                        }
+
+                        if let Some(_started_match) = tunnel_started_re.find(&line) {
+                            found_started = true;
+                        }
+
+                        if url.is_some() && found_started {
+                            let u = url.unwrap();
+                            tx.send(Ok(u)).expect("Failed to send tunnel URL");
                             return;
                         }
                     }
@@ -130,23 +121,21 @@ pub fn start_authed_tunnel(cloudflare_tunnel_host: String) -> Result<Url, CliErr
         }
     });
 
-    match rx.recv_timeout(Duration::from_secs(10)) {
+    match rx.recv_timeout(Duration::from_secs(TUNNEL_START_WAIT)) {
         Ok(result) => result,
         Err(e) => Err(CliError::StartLocalTunnel(format!(
-            "Failed to obtain tunnel URL within 10 seconds: {}",
-            e
+            "Failed to obtain tunnel URL within {} seconds: {}",
+            TUNNEL_START_WAIT, e
         ))),
     }
 }
 
-fn daemonized_tunnel_child(tunnel_name: String) {
+fn daemonized_tunnel_child() {
     let mut child_cmd = Command::new("cloudflared")
         .args([
             "tunnel",
-            "run",
             "--url",
             &format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
-            tunnel_name.as_str(),
         ])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
