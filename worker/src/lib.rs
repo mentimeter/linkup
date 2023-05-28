@@ -78,6 +78,10 @@ async fn set_cached_req(
     mut resp: Response,
     cache_routes: Option<Vec<Regex>>,
 ) -> Result<Response> {
+    if resp.status_code() != 200 {
+        return Ok(resp);
+    }
+
     let path = req.path();
 
     if let Some(routes) = cache_routes {
