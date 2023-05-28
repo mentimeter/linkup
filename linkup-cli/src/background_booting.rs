@@ -10,14 +10,16 @@ use reqwest::StatusCode;
 use linkup::{StorableService, StorableSession, UpdateSessionRequest};
 use url::Url;
 
-use crate::background_free_cf_tunnel::start_free_tunnel;
-use crate::background_services::{is_local_server_started, is_tunnel_started, start_local_server};
+use crate::background_local_server::{
+    is_local_server_started, is_tunnel_started, start_local_server,
+};
+use crate::background_tunnel::start_tunnel;
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::start::save_state;
 use crate::{start::get_state, CliError};
 use crate::{LINKUP_ENV_SEPARATOR, LINKUP_LOCALSERVER_PORT};
 
-pub fn check() -> Result<(), CliError> {
+pub fn boot_background_services() -> Result<(), CliError> {
     let mut state = get_state()?;
 
     let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
@@ -32,7 +34,7 @@ pub fn check() -> Result<(), CliError> {
 
     if is_tunnel_started().is_err() {
         println!("starting tunnel...");
-        let tunnel = start_free_tunnel()?;
+        let tunnel = start_tunnel()?;
         state.linkup.tunnel = tunnel;
     }
 
@@ -163,7 +165,7 @@ pub fn wait_till_ok(url: String) -> Result<(), CliError> {
 
     let start = Instant::now();
     loop {
-        if start.elapsed() > Duration::from_secs(15) {
+        if start.elapsed() > Duration::from_secs(20) {
             return Err(CliError::StartLinkupTimeout(format!(
                 "{} took too long to load",
                 url

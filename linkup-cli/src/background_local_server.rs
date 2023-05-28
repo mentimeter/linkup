@@ -1,13 +1,13 @@
 use std::fs::{remove_file, File};
 use std::process::{self};
-use std::sync::{Once};
+use std::sync::Once;
 
 use daemonize::{Daemonize, Outcome};
 use thiserror::Error;
 
 use crate::local_server::local_linkup_main;
+use crate::LINKUP_CLOUDFLARED_PID;
 use crate::{linkup_file_path, CliError, LINKUP_LOCALSERVER_PID_FILE};
-use crate::{LINKUP_CLOUDFLARED_PID};
 
 const LINKUP_LOCALSERVER_STDOUT: &str = "localserver-stdout";
 const LINKUP_LOCALSERVER_STDERR: &str = "localserver-stderr";
