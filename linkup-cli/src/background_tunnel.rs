@@ -11,6 +11,7 @@ use url::Url;
 
 use crate::signal::send_sigint;
 
+use crate::stop::stop_tunnel;
 use crate::{linkup_file_path, CliError};
 use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PORT};
 
@@ -25,11 +26,14 @@ pub fn start_tunnel() -> Result<Url, CliError> {
         attempt += 1;
         match try_start_tunnel() {
             Ok(url) => return Ok(url),
+            Err(CliError::StopErr(e)) => return Err(CliError::StopErr(format!("Failed to stop tunnel when retrying tunnel boot: {}", e))),
             Err(err) => {
                 println!("Tunnel failed to boot within the time limit. Retrying...");
                 if attempt >= 3 {
                     return Err(err);
                 }
+                // Give the tunnel a chance to clean up
+                thread::sleep(Duration::from_secs(1));
             }
         }
     }
@@ -123,10 +127,13 @@ fn try_start_tunnel() -> Result<Url, CliError> {
 
     match rx.recv_timeout(Duration::from_secs(TUNNEL_START_WAIT)) {
         Ok(result) => result,
-        Err(e) => Err(CliError::StartLocalTunnel(format!(
-            "Failed to obtain tunnel URL within {} seconds: {}",
-            TUNNEL_START_WAIT, e
-        ))),
+        Err(e) => {
+            stop_tunnel()?;
+            Err(CliError::StartLocalTunnel(format!(
+                "Failed to obtain tunnel URL within {} seconds: {}",
+                TUNNEL_START_WAIT, e
+            )))
+        }
     }
 }
 

@@ -24,19 +24,7 @@ pub fn stop() -> Result<(), CliError> {
         ))),
     };
 
-    let tunnel_stopped = match get_pid(LINKUP_CLOUDFLARED_PID) {
-        Ok(pid) => send_sigint(&pid).map_err(|e| {
-            CliError::StopErr(format!(
-                "Could not send SIGINT to cloudflared pid {}: {}",
-                pid, e
-            ))
-        }),
-        Err(PidError::NoPidFile(_)) => Ok(()),
-        Err(e) => Err(CliError::StopErr(format!(
-            "Could not get cloudflared pid: {}",
-            e
-        ))),
-    };
+    let tunnel_stopped = stop_tunnel();
 
     let state = get_state()?;
     for service in &state.services {
@@ -54,6 +42,22 @@ pub fn stop() -> Result<(), CliError> {
         (Ok(_), Ok(_)) => Ok(()),
         (Err(e), _) => Err(e),
         (_, Err(e)) => Err(e),
+    }
+}
+
+pub fn stop_tunnel() -> Result<(), CliError> {
+    match get_pid(LINKUP_CLOUDFLARED_PID) {
+        Ok(pid) => send_sigint(&pid).map_err(|e| {
+            CliError::StopErr(format!(
+                "Could not send SIGINT to cloudflared pid {}: {}",
+                pid, e
+            ))
+        }),
+        Err(PidError::NoPidFile(_)) => Ok(()),
+        Err(e) => Err(CliError::StopErr(format!(
+            "Could not get cloudflared pid: {}",
+            e
+        ))),
     }
 }
 
