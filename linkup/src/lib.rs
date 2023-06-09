@@ -128,12 +128,22 @@ pub fn get_target_url(
         session_name,
     ));
 
+    // This one is for redirects, where the referer doesn't exist
+    let origin_target = config.domains.get(&get_target_domain(
+        headers
+            .get("origin")
+            .unwrap_or(&"does-not-exist".to_string()),
+        session_name,
+    ));
+
     let target_domain = if url_target.is_some() {
         url_target
     } else if forwarded_host_target.is_some() {
         forwarded_host_target
-    } else {
+    } else if referer_target.is_some() {
         referer_target
+    } else {
+        origin_target
     };
 
     if let Some(domain) = target_domain {
@@ -304,6 +314,17 @@ mod tests {
         );
         sessions
             .get_request_session("example.com".to_string(), referer_headers)
+            .await
+            .unwrap();
+
+        // Origin
+        let mut origin_headers: HashMap<String, String> = HashMap::new();
+        origin_headers.insert(
+            "origin".to_string(),
+            format!("http://{}.example.com", name),
+        );
+        sessions
+            .get_request_session("example.com".to_string(), origin_headers)
             .await
             .unwrap();
 
