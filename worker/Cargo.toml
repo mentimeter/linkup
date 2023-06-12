@@ -12,7 +12,8 @@ default = ["console_error_panic_hook"]
 [dependencies]
 linkup = { path = "../linkup" }
 cfg-if = "1.0.0"
-worker = "0.0.16"
+# worker = { path = "../../workers-rs/worker" }
+worker = "0.0.17"
 futures = "0.3"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
@@ -21,7 +22,7 @@ futures = "0.3"
 # code size when deploying.
 console_error_panic_hook = { version = "0.1.1", optional = true }
 http = "0.2.9"
-reqwest = "0.11.17"
+reqwest = "0.11.18"
 regex = "1.8.1"
 
 # [profile.release]

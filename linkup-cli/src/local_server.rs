@@ -1,9 +1,9 @@
 use std::{collections::HashMap, io};
 
-use futures::stream::StreamExt;
 use actix_web::{
-    http::header, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder, guard, rt,
+    guard, http::header, middleware, rt, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
+use futures::stream::StreamExt;
 use thiserror::Error;
 
 use linkup::*;
@@ -55,7 +55,7 @@ async fn linkup_config_handler(
 async fn linkup_ws_request_handler(
     string_store: web::Data<MemoryStringStore>,
     req: HttpRequest,
-    req_stream: web::Payload
+    req_stream: web::Payload,
 ) -> impl Responder {
     let sessions = SessionAllocator::new(string_store.into_inner());
 
@@ -117,10 +117,8 @@ async fn linkup_ws_request_handler(
     let status = response.status().as_u16();
     if status != 101 {
         return HttpResponse::BadGateway()
-        .append_header(header::ContentType::plaintext())
-        .body(
-            "The underlying server did not accept the websocket connection.",
-        );
+            .append_header(header::ContentType::plaintext())
+            .body("The underlying server did not accept the websocket connection.");
     }
 
     // Copy headers from the target back to the client.
@@ -136,11 +134,11 @@ async fn linkup_ws_request_handler(
     let upgrade_result = response.upgrade().await;
     let upgrade = match upgrade_result {
         Ok(response) => response,
-        Err(_) => return HttpResponse::BadGateway()
-            .append_header(header::ContentType::plaintext())
-            .body(
-                "could not upgrade to websocket connection.",
-            ),
+        Err(_) => {
+            return HttpResponse::BadGateway()
+                .append_header(header::ContentType::plaintext())
+                .body("could not upgrade to websocket connection.")
+        }
     };
 
     let (target_rx, mut target_tx) = tokio::io::split(upgrade);
@@ -175,7 +173,6 @@ async fn linkup_request_handler(
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
         .collect::<HashMap<String, String>>();
-
 
     let session_result = sessions
         .get_request_session(url.clone(), headers.clone())
@@ -296,7 +293,7 @@ pub async fn local_linkup_main() -> io::Result<()> {
             .service(
                 web::resource("{path:.*}")
                     .guard(guard::Header("upgrade", "websocket"))
-                    .to(linkup_ws_request_handler)
+                    .to(linkup_ws_request_handler),
             )
             .default_service(web::route().to(linkup_request_handler))
     })

@@ -26,7 +26,12 @@ pub fn start_tunnel() -> Result<Url, CliError> {
         attempt += 1;
         match try_start_tunnel() {
             Ok(url) => return Ok(url),
-            Err(CliError::StopErr(e)) => return Err(CliError::StopErr(format!("Failed to stop tunnel when retrying tunnel boot: {}", e))),
+            Err(CliError::StopErr(e)) => {
+                return Err(CliError::StopErr(format!(
+                    "Failed to stop tunnel when retrying tunnel boot: {}",
+                    e
+                )))
+            }
             Err(err) => {
                 println!("Tunnel failed to boot within the time limit. Retrying...");
                 if attempt >= 3 {
