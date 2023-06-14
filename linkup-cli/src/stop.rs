@@ -47,12 +47,17 @@ pub fn stop() -> Result<(), CliError> {
 
 pub fn stop_tunnel() -> Result<(), CliError> {
     match get_pid(LINKUP_CLOUDFLARED_PID) {
-        Ok(pid) => send_sigint(&pid).map_err(|e| {
-            CliError::StopErr(format!(
-                "Could not send SIGINT to cloudflared pid {}: {}",
-                pid, e
-            ))
-        }),
+        Ok(pid) => {
+            match send_sigint(&pid) {
+                Ok(_) => Ok(()),
+                // If we're trying to stop it but it's already died, that's fine
+                Err(PidError::NoSuchProcess(_)) => Ok(()),
+                Err(e) => Err(CliError::StopErr(format!(
+                    "Could not send SIGINT to cloudflared pid {}: {}",
+                    pid, e
+                ))),
+            }
+        }
         Err(PidError::NoPidFile(_)) => Ok(()),
         Err(e) => Err(CliError::StopErr(format!(
             "Could not get cloudflared pid: {}",
