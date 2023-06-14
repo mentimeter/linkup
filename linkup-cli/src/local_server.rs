@@ -1,7 +1,8 @@
 use std::{collections::HashMap, io};
 
+use futures::stream::StreamExt;
 use actix_web::{
-    http::header, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+    http::header, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder, guard, rt,
 };
 use thiserror::Error;
 
@@ -51,6 +52,116 @@ async fn linkup_config_handler(
     }
 }
 
+async fn linkup_ws_request_handler(
+    string_store: web::Data<MemoryStringStore>,
+    req: HttpRequest,
+    req_stream: web::Payload
+) -> impl Responder {
+    let sessions = SessionAllocator::new(string_store.into_inner());
+
+    let url = format!("http://localhost:9066{}", req.uri());
+    let headers = req
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect::<HashMap<String, String>>();
+
+    let session_result = sessions
+        .get_request_session(url.clone(), headers.clone())
+        .await;
+
+    if session_result.is_err() {
+        println!("Failed to get session: {:?}", session_result);
+    }
+
+    let (session_name, config) = match session_result {
+        Ok(result) => result,
+        Err(_) => {
+            return HttpResponse::UnprocessableEntity()
+                .append_header(header::ContentType::plaintext())
+                .body("Unprocessable Content - local server")
+        }
+    };
+
+    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
+    {
+        Some(result) => result,
+        None => {
+            return HttpResponse::NotFound()
+                .append_header(header::ContentType::plaintext())
+                .body("Not target url for request - local server")
+        }
+    };
+
+    let extra_headers = get_additional_headers(url, &headers, &session_name);
+
+    // Proxy the request using the destination_url and the merged headers
+    let client = reqwest::Client::new();
+    let response_result = client
+        .request(req.method().clone(), &destination_url)
+        .headers(merge_headers(&headers, &extra_headers))
+        .send()
+        .await;
+
+    let response =
+        match response_result {
+            Ok(response) => response,
+            Err(_) => return HttpResponse::BadGateway()
+                .append_header(header::ContentType::plaintext())
+                .body(
+                    "Bad Gateway from local server, could you have forgotten to start the server?",
+                ),
+        };
+
+    // Make sure the server is willing to accept the websocket.
+    let status = response.status().as_u16();
+    if status != 101 {
+        return HttpResponse::BadGateway()
+        .append_header(header::ContentType::plaintext())
+        .body(
+            "The underlying server did not accept the websocket connection.",
+        );
+    }
+
+    // Copy headers from the target back to the client.
+    let mut client_response = HttpResponse::SwitchingProtocols();
+    client_response.upgrade("websocket");
+    for (header, value) in response.headers() {
+        client_response.insert_header((header.to_owned(), value.to_owned()));
+    }
+    for (header, value) in additional_response_headers() {
+        client_response.insert_header((header.to_owned(), value.to_owned()));
+    }
+
+    let upgrade_result = response.upgrade().await;
+    let upgrade = match upgrade_result {
+        Ok(response) => response,
+        Err(_) => return HttpResponse::BadGateway()
+            .append_header(header::ContentType::plaintext())
+            .body(
+                "could not upgrade to websocket connection.",
+            ),
+    };
+
+    let (target_rx, mut target_tx) = tokio::io::split(upgrade);
+
+    // Copy byte stream from the client to the target.
+    rt::spawn(async move {
+        let mut req_stream = req_stream.map(|result| {
+            result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+        });
+        let mut client_read = tokio_util::io::StreamReader::new(&mut req_stream);
+        let result = tokio::io::copy(&mut client_read, &mut target_tx).await;
+        if let Err(err) = result {
+            println!("Error proxying websocket client bytes to target: {err}")
+        }
+    });
+
+    // // Copy byte stream from the target back to the client.
+    let target_stream = tokio_util::io::ReaderStream::new(target_rx);
+    client_response.streaming(target_stream)
+}
+
 async fn linkup_request_handler(
     string_store: web::Data<MemoryStringStore>,
     req: HttpRequest,
@@ -64,6 +175,7 @@ async fn linkup_request_handler(
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
         .collect::<HashMap<String, String>>();
+
 
     let session_result = sessions
         .get_request_session(url.clone(), headers.clone())
@@ -181,6 +293,11 @@ pub async fn local_linkup_main() -> io::Result<()> {
             .wrap(middleware::Logger::default()) // Enable logger
             .route("/linkup", web::post().to(linkup_config_handler))
             .route("/linkup-check", web::route().to(always_ok))
+            .service(
+                web::resource("{path:.*}")
+                    .guard(guard::Header("upgrade", "websocket"))
+                    .to(linkup_ws_request_handler)
+            )
             .default_service(web::route().to(linkup_request_handler))
     })
     .bind(("127.0.0.1", LINKUP_LOCALSERVER_PORT))?
