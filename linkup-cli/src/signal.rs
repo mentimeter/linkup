@@ -11,6 +11,8 @@ pub enum PidError {
     BadPidFile(String),
     #[error("signal error: {0}")]
     SignalErr(String),
+    #[error("no such process: {0}")]
+    NoSuchProcess(String),
 }
 
 pub fn send_sigint(pid_str: &str) -> Result<(), PidError> {
@@ -22,6 +24,7 @@ pub fn send_sigint(pid_str: &str) -> Result<(), PidError> {
 
     match kill(pid, Some(Signal::SIGINT)) {
         Ok(_) => Ok(()),
+        Err(nix::Error::ESRCH) => Err(PidError::NoSuchProcess(pid_str.to_string())),
         Err(e) => Err(PidError::SignalErr(e.to_string())),
     }
 }
