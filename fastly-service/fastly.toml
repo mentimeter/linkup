@@ -1,0 +1,9 @@
+# This file describes a Fastly Compute@Edge package. To learn more visit:
+# https://developer.fastly.com/reference/fastly-toml/
+
+authors = ["oliver.stenbom@mentimeter.com"]
+description = ""
+language = "rust"
+manifest_version = 3
+name = "linkup-service"
+service_id = "LhyRHcBybJ7j8kUoOPo8v3"

@@ -1,0 +1,10 @@
+[package]
+name = "linkup-fastly-service"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+debug = 1
+
+[dependencies]
+fastly = "0.9.4"

@@ -5,4 +5,5 @@ members = [
   "worker",
   "linkup",
   "e2e",
+  "fastly-service",
 ]
