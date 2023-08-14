@@ -205,9 +205,9 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     let sessions = SessionAllocator::new(Arc::new(string_store));
 
-    if req.headers().get("upgrade").unwrap() == Some("websocket".to_string()) {
-        return linkup_ws_handler(req, sessions).await;
-    }
+    // if req.headers().get("upgrade").unwrap() == Some("websocket".to_string()) {
+    //     return linkup_ws_handler(req, sessions).await;
+    // }
 
     if req.method() == Method::Post && req.path() == "/linkup" {
         return linkup_session_handler(req, sessions).await;
