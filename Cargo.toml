@@ -2,7 +2,10 @@
 
 members = [
   "linkup-cli",
-  "worker",
   "linkup",
   "e2e",
+]
+
+exclude = [
+  "worker"
 ]

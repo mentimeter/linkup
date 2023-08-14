@@ -13,11 +13,10 @@ use http_util::*;
 
 fn log_request(req: &Request) {
     console_log!(
-        "{} - [{}], located at: {:?}, within: {}",
+        "{} - [{}], headers: {:?}",
         Date::now().to_string(),
         req.path(),
-        req.cf().coordinates().unwrap_or_default(),
-        req.cf().region().unwrap_or_else(|| "unknown region".into())
+        req.headers(),
     );
 }
 
@@ -183,7 +182,9 @@ async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Result<R
         None => return plaintext_error("No target URL for request", 422),
     };
 
-    let redirect_dest = Url::parse(&destination_url)?;
+    let mut redirect_dest = Url::parse(&destination_url)?;
+
+    redirect_dest.set_scheme("wss").expect("hardcoded scheme modification should always succeed");
 
     Response::redirect(redirect_dest)
 }

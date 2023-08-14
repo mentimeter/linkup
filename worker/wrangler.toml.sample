@@ -7,7 +7,7 @@ kv_namespaces = [
 ]
 
 [vars]
-WORKERS_RS_VERSION = "0.0.16"
+WORKERS_RS_VERSION = "0.0.18"
 
 [build]
-command = "cargo install -q worker-build --version 0.0.9 && worker-build --release"
+command = "cargo install -q worker-build --version 0.0.10 && worker-build --release"

@@ -31,6 +31,13 @@ impl SessionAllocator {
             }
         }
 
+        if let Some(origin) = headers.get("origin") {
+            let origin_name = first_subdomain(origin);
+            if let Some(config) = self.get_session_config(origin_name.to_string()).await? {
+                return Ok((origin_name, config));
+            }
+        }
+
         if let Some(tracestate) = headers.get("tracestate") {
             let trace_name = extract_tracestate_session(tracestate);
             if let Some(config) = self.get_session_config(trace_name.to_string()).await? {
