@@ -272,13 +272,21 @@ async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Result<R
         match future::select(source_events.next(), dest_events.next()).await {
             Either::Left((Some(source_event), _)) => match source_event {
                 Ok(WebsocketEvent::Message(msg)) => {
-                    if let Some(bytes) = msg.bytes() {
-                        let res = dest_ws.send_with_bytes(bytes);
-                        if let Err(e) = res {
-                            console_log!("Error sending to dest: {:?}", e);
-                            error = true;
-                        }
+                    if let Some(text) = msg.text() {
+                        dest_ws.send_with_str(text);
+                    } else if let Some(bytes) = msg.bytes() {
+                        dest_ws.send_with_bytes(bytes);
+                    } else {
+                        console_log!("Error: message has no text or bytes");
                     }
+                    // if let Some(bytes) = msg.bytes() {
+                    // dest_ws.send_with_str(format!("got some bytes: {:?}", bytes));
+                    //     let res = dest_ws.send_with_bytes(bytes);
+                    //     if let Err(e) = res {
+                    //         console_log!("Error sending to dest: {:?}", e);
+                    //         error = true;
+                    //     }
+                    // }
                 }
                 Ok(WebsocketEvent::Close(close)) => {
                     console_log!("Close event: {:?}", close);
@@ -292,13 +300,20 @@ async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Result<R
             },
             Either::Right((Some(dest_event), _)) => match dest_event {
                 Ok(WebsocketEvent::Message(msg)) => {
-                    if let Some(bytes) = msg.bytes() {
-                        let res = source_ws_server.send_with_bytes(bytes);
-                        if let Err(e) = res {
-                            console_log!("Error sending to source: {:?}", e);
-                            error = true;
-                        }
+                    if let Some(text) = msg.text() {
+                        source_ws_server.send_with_str(text);
+                    } else if let Some(bytes) = msg.bytes() {
+                        source_ws_server.send_with_bytes(bytes);
+                    } else {
+                        console_log!("Error: message has no text or bytes");
                     }
+                    // if let Some(bytes) = msg.bytes() {
+                    //     let res = source_ws_server.send_with_bytes(bytes);
+                    //     if let Err(e) = res {
+                    //         console_log!("Error sending to source: {:?}", e);
+                    //         error = true;
+                    //     }
+                    // }
                 }
                 Ok(WebsocketEvent::Close(close)) => {
                     console_log!("Close event: {:?}", close);
