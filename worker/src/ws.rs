@@ -85,7 +85,8 @@ pub async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Resu
                     }
                 }
                 _ => {
-                    console_log!("No event, error");
+                    console_log!("No event received, error");
+                    close_with_internal_error("Received something other than event from streams".to_string(), &source_ws_server, &dest_ws);
                     break;
                 }
             }
