@@ -1,5 +1,6 @@
 use regex::Regex;
 use std::{collections::HashMap, sync::Arc};
+use ws::linkup_ws_handler;
 
 use kv_store::CfWorkerStringStore;
 use linkup::*;
@@ -8,6 +9,7 @@ use worker::*;
 mod http_util;
 mod kv_store;
 mod utils;
+mod ws;
 
 use http_util::*;
 
@@ -18,14 +20,6 @@ fn log_request(req: &Request) {
         req.path(),
         req.headers(),
     );
-}
-
-fn plaintext_error(msg: impl Into<String>, status: u16) -> Result<Response> {
-    let mut resp = Response::error(msg, status).unwrap();
-    let headers = resp.headers_mut();
-    _ = headers.set("Content-Type", "text/plain");
-
-    Ok(resp)
 }
 
 async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
@@ -158,37 +152,6 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
     Ok(cf_resp)
 }
 
-async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Result<Response> {
-    let url = match req.url() {
-        Ok(url) => url.to_string(),
-        Err(_) => return plaintext_error("Bad or missing request url", 400),
-    };
-
-    let headers = req
-        .headers()
-        .clone()
-        .entries()
-        .collect::<HashMap<String, String>>();
-
-    let (session_name, config) =
-        match sessions.get_request_session(url.clone(), headers.clone()).await {
-            Ok(result) => result,
-            Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
-        };
-
-    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
-    {
-        Some(result) => result,
-        None => return plaintext_error("No target URL for request", 422),
-    };
-
-    let mut redirect_dest = Url::parse(&destination_url)?;
-
-    redirect_dest.set_scheme("wss").expect("hardcoded scheme modification should always succeed");
-
-    Response::redirect(redirect_dest)
-}
-
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
     log_request(&req);
@@ -205,9 +168,11 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     let sessions = SessionAllocator::new(Arc::new(string_store));
 
-    // if req.headers().get("upgrade").unwrap() == Some("websocket".to_string()) {
-    //     return linkup_ws_handler(req, sessions).await;
-    // }
+    if let Ok(Some(upgrade)) = req.headers().get("upgrade") {
+        if upgrade == "websocket" {
+            return linkup_ws_handler(req, sessions).await;
+        }
+    }
 
     if req.method() == Method::Post && req.path() == "/linkup" {
         return linkup_session_handler(req, sessions).await;
