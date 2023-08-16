@@ -1,6 +1,6 @@
 use regex::Regex;
-use ws::linkup_ws_handler;
 use std::{collections::HashMap, sync::Arc};
+use ws::linkup_ws_handler;
 
 use kv_store::CfWorkerStringStore;
 use linkup::*;
@@ -21,7 +21,6 @@ fn log_request(req: &Request) {
         req.headers(),
     );
 }
-
 
 async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
     let body_bytes = match req.bytes().await {
@@ -153,8 +152,6 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
     Ok(cf_resp)
 }
 
-
-
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
     log_request(&req);
@@ -171,8 +168,10 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     let sessions = SessionAllocator::new(Arc::new(string_store));
 
-    if req.headers().get("upgrade").unwrap() == Some("websocket".to_string()) {
-        return linkup_ws_handler(req, sessions).await;
+    if let Ok(Some(upgrade)) = req.headers().get("upgrade") {
+        if upgrade == "websocket" {
+            return linkup_ws_handler(req, sessions).await;
+        }
     }
 
     if req.method() == Method::Post && req.path() == "/linkup" {

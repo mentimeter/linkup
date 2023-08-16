@@ -10,7 +10,6 @@ use futures::{
 
 use crate::http_util::plaintext_error;
 
-
 pub async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),
@@ -47,85 +46,104 @@ pub async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Resu
         }
     };
 
-
     let source_ws = WebSocketPair::new()?;
     let source_ws_server = source_ws.server;
 
     wasm_bindgen_futures::spawn_local(async move {
         let mut dest_events = dest_ws.events().expect("could not open dest event stream");
-        let mut source_events = source_ws_server.events().expect("could not open source event stream");
+        let mut source_events = source_ws_server
+            .events()
+            .expect("could not open source event stream");
 
         dest_ws.accept().expect("could not accept dest ws");
-        source_ws_server.accept().expect("could not accept source ws");
+        source_ws_server
+            .accept()
+            .expect("could not accept source ws");
 
         loop {
-        match future::select(source_events.next(), dest_events.next()).await {
-            Either::Left((Some(source_event), _)) => match source_event {
-                Ok(WebsocketEvent::Message(msg)) => {
-                    if let Some(text) = msg.text() {
-                        if let Err(e) = dest_ws.send_with_str(text) {
-                            close_with_internal_error(format!("Error sending to destination with string: {:?}", e), &dest_ws, &source_ws_server);
-                            break;
-                        }
-                    } else if let Some(bytes) = msg.bytes() {
-                        if let Err(e) = dest_ws.send_with_bytes(bytes) {
-                            close_with_internal_error(format!("Error sending to destination with bytes: {:?}", e), &dest_ws, &source_ws_server);
-                            break;
-                        }
-                    } else {
-                        close_with_internal_error(format!("Error message from source with no text or bytes"), &dest_ws, &source_ws_server);
+            match future::select(source_events.next(), dest_events.next()).await {
+                Either::Left((Some(source_event), _)) => {
+                    if let Err(e) = forward_ws_event(
+                        source_event,
+                        &source_ws_server,
+                        &dest_ws,
+                        "to destination".into(),
+                    ) {
+                        console_log!("Error forwarding source event: {:?}", e);
                         break;
                     }
                 }
-                Ok(WebsocketEvent::Close(close)) => {
-                    console_log!("Close event from source: {:?}", close);
-                    let _ = dest_ws.close(Some(close.code()), Some(close.reason()));
-                    break;
-                }
-                Err(e) => {
-                    close_with_internal_error(format!("Other source websocket error: {:?}", e), &dest_ws, &source_ws_server);
-                    break;
-                }
-            },
-            Either::Right((Some(dest_event), _)) => match dest_event {
-                Ok(WebsocketEvent::Message(msg)) => {
-                    if let Some(text) = msg.text() {
-                        if let Err(e) = source_ws_server.send_with_str(text) {
-                            close_with_internal_error(format!("Error sending to source with string: {:?}", e), &dest_ws, &source_ws_server);
-                            break;
-                        }
-                    } else if let Some(bytes) = msg.bytes() {
-                        if let Err(e) = source_ws_server.send_with_bytes(bytes) {
-                            close_with_internal_error(format!("Error sending to source with bytes: {:?}", e), &dest_ws, &source_ws_server);
-                            break;
-                        }
-                    } else {
-                        close_with_internal_error(format!("Error message from destination with no text or bytes"), &dest_ws, &source_ws_server);
+                Either::Right((Some(dest_event), _)) => {
+                    if let Err(e) = forward_ws_event(
+                        dest_event,
+                        &dest_ws,
+                        &source_ws_server,
+                        "to source".into(),
+                    ) {
+                        console_log!("Error forwarding dest event: {:?}", e);
                         break;
                     }
                 }
-                Ok(WebsocketEvent::Close(close)) => {
-                    console_log!("Close event from destination: {:?}", close);
-                    let _ = source_ws_server.close(Some(close.code()), Some(close.reason()));
+                _ => {
+                    console_log!("No event, error");
                     break;
                 }
-                Err(e) => {
-                    close_with_internal_error(format!("Other destination websocket error: {:?}", e), &dest_ws, &source_ws_server);
-                    break;
-                }
-            },
-            _ => {
-                console_log!("No event, error");
-                break;
             }
         }
-    }
     });
 
-    return Response::from_websocket(source_ws.client);
+    Response::from_websocket(source_ws.client)
 }
 
-async fn websocket_connect(url: &str, additional_headers: HashMap<String, String>) -> Result<WebSocket> {
+fn forward_ws_event(
+    event: Result<WebsocketEvent>,
+    from: &WebSocket,
+    to: &WebSocket,
+    description: String,
+) -> Result<()> {
+    match event {
+        Ok(WebsocketEvent::Message(msg)) => {
+            if let Some(text) = msg.text() {
+                match to.send_with_str(text) {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        let err_msg = format!("Error sending {} with string: {:?}", description, e);
+                        close_with_internal_error(err_msg.clone(), &from, &to);
+                        Err(Error::RustError(err_msg))
+                    }
+                }
+            } else if let Some(bytes) = msg.bytes() {
+                match to.send_with_bytes(bytes) {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        let err_msg = format!("Error sending {} with bytes: {:?}", description, e);
+                        close_with_internal_error(err_msg.clone(), &from, &to);
+                        Err(Error::RustError(err_msg))
+                    }
+                }
+            } else {
+                let err_msg = format!("Error message {} no text or bytes", description);
+                close_with_internal_error(err_msg.clone(), &from, &to);
+                Err(Error::RustError(err_msg))
+            }
+        }
+        Ok(WebsocketEvent::Close(close)) => {
+            console_log!("Close event from source: {:?}", close);
+            let _ = to.close(Some(close.code()), Some(close.reason()));
+            Err(Error::RustError(format!("Close event: {}", close.reason())))
+        }
+        Err(e) => {
+            let err_msg = format!("Other {} error: {:?}", description, e);
+            close_with_internal_error(err_msg.clone(), &from, &to);
+            Err(Error::RustError(err_msg))
+        }
+    }
+}
+
+async fn websocket_connect(
+    url: &str,
+    additional_headers: HashMap<String, String>,
+) -> Result<WebSocket> {
     let mut proper_url = match url.parse::<Url>() {
         Ok(url) => url,
         Err(_) => return Err(Error::RustError("invalid url".into())),
@@ -143,7 +161,9 @@ async fn websocket_connect(url: &str, additional_headers: HashMap<String, String
 
     let mut headers = Headers::new();
     additional_headers.iter().for_each(|(k, v)| {
-        headers.append(k, v).expect("could not append header to websocket request");
+        headers
+            .append(k, v)
+            .expect("could not append header to websocket request");
     });
     headers.set("upgrade", "websocket")?;
 
@@ -161,15 +181,14 @@ async fn websocket_connect(url: &str, additional_headers: HashMap<String, String
     }
 }
 
-
-fn close_with_internal_error(msg: String, dest_ws: &WebSocket, source_ws_server: &WebSocket) {
+fn close_with_internal_error(msg: String, from: &WebSocket, to: &WebSocket) {
     console_log!("{}", msg);
-    let close_res = source_ws_server.close(Some(1011), Some(msg.clone()));
+    let close_res = to.close(Some(1011), Some(msg.clone()));
     if let Err(e) = close_res {
-        console_log!("Error closing source websocket: {:?}", e);
+        console_log!("Error closing to websocket: {:?}", e);
     }
-    let close_res_dest = dest_ws.close(Some(1011), Some(msg));
+    let close_res_dest = from.close(Some(1011), Some(msg));
     if let Err(e) = close_res_dest {
-        console_log!("Error closing dest websocket: {:?}", e);
+        console_log!("Error closing from websocket: {:?}", e);
     }
 }

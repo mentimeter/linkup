@@ -1,11 +1,14 @@
 use reqwest::{Method as ReqwestMethod, Response as ReqwestResponse};
 use std::{collections::HashMap, convert::TryFrom};
-use worker::{console_log, Headers as CfHeaders, Method as CfMethod, Response as CfResponse, Result as CfResult};
+use worker::{
+    console_log, Headers as CfHeaders, Method as CfMethod, Response as CfResponse,
+    Result as CfResult,
+};
 
 pub fn plaintext_error(msg: impl Into<String>, status: u16) -> CfResult<CfResponse> {
-    let mut resp = CfResponse::error(msg, status).unwrap();
+    let mut resp = CfResponse::error(msg, status)?;
     let headers = resp.headers_mut();
-    _ = headers.set("Content-Type", "text/plain");
+    headers.set("Content-Type", "text/plain")?;
 
     Ok(resp)
 }
