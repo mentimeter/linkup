@@ -16,6 +16,7 @@ use crate::background_local_server::{
 use crate::background_tunnel::start_tunnel;
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::start::save_state;
+use crate::status::print_session_names;
 use crate::{start::get_state, CliError};
 use crate::{LINKUP_ENV_SEPARATOR, LINKUP_LOCALSERVER_PORT};
 
@@ -26,16 +27,20 @@ pub fn boot_background_services() -> Result<(), CliError> {
         .expect("linkup url invalid");
 
     if is_local_server_started().is_err() {
-        println!("starting linkup local server...");
+        println!("Starting linkup local server...");
         start_local_server()?;
+    } else {
+        println!("Linkup local server was already running.. Try stopping linkup first if you have problems.");
     }
 
     wait_till_ok(format!("{}linkup-check", local_url))?;
 
     if is_tunnel_started().is_err() {
-        println!("starting tunnel...");
+        println!("Starting tunnel...");
         let tunnel = start_tunnel()?;
         state.linkup.tunnel = tunnel;
+    } else {
+        println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
     }
 
     for service in &state.services {
@@ -61,21 +66,28 @@ pub fn boot_background_services() -> Result<(), CliError> {
     let tunnel_url = state.linkup.tunnel.clone();
 
     state.linkup.session_name = server_session_name.clone();
+    let state_to_print = state.clone();
+
     save_state(state)?;
 
-    println!("{}", server_session_name);
+    println!("Waiting for tunnel to be ready at {}...", tunnel_url);
 
     // If the tunnel is checked too quickly, it dies ¯\_(ツ)_/¯
     thread::sleep(Duration::from_millis(1000));
     wait_till_ok(format!("{}linkup-check", tunnel_url))?;
 
-    // final checks services are responding
-    // print status
+    println!();
+
+    print_session_names(&state_to_print);
 
     Ok(())
 }
 
-fn load_config(url: &Url, desired_name: &str, config: StorableSession) -> Result<String, CliError> {
+pub fn load_config(
+    url: &Url,
+    desired_name: &str,
+    config: StorableSession,
+) -> Result<String, CliError> {
     let client = Client::new();
     let endpoint = url
         .join("/linkup")
@@ -112,7 +124,7 @@ fn load_config(url: &Url, desired_name: &str, config: StorableSession) -> Result
     }
 }
 
-fn server_config_from_state(state: &LocalState) -> (StorableSession, StorableSession) {
+pub fn server_config_from_state(state: &LocalState) -> (StorableSession, StorableSession) {
     let local_server_services = state
         .services
         .iter()

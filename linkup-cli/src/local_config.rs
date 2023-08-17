@@ -6,14 +6,14 @@ use url::Url;
 
 use linkup::{StorableDomain, StorableRewrite};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct LocalState {
     pub linkup: LinkupState,
     pub domains: Vec<StorableDomain>,
     pub services: Vec<LocalService>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct LinkupState {
     pub session_name: String,
     pub session_token: String,
@@ -82,7 +82,7 @@ pub fn config_to_state(yaml_config: YamlLocalConfig, config_path: String) -> Loc
         session_token: random_token,
         config_path,
         remote: yaml_config.linkup.remote,
-        tunnel: Url::parse("http://localhost").expect("default url parses"),
+        tunnel: Url::parse("http://tunnel-not-yet-set").expect("default url parses"),
         cache_routes: yaml_config.linkup.cache_routes,
     };
 

@@ -71,26 +71,10 @@ pub fn status(json: bool) -> Result<(), CliError> {
             .then(a.name.cmp(&b.name))
     });
 
-    // Filter out domains that are subdomains of other domains
-    let filtered_domains = state
-        .domains
-        .iter()
-        .filter(|&d| {
-            !state
-                .domains
-                .iter()
-                .any(|other| other.domain != d.domain && d.domain.ends_with(&other.domain))
-        })
-        .map(|d| d.domain.clone())
-        .collect::<Vec<String>>();
-
     let status = Status {
         session: SessionStatus {
             name: state.linkup.session_name.clone(),
-            domains: filtered_domains
-                .iter()
-                .map(|d| format!("{}.{}", state.linkup.session_name.clone(), d.clone()))
-                .collect(),
+            domains: format_state_domains(&state),
         },
         services,
     };
@@ -101,14 +85,7 @@ pub fn status(json: bool) -> Result<(), CliError> {
             serde_json::to_string_pretty(&status).expect("Failed to serialize status")
         );
     } else {
-        // Display session information
-        println!("Session Information:");
-        println!("  Session Name: {}", status.session.name);
-        println!("  Domains: ");
-        for domain in &status.session.domains {
-            println!("    {}", domain);
-        }
-        println!();
+        print_session_status(status.session);
 
         // Display services information
         println!("Service Information:");
@@ -138,6 +115,44 @@ pub fn status(json: bool) -> Result<(), CliError> {
     }
 
     Ok(())
+}
+
+pub fn print_session_names(state: &LocalState) {
+    print_session_status(SessionStatus {
+        name: state.linkup.session_name.clone(),
+        domains: format_state_domains(state),
+    });
+}
+
+fn format_state_domains(state: &LocalState) -> Vec<String> {
+    // Filter out domains that are subdomains of other domains
+    let filtered_domains = state
+        .domains
+        .iter()
+        .filter(|&d| {
+            !state
+                .domains
+                .iter()
+                .any(|other| other.domain != d.domain && d.domain.ends_with(&other.domain))
+        })
+        .map(|d| d.domain.clone())
+        .collect::<Vec<String>>();
+
+    return filtered_domains
+        .iter()
+        .map(|d| format!("{}.{}", state.linkup.session_name.clone(), d.clone()))
+        .collect();
+}
+
+fn print_session_status(session: SessionStatus) {
+    // Display session information
+    println!("Session Information:");
+    println!("  Session Name: {}", session.name);
+    println!("  Domains: ");
+    for domain in session.domains {
+        println!("    {}", domain);
+    }
+    println!();
 }
 
 fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState) {

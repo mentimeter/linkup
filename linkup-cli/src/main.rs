@@ -114,9 +114,9 @@ enum Commands {
     },
     #[clap(about = "Stop a running linkup session")]
     Stop {},
-    #[clap(about = "Configure your linkup session to route traffic to a local service")]
+    #[clap(about = "Route session traffic to a local service")]
     Local { service_name: String },
-    #[clap(about = "Configure your linkup session to route traffic to a remote service")]
+    #[clap(about = "Route session traffic to a remote service")]
     Remote { service_name: String },
     #[clap(about = "View linkup component and service status")]
     Status {

@@ -11,8 +11,6 @@ use crate::{
 };
 
 pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
-    // TODO: run `stop` to kill the previous local server?
-
     let previous_state = get_state();
     let config_path = config_path(config_arg)?;
     let input_config = get_config(config_path.clone())?;
@@ -23,6 +21,9 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
     if let Ok(ps) = previous_state {
         state.linkup.session_name = ps.linkup.session_name;
         state.linkup.session_token = ps.linkup.session_token;
+
+        // Maintain tunnel state until it is rewritten
+        state.linkup.tunnel = ps.linkup.tunnel;
     }
 
     save_state(state)?;
