@@ -204,52 +204,79 @@ fn set_service_env(directory: String, config_path: String) -> Result<(), CliErro
         )
     })?;
 
-    let dev_env_path = PathBuf::from(config_dir).join(&directory).join(".env.dev");
-    let env_path = PathBuf::from(config_dir).join(&directory).join(".env");
+    let service_path = PathBuf::from(config_dir).join(&directory);
 
-    if !Path::new(&dev_env_path).exists() {
+    let dev_env_files_result = fs::read_dir(&service_path);
+    let dev_env_files: Vec<_> = match dev_env_files_result {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry.file_name().to_string_lossy().ends_with(".dev")
+                    && entry.file_name().to_string_lossy().starts_with(".env.")
+            })
+            .collect(),
+        Err(e) => {
+            return Err(CliError::SetServiceEnv(
+                directory.clone(),
+                format!("Failed to read directory: {}", e),
+            ))
+        }
+    };
+
+    if dev_env_files.is_empty() {
         return Err(CliError::NoDevEnv(directory));
     }
 
-    let dev_env_content = fs::read_to_string(&dev_env_path).map_err(|e| {
-        CliError::SetServiceEnv(
-            directory.clone(),
-            format!("could not read dev env file: {}", e),
-        )
-    })?;
+    for dev_env_file in dev_env_files {
+        let dev_env_path = dev_env_file.path();
+        let env_path =
+            PathBuf::from(dev_env_path.parent().unwrap()).join(dev_env_path.file_stem().unwrap());
 
-    if let Ok(env_content) = fs::read_to_string(&env_path) {
-        if env_content.contains(LINKUP_ENV_SEPARATOR) {
-            return Ok(());
+        if let Ok(env_content) = fs::read_to_string(&env_path) {
+            if env_content.contains(LINKUP_ENV_SEPARATOR) {
+                continue;
+            }
         }
+
+        let dev_env_content = fs::read_to_string(&dev_env_path).map_err(|e| {
+            CliError::SetServiceEnv(
+                directory.clone(),
+                format!("could not read dev env file: {}", e),
+            )
+        })?;
+
+        let mut env_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&env_path)
+            .map_err(|e| {
+                CliError::SetServiceEnv(
+                    directory.clone(),
+                    format!("Failed to open .env file: {}", e),
+                )
+            })?;
+
+        writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
+            CliError::SetServiceEnv(
+                directory.clone(),
+                format!("could not write to env file: {}", e),
+            )
+        })?;
+
+        writeln!(env_file, "{}", dev_env_content).map_err(|e| {
+            CliError::SetServiceEnv(
+                directory.clone(),
+                format!("could not write to env file: {}", e),
+            )
+        })?;
+
+        writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
+            CliError::SetServiceEnv(
+                directory.clone(),
+                format!("could not write to env file: {}", e),
+            )
+        })?;
     }
-
-    let mut env_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(env_path)
-        .map_err(|e| CliError::SetServiceEnv(directory.clone(), e.to_string()))?;
-
-    writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
-        CliError::SetServiceEnv(
-            directory.clone(),
-            format!("could not write to env file: {}", e),
-        )
-    })?;
-
-    writeln!(env_file, "{}", dev_env_content).map_err(|e| {
-        CliError::SetServiceEnv(
-            directory.clone(),
-            format!("could not write to env file: {}", e),
-        )
-    })?;
-
-    writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
-        CliError::SetServiceEnv(
-            directory.clone(),
-            format!("could not write to env file: {}", e),
-        )
-    })?;
 
     Ok(())
 }
