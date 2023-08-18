@@ -71,7 +71,7 @@ pub enum CliError {
     BadConfig(String),
     #[error("no valid config file provided: {0}")]
     NoConfig(String),
-    #[error("a service directory was provided that contained no .env.dev file: {0}")]
+    #[error("a service directory was provided that contained no .env.*.linkup file: {0}")]
     NoDevEnv(String),
     #[error("couldn't set env for service {0}: {1}")]
     SetServiceEnv(String, String),

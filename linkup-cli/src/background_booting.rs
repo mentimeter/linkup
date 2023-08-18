@@ -211,7 +211,7 @@ fn set_service_env(directory: String, config_path: String) -> Result<(), CliErro
         Ok(entries) => entries
             .filter_map(Result::ok)
             .filter(|entry| {
-                entry.file_name().to_string_lossy().ends_with(".dev")
+                entry.file_name().to_string_lossy().ends_with(".linkup")
                     && entry.file_name().to_string_lossy().starts_with(".env.")
             })
             .collect(),
