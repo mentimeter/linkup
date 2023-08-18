@@ -140,7 +140,13 @@ fn format_state_domains(state: &LocalState) -> Vec<String> {
 
     return filtered_domains
         .iter()
-        .map(|d| format!("{}.{}", state.linkup.session_name.clone(), d.clone()))
+        .map(|domain| {
+            format!(
+                "https://{}.{}",
+                state.linkup.session_name.clone(),
+                domain.clone()
+            )
+        })
         .collect();
 }
 
