@@ -85,54 +85,62 @@ fn remove_service_env(directory: String, config_path: String) -> Result<(), CliE
         )
     })?;
 
-    let env_path = PathBuf::from(config_dir).join(&directory).join(".env");
-    let temp_env_path = PathBuf::from(config_dir).join(&directory).join(".env.temp");
+    let service_path = PathBuf::from(config_dir).join(&directory);
 
-    let input_file = File::open(&env_path).map_err(|e| {
-        CliError::RemoveServiceEnv(directory.clone(), format!("could not open env file: {}", e))
-    })?;
-    let reader = BufReader::new(input_file);
+    let env_files_result = fs::read_dir(&service_path);
+    let env_files: Vec<_> = match env_files_result {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(".env"))
+            .collect(),
+        Err(e) => {
+            return Err(CliError::SetServiceEnv(
+                directory.clone(),
+                format!("Failed to read directory: {}", e),
+            ))
+        }
+    };
 
-    let mut output_file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&temp_env_path)
-        .map_err(|e| {
-            CliError::RemoveServiceEnv(directory.clone(), format!("could not open env file: {}", e))
-        })?;
+    for env_file in env_files {
+        let env_path = env_file.path();
 
-    let mut copy = true;
-
-    for line_result in reader.lines() {
-        let line = line_result.map_err(|e| {
+        let mut file_content = fs::read_to_string(&env_path).map_err(|e| {
             CliError::RemoveServiceEnv(
                 directory.clone(),
-                format!("could not read line from env file: {}", e),
+                format!("could not read dev env file: {}", e),
             )
         })?;
 
-        if line.trim() == LINKUP_ENV_SEPARATOR {
-            copy = !copy;
-            continue; // Don't write the separator to the new file
-        }
+        let start_idx = file_content.find(LINKUP_ENV_SEPARATOR);
+        let end_idx = file_content.rfind(LINKUP_ENV_SEPARATOR);
 
-        if copy {
-            writeln!(output_file, "{}", line).map_err(|e| {
+        if let (Some(start), Some(end)) = (start_idx, end_idx) {
+            if start < end {
+                file_content.drain(start..=end + LINKUP_ENV_SEPARATOR.len() - 1);
+            }
+            if file_content.ends_with('\n') {
+                file_content.pop();
+            }
+
+            // Write the updated content back to the file
+            let mut file = OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(&env_path)
+                .map_err(|e| {
+                    CliError::RemoveServiceEnv(
+                        directory.clone(),
+                        format!("Failed to open .env file for writing: {}", e),
+                    )
+                })?;
+            file.write_all(file_content.as_bytes()).map_err(|e| {
                 CliError::RemoveServiceEnv(
                     directory.clone(),
-                    format!("could not write line to env file: {}", e),
+                    format!("Failed to write .env file: {}", e),
                 )
             })?;
         }
     }
-
-    fs::rename(&temp_env_path, &env_path).map_err(|e| {
-        CliError::RemoveServiceEnv(
-            directory.clone(),
-            format!("could not set temp env file to master: {}", e),
-        )
-    })?;
 
     Ok(())
 }
