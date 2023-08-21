@@ -7,6 +7,7 @@ use crate::{
     background_booting::boot_background_services,
     linkup_file_path,
     local_config::{config_to_state, LocalState, YamlLocalConfig},
+    status::{server_status, ServerStatus},
     CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
 };
 
@@ -29,6 +30,8 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
     save_state(state)?;
 
     boot_background_services()?;
+
+    check_local_not_started()?;
 
     Ok(())
 }
@@ -112,5 +115,18 @@ pub fn save_state(state: LocalState) -> Result<(), CliError> {
         )));
     }
 
+    Ok(())
+}
+
+fn check_local_not_started() -> Result<(), CliError> {
+    let state = get_state()?;
+    for service in state.services {
+        if service.local == service.remote {
+            continue;
+        }
+        if server_status(service.local.to_string()) == ServerStatus::Ok {
+            println!("⚠️  Service {} is already running locally!! You need to restart it for linkup's environment variables to be loaded.", service.name);
+        }
+    }
     Ok(())
 }

@@ -29,7 +29,7 @@ struct ServiceStatus {
 }
 
 #[derive(Deserialize, Serialize, PartialEq)]
-enum ServerStatus {
+pub enum ServerStatus {
     Ok,
     Error,
     Timeout,
@@ -242,7 +242,7 @@ fn service_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState
     }
 }
 
-fn server_status(url: String) -> ServerStatus {
+pub fn server_status(url: String) -> ServerStatus {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))
         .build();
