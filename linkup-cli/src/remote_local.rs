@@ -7,49 +7,58 @@ use crate::{
     CliError, LINKUP_LOCALSERVER_PORT,
 };
 
-pub fn remote(service_name: String) -> Result<(), CliError> {
+pub fn remote(service_names: Vec<String>) -> Result<(), CliError> {
+    if service_names.is_empty() {
+        return Err(CliError::NoSuchService(
+            "No service names provided".to_string(),
+        ));
+    }
     let mut state = get_state()?;
 
-    let service = state
-        .services
-        .iter_mut()
-        .find(|s| s.name == service_name)
-        .ok_or(CliError::BadConfig(format!(
-            "Service {} not found",
-            service_name
-        )))?;
-    service.current = ServiceTarget::Remote;
+    for service_name in service_names.clone() {
+        let service = state
+            .services
+            .iter_mut()
+            .find(|s| s.name == service_name)
+            .ok_or(CliError::NoSuchService(service_name))?;
+        service.current = ServiceTarget::Remote;
+    }
 
     save_state(state.clone())?;
     load_server_states(state)?;
 
     println!(
         "Linkup is routing {} traffic to the remote server",
-        service_name
+        service_names.join(", ")
     );
 
     Ok(())
 }
 
-pub fn local(service_name: String) -> Result<(), CliError> {
+pub fn local(service_names: Vec<String>) -> Result<(), CliError> {
+    if service_names.is_empty() {
+        return Err(CliError::NoSuchService(
+            "No service names provided".to_string(),
+        ));
+    }
+
     let mut state = get_state()?;
 
-    let service = state
-        .services
-        .iter_mut()
-        .find(|s| s.name == service_name)
-        .ok_or(CliError::BadConfig(format!(
-            "Service {} not found",
-            service_name
-        )))?;
-    service.current = ServiceTarget::Local;
+    for service_name in service_names.clone() {
+        let service = state
+            .services
+            .iter_mut()
+            .find(|s| s.name == service_name)
+            .ok_or(CliError::NoSuchService(service_name))?;
+        service.current = ServiceTarget::Local;
+    }
 
     save_state(state.clone())?;
     load_server_states(state)?;
 
     println!(
         "Linkup is routing {} traffic to the local server",
-        service_name
+        service_names.join(", ")
     );
 
     Ok(())

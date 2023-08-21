@@ -9,12 +9,14 @@ mod background_tunnel;
 mod local_config;
 mod local_server;
 mod remote_local;
+mod reset;
 mod signal;
 mod start;
 mod status;
 mod stop;
 
 use remote_local::{local, remote};
+use reset::reset;
 use start::start;
 use status::status;
 use stop::stop;
@@ -93,6 +95,8 @@ pub enum CliError {
     StatusErr(String),
     #[error("your session is in an inconsistent state. Stop your session before trying again.")]
     InconsistentState,
+    #[error("no such service: {0}")]
+    NoSuchService(String),
 }
 
 #[derive(Parser)]
@@ -114,15 +118,22 @@ enum Commands {
     },
     #[clap(about = "Stop a running linkup session")]
     Stop {},
+    #[clap(about = "Reset a linkup session")]
+    Reset {
+        #[arg(short, long)]
+        config: Option<String>,
+    },
     #[clap(about = "Route session traffic to a local service")]
-    Local { service_name: String },
+    Local { service_names: Vec<String> },
     #[clap(about = "Route session traffic to a remote service")]
-    Remote { service_name: String },
+    Remote { service_names: Vec<String> },
     #[clap(about = "View linkup component and service status")]
     Status {
         // Output status in JSON format
         #[arg(long)]
         json: bool,
+        #[arg(short, long)]
+        all: bool,
     },
 }
 
@@ -134,8 +145,9 @@ fn main() -> Result<(), CliError> {
     match &cli.command {
         Commands::Start { config } => start(config.clone()),
         Commands::Stop {} => stop(),
-        Commands::Local { service_name } => local(service_name.clone()),
-        Commands::Remote { service_name } => remote(service_name.clone()),
-        Commands::Status { json } => status(*json),
+        Commands::Reset { config } => reset(config.clone()),
+        Commands::Local { service_names } => local(service_names.clone()),
+        Commands::Remote { service_names } => remote(service_names.clone()),
+        Commands::Status { json, all } => status(*json, *all),
     }
 }
