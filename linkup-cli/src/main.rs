@@ -132,6 +132,8 @@ enum Commands {
         // Output status in JSON format
         #[arg(long)]
         json: bool,
+        #[arg(short, long)]
+        all: bool,
     },
 }
 
@@ -146,6 +148,6 @@ fn main() -> Result<(), CliError> {
         Commands::Reset { config } => reset(config.clone()),
         Commands::Local { service_names } => local(service_names.clone()),
         Commands::Remote { service_names } => remote(service_names.clone()),
-        Commands::Status { json } => status(*json),
+        Commands::Status { json, all } => status(*json, *all),
     }
 }
