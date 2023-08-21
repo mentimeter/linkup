@@ -39,7 +39,10 @@ pub fn stop() -> Result<(), CliError> {
     }
 
     match (local_stopped, tunnel_stopped) {
-        (Ok(_), Ok(_)) => Ok(()),
+        (Ok(_), Ok(_)) => {
+            println!("Stopped linkup");
+            Ok(())
+        }
         (Err(e), _) => Err(e),
         (_, Err(e)) => Err(e),
     }
