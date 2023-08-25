@@ -1,11 +1,13 @@
 use std::{env, fs, io::ErrorKind, path::PathBuf};
 
 use clap::{Parser, Subcommand};
+use clap_complete::Shell;
 use thiserror::Error;
 
 mod background_booting;
 mod background_local_server;
 mod background_tunnel;
+mod completion;
 mod local_config;
 mod local_server;
 mod remote_local;
@@ -15,6 +17,7 @@ mod start;
 mod status;
 mod stop;
 
+use completion::completion;
 use remote_local::{local, remote};
 use reset::reset;
 use start::start;
@@ -113,14 +116,24 @@ struct Cli {
 enum Commands {
     #[clap(about = "Start a new linkup session")]
     Start {
-        #[arg(short, long)]
+        #[arg(
+            short,
+            long,
+            value_name = "CONFIG",
+            help = "Path to config file, overriding environment variable."
+        )]
         config: Option<String>,
     },
     #[clap(about = "Stop a running linkup session")]
     Stop {},
     #[clap(about = "Reset a linkup session")]
     Reset {
-        #[arg(short, long)]
+        #[arg(
+            short,
+            long,
+            value_name = "CONFIG",
+            help = "Path to config file, overriding environment variable."
+        )]
         config: Option<String>,
     },
     #[clap(about = "Route session traffic to a local service")]
@@ -134,6 +147,11 @@ enum Commands {
         json: bool,
         #[arg(short, long)]
         all: bool,
+    },
+    #[clap(about = "Generate completions for your shell")]
+    Completion {
+        #[arg(long, value_enum)]
+        shell: Option<Shell>,
     },
 }
 
@@ -149,5 +167,6 @@ fn main() -> Result<(), CliError> {
         Commands::Local { service_names } => local(service_names.clone()),
         Commands::Remote { service_names } => remote(service_names.clone()),
         Commands::Status { json, all } => status(*json, *all),
+        Commands::Completion { shell } => completion(shell),
     }
 }
