@@ -45,6 +45,12 @@ Here is an example:
 ```yaml
 linkup:
   remote: https://where.linkup.is.deployed.com
+  # By default, linkup will ensure _nothing_ is cached for dev environments
+  # to update on save, you can override this behaviour for specific paths
+  # by adding them to the cache_routes list
+  cache_routes:
+    - .*/_next/static/.*
+    - .*/_next/data/.*
 services:
   - name: web
     remote: https://web-dev.hosting-provider.com

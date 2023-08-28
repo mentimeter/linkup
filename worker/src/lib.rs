@@ -13,15 +13,6 @@ mod ws;
 
 use http_util::*;
 
-fn log_request(req: &Request) {
-    console_log!(
-        "{} - [{}], headers: {:?}",
-        Date::now().to_string(),
-        req.path(),
-        req.headers(),
-    );
-}
-
 async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
@@ -154,8 +145,6 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
-    log_request(&req);
-
     // Optionally, get more helpful error messages written to the console in the case of a panic.
     utils::set_panic_hook();
 
