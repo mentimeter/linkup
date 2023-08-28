@@ -319,10 +319,7 @@ mod tests {
 
         // Origin
         let mut origin_headers: HashMap<String, String> = HashMap::new();
-        origin_headers.insert(
-            "origin".to_string(),
-            format!("http://{}.example.com", name),
-        );
+        origin_headers.insert("origin".to_string(), format!("http://{}.example.com", name));
         sessions
             .get_request_session("example.com".to_string(), origin_headers)
             .await
