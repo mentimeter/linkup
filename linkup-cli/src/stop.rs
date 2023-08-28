@@ -10,21 +10,14 @@ use crate::{
 };
 
 pub fn stop() -> Result<(), CliError> {
-    let local_stopped = match get_pid(LINKUP_LOCALSERVER_PID_FILE) {
-        Ok(pid) => send_sigint(&pid).map_err(|e| {
-            CliError::StopErr(format!(
-                "Could not send SIGINT to local server pid {}: {}",
-                pid, e
-            ))
-        }),
-        Err(PidError::NoPidFile(_)) => Ok(()),
-        Err(e) => Err(CliError::StopErr(format!(
-            "Could not get local server pid: {}",
-            e
-        ))),
-    };
-
-    let tunnel_stopped = stop_tunnel();
+    let local_stopped = stop_pid_file(LINKUP_LOCALSERVER_PID_FILE);
+    if local_stopped.is_ok() {
+        let _ = std::fs::remove_file(LINKUP_LOCALSERVER_PID_FILE);
+    }
+    let tunnel_stopped = stop_pid_file(LINKUP_CLOUDFLARED_PID);
+    if tunnel_stopped.is_ok() {
+        let _ = std::fs::remove_file(LINKUP_CLOUDFLARED_PID);
+    }
 
     let state = get_state()?;
     for service in &state.services {
@@ -48,23 +41,23 @@ pub fn stop() -> Result<(), CliError> {
     }
 }
 
-pub fn stop_tunnel() -> Result<(), CliError> {
-    match get_pid(LINKUP_CLOUDFLARED_PID) {
+pub fn stop_pid_file(pid_file: &str) -> Result<(), CliError> {
+    match get_pid(pid_file) {
         Ok(pid) => {
             match send_sigint(&pid) {
                 Ok(_) => Ok(()),
                 // If we're trying to stop it but it's already died, that's fine
                 Err(PidError::NoSuchProcess(_)) => Ok(()),
                 Err(e) => Err(CliError::StopErr(format!(
-                    "Could not send SIGINT to cloudflared pid {}: {}",
-                    pid, e
+                    "Could not send SIGINT to {} pid {}: {}",
+                    pid_file, pid, e
                 ))),
             }
         }
         Err(PidError::NoPidFile(_)) => Ok(()),
         Err(e) => Err(CliError::StopErr(format!(
-            "Could not get cloudflared pid: {}",
-            e
+            "Could not get {} pid: {}",
+            pid_file, e
         ))),
     }
 }

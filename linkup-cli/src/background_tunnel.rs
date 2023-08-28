@@ -11,7 +11,7 @@ use url::Url;
 
 use crate::signal::send_sigint;
 
-use crate::stop::stop_tunnel;
+use crate::stop::stop_pid_file;
 use crate::{linkup_file_path, CliError};
 use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PORT};
 
@@ -133,7 +133,7 @@ fn try_start_tunnel() -> Result<Url, CliError> {
     match rx.recv_timeout(Duration::from_secs(TUNNEL_START_WAIT)) {
         Ok(result) => result,
         Err(e) => {
-            stop_tunnel()?;
+            stop_pid_file(LINKUP_CLOUDFLARED_PID)?;
             Err(CliError::StartLocalTunnel(format!(
                 "Failed to obtain tunnel URL within {} seconds: {}",
                 TUNNEL_START_WAIT, e
