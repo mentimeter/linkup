@@ -12,11 +12,11 @@ use crate::{
 pub fn stop() -> Result<(), CliError> {
     let local_stopped = stop_pid_file(LINKUP_LOCALSERVER_PID_FILE);
     if local_stopped.is_ok() {
-        let _ = std::fs::remove_file(LINKUP_LOCALSERVER_PID_FILE);
+        let _ = std::fs::remove_file(linkup_file_path(LINKUP_LOCALSERVER_PID_FILE));
     }
     let tunnel_stopped = stop_pid_file(LINKUP_CLOUDFLARED_PID);
     if tunnel_stopped.is_ok() {
-        let _ = std::fs::remove_file(LINKUP_CLOUDFLARED_PID);
+        let _ = std::fs::remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
     }
 
     let state = get_state()?;
