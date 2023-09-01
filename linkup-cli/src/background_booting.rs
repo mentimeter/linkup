@@ -1,6 +1,3 @@
-use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -17,8 +14,8 @@ use crate::background_tunnel::start_tunnel;
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::start::save_state;
 use crate::status::print_session_names;
+use crate::LINKUP_LOCALSERVER_PORT;
 use crate::{start::get_state, CliError};
-use crate::{LINKUP_ENV_SEPARATOR, LINKUP_LOCALSERVER_PORT};
 
 pub fn boot_background_services() -> Result<(), CliError> {
     let mut state = get_state()?;
@@ -41,13 +38,6 @@ pub fn boot_background_services() -> Result<(), CliError> {
         state.linkup.tunnel = tunnel;
     } else {
         println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
-    }
-
-    for service in &state.services {
-        match &service.directory {
-            Some(d) => set_service_env(d.clone(), state.linkup.config_path.clone())?,
-            None => {}
-        }
     }
 
     let (local_server_conf, remote_server_conf) = server_config_from_state(&state);
@@ -194,89 +184,4 @@ pub fn wait_till_ok(url: String) -> Result<(), CliError> {
 
         thread::sleep(Duration::from_millis(2000));
     }
-}
-
-fn set_service_env(directory: String, config_path: String) -> Result<(), CliError> {
-    let config_dir = Path::new(&config_path).parent().ok_or_else(|| {
-        CliError::SetServiceEnv(
-            directory.clone(),
-            "config_path does not have a parent directory".to_string(),
-        )
-    })?;
-
-    let service_path = PathBuf::from(config_dir).join(&directory);
-
-    let dev_env_files_result = fs::read_dir(&service_path);
-    let dev_env_files: Vec<_> = match dev_env_files_result {
-        Ok(entries) => entries
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                entry.file_name().to_string_lossy().ends_with(".linkup")
-                    && entry.file_name().to_string_lossy().starts_with(".env.")
-            })
-            .collect(),
-        Err(e) => {
-            return Err(CliError::SetServiceEnv(
-                directory.clone(),
-                format!("Failed to read directory: {}", e),
-            ))
-        }
-    };
-
-    if dev_env_files.is_empty() {
-        return Err(CliError::NoDevEnv(directory));
-    }
-
-    for dev_env_file in dev_env_files {
-        let dev_env_path = dev_env_file.path();
-        let env_path =
-            PathBuf::from(dev_env_path.parent().unwrap()).join(dev_env_path.file_stem().unwrap());
-
-        if let Ok(env_content) = fs::read_to_string(&env_path) {
-            if env_content.contains(LINKUP_ENV_SEPARATOR) {
-                continue;
-            }
-        }
-
-        let dev_env_content = fs::read_to_string(&dev_env_path).map_err(|e| {
-            CliError::SetServiceEnv(
-                directory.clone(),
-                format!("could not read dev env file: {}", e),
-            )
-        })?;
-
-        let mut env_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&env_path)
-            .map_err(|e| {
-                CliError::SetServiceEnv(
-                    directory.clone(),
-                    format!("Failed to open .env file: {}", e),
-                )
-            })?;
-
-        writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
-            CliError::SetServiceEnv(
-                directory.clone(),
-                format!("could not write to env file: {}", e),
-            )
-        })?;
-
-        writeln!(env_file, "{}", dev_env_content).map_err(|e| {
-            CliError::SetServiceEnv(
-                directory.clone(),
-                format!("could not write to env file: {}", e),
-            )
-        })?;
-
-        writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
-            CliError::SetServiceEnv(
-                directory.clone(),
-                format!("could not write to env file: {}", e),
-            )
-        })?;
-    }
-
-    Ok(())
 }

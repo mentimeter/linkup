@@ -1,6 +1,8 @@
+use std::io::Write;
 use std::{
     env,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
+    path::{Path, PathBuf},
 };
 
 use crate::{
@@ -8,7 +10,7 @@ use crate::{
     linkup_file_path,
     local_config::{config_to_state, LocalState, YamlLocalConfig},
     status::{server_status, ServerStatus},
-    CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
+    CliError, LINKUP_CONFIG_ENV, LINKUP_ENV_SEPARATOR, LINKUP_STATE_FILE,
 };
 
 pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
@@ -27,7 +29,15 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
         state.linkup.tunnel = ps.linkup.tunnel;
     }
 
-    save_state(state)?;
+    save_state(state.clone())?;
+
+    // Set env vars to linkup
+    for service in &state.services {
+        match &service.directory {
+            Some(d) => set_service_env(d.clone(), state.linkup.config_path.clone())?,
+            None => {}
+        }
+    }
 
     boot_background_services()?;
 
@@ -113,6 +123,91 @@ pub fn save_state(state: LocalState) -> Result<(), CliError> {
             "Failed to write the state file at {}",
             linkup_file_path(LINKUP_STATE_FILE).display()
         )));
+    }
+
+    Ok(())
+}
+
+fn set_service_env(directory: String, config_path: String) -> Result<(), CliError> {
+    let config_dir = Path::new(&config_path).parent().ok_or_else(|| {
+        CliError::SetServiceEnv(
+            directory.clone(),
+            "config_path does not have a parent directory".to_string(),
+        )
+    })?;
+
+    let service_path = PathBuf::from(config_dir).join(&directory);
+
+    let dev_env_files_result = fs::read_dir(&service_path);
+    let dev_env_files: Vec<_> = match dev_env_files_result {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry.file_name().to_string_lossy().ends_with(".linkup")
+                    && entry.file_name().to_string_lossy().starts_with(".env.")
+            })
+            .collect(),
+        Err(e) => {
+            return Err(CliError::SetServiceEnv(
+                directory.clone(),
+                format!("Failed to read directory: {}", e),
+            ))
+        }
+    };
+
+    if dev_env_files.is_empty() {
+        return Err(CliError::NoDevEnv(directory));
+    }
+
+    for dev_env_file in dev_env_files {
+        let dev_env_path = dev_env_file.path();
+        let env_path =
+            PathBuf::from(dev_env_path.parent().unwrap()).join(dev_env_path.file_stem().unwrap());
+
+        if let Ok(env_content) = fs::read_to_string(&env_path) {
+            if env_content.contains(LINKUP_ENV_SEPARATOR) {
+                continue;
+            }
+        }
+
+        let dev_env_content = fs::read_to_string(&dev_env_path).map_err(|e| {
+            CliError::SetServiceEnv(
+                directory.clone(),
+                format!("could not read dev env file: {}", e),
+            )
+        })?;
+
+        let mut env_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&env_path)
+            .map_err(|e| {
+                CliError::SetServiceEnv(
+                    directory.clone(),
+                    format!("Failed to open .env file: {}", e),
+                )
+            })?;
+
+        writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
+            CliError::SetServiceEnv(
+                directory.clone(),
+                format!("could not write to env file: {}", e),
+            )
+        })?;
+
+        writeln!(env_file, "{}", dev_env_content).map_err(|e| {
+            CliError::SetServiceEnv(
+                directory.clone(),
+                format!("could not write to env file: {}", e),
+            )
+        })?;
+
+        writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
+            CliError::SetServiceEnv(
+                directory.clone(),
+                format!("could not write to env file: {}", e),
+            )
+        })?;
     }
 
     Ok(())
