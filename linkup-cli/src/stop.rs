@@ -10,15 +10,7 @@ use crate::{
 };
 
 pub fn stop() -> Result<(), CliError> {
-    let local_stopped = stop_pid_file(LINKUP_LOCALSERVER_PID_FILE);
-    if local_stopped.is_ok() {
-        let _ = std::fs::remove_file(linkup_file_path(LINKUP_LOCALSERVER_PID_FILE));
-    }
-    let tunnel_stopped = stop_pid_file(LINKUP_CLOUDFLARED_PID);
-    if tunnel_stopped.is_ok() {
-        let _ = std::fs::remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
-    }
-
+    // Reset env vars back to what they were before
     let state = get_state()?;
     for service in &state.services {
         let remove_res = match &service.directory {
@@ -29,6 +21,19 @@ pub fn stop() -> Result<(), CliError> {
         if let Err(e) = remove_res {
             println!("Could not remove env for service {}: {}", service.name, e);
         }
+    }
+
+    shutdown()
+}
+
+pub fn shutdown() -> Result<(), CliError> {
+    let local_stopped = stop_pid_file(LINKUP_LOCALSERVER_PID_FILE);
+    if local_stopped.is_ok() {
+        let _ = std::fs::remove_file(linkup_file_path(LINKUP_LOCALSERVER_PID_FILE));
+    }
+    let tunnel_stopped = stop_pid_file(LINKUP_CLOUDFLARED_PID);
+    if tunnel_stopped.is_ok() {
+        let _ = std::fs::remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
     }
 
     match (local_stopped, tunnel_stopped) {
