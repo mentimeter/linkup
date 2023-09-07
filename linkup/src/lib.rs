@@ -101,13 +101,13 @@ pub fn additional_response_headers() -> HashMap<String, String> {
     headers
 }
 
-// Returns a url for the destination service and the service name, if the request could be served by the config
-pub fn get_target_url(
+// Returns a (name, url) pair for the destination service, if the request could be served by the config
+pub fn get_target_service(
     url: String,
     headers: HashMap<String, String>,
     config: &Session,
     session_name: &str,
-) -> Option<String> {
+) -> Option<(String, String)> {
     let target = Url::parse(&url).unwrap();
     let path = target.path();
 
@@ -171,7 +171,7 @@ pub fn get_target_url(
             }
 
             let target = redirect(target, &service.origin, Some(new_path));
-            return Some(String::from(target));
+            return Some((service_name, String::from(target)));
         }
     }
 
@@ -265,6 +265,12 @@ mod tests {
             },
             {
                 "name": "backend",
+                "rewrites": [
+                    {
+                        "source": "/api/v2/(.*)",
+                        "target": "/$1"
+                    }
+                ],
                 "location": "http://localhost:8001/"
             }
         ],
@@ -275,6 +281,10 @@ mod tests {
                 "routes": [
                     {
                         "path": "/api/v1/.*",
+                        "service": "backend"
+                    },
+                    {
+                        "path": "/api/v2/.*",
                         "service": "backend"
                     }
                 ]
@@ -426,58 +436,85 @@ mod tests {
 
         // Standard named subdomain
         assert_eq!(
-            get_target_url(
+            get_target_service(
                 format!("http://{}.example.com/?a=b", &name),
                 HashMap::new(),
                 &config,
                 &name
             )
             .unwrap(),
-            "http://localhost:8000/?a=b".to_string(),
+            (
+                "frontend".to_string(),
+                "http://localhost:8000/?a=b".to_string()
+            ),
         );
         // With path
         assert_eq!(
-            get_target_url(
+            get_target_service(
                 format!("http://{}.example.com/a/b/c/?a=b", &name),
                 HashMap::new(),
                 &config,
                 &name
             )
             .unwrap(),
-            "http://localhost:8000/a/b/c/?a=b".to_string(),
+            (
+                "frontend".to_string(),
+                "http://localhost:8000/a/b/c/?a=b".to_string()
+            ),
         );
         // Test rewrites
         assert_eq!(
-            get_target_url(
+            get_target_service(
                 format!("http://{}.example.com/foo/b/c/?a=b", &name),
                 HashMap::new(),
                 &config,
                 &name
             )
             .unwrap(),
-            "http://localhost:8000/bar/b/c/?a=b".to_string(),
+            (
+                "frontend".to_string(),
+                "http://localhost:8000/bar/b/c/?a=b".to_string()
+            ),
         );
         // Test domain routes
         assert_eq!(
-            get_target_url(
+            get_target_service(
                 format!("http://{}.example.com/api/v1/?a=b", &name),
                 HashMap::new(),
                 &config,
                 &name
             )
             .unwrap(),
-            "http://localhost:8001/api/v1/?a=b".to_string(),
+            (
+                "backend".to_string(),
+                "http://localhost:8001/api/v1/?a=b".to_string()
+            )
         );
         // Test no named subdomain
         assert_eq!(
-            get_target_url(
+            get_target_service(
                 "http://api.example.com/api/v1/?a=b".to_string(),
                 HashMap::new(),
                 &config,
                 &name
             )
             .unwrap(),
-            "http://localhost:8001/api/v1/?a=b".to_string(),
+            (
+                "backend".to_string(),
+                "http://localhost:8001/api/v1/?a=b".to_string()
+            )
         );
+
+        // // Test api-proxy
+        // assert_eq!(
+        //     get_target_service(
+        //         "http://example.com/api/v2/user".to_string(),
+        //         HashMap::new(),
+        //         &config,
+        //         &name
+        //     )
+        //     .unwrap(),
+        //     "http://localhost:8001/user".to_string(),
+        // );
     }
 }

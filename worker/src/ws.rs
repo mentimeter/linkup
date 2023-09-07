@@ -28,7 +28,7 @@ pub async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Resu
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
 
-    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
+    let (_, destination_url )= match get_target_service(url.clone(), headers.clone(), &config, &session_name)
     {
         Some(result) => result,
         None => return plaintext_error("No target URL for request", 422),

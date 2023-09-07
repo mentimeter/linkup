@@ -83,15 +83,15 @@ async fn linkup_ws_request_handler(
         }
     };
 
-    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
-    {
-        Some(result) => result,
-        None => {
-            return HttpResponse::NotFound()
-                .append_header(header::ContentType::plaintext())
-                .body("Not target url for request - local server")
-        }
-    };
+    let (_, destination_url) =
+        match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
+            Some(result) => result,
+            None => {
+                return HttpResponse::NotFound()
+                    .append_header(header::ContentType::plaintext())
+                    .body("Not target url for request - local server")
+            }
+        };
 
     let extra_headers = get_additional_headers(url, &headers, &session_name);
 
@@ -191,15 +191,19 @@ async fn linkup_request_handler(
         }
     };
 
-    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
-    {
-        Some(result) => result,
-        None => {
-            return HttpResponse::NotFound()
-                .append_header(header::ContentType::plaintext())
-                .body("Not target url for request - local server")
-        }
-    };
+    println!("url: {}", url);
+    println!("headers: {:?}", headers);
+    println!("session_name: {}", session_name);
+
+    let (_, destination_url) =
+        match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
+            Some(result) => result,
+            None => {
+                return HttpResponse::NotFound()
+                    .append_header(header::ContentType::plaintext())
+                    .body("Not target url for request - local server")
+            }
+        };
 
     let extra_headers = get_additional_headers(url, &headers, &session_name);
 
