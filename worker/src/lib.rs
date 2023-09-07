@@ -108,13 +108,13 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Err(_) => return plaintext_error("Bad or missing request body", 400),
     };
 
-    let (_, destination_url) = match get_target_service(url.clone(), headers.clone(), &config, &session_name)
+    let (dest_service_name, destination_url) = match get_target_service(url.clone(), headers.clone(), &config, &session_name)
     {
         Some(result) => result,
         None => return plaintext_error("No target URL for request", 422),
     };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name);
+    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
 
     let method = match convert_cf_method_to_reqwest(&req.method()) {
         Ok(method) => method,

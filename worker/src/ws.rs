@@ -28,13 +28,13 @@ pub async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Resu
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
 
-    let (_, destination_url )= match get_target_service(url.clone(), headers.clone(), &config, &session_name)
+    let (dest_service_name, destination_url )= match get_target_service(url.clone(), headers.clone(), &config, &session_name)
     {
         Some(result) => result,
         None => return plaintext_error("No target URL for request", 422),
     };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name);
+    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
     headers.extend(extra_headers);
 
     let dest_ws_res = websocket_connect(&destination_url, headers).await;

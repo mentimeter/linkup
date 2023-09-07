@@ -83,7 +83,7 @@ async fn linkup_ws_request_handler(
         }
     };
 
-    let (_, destination_url) =
+    let (dest_service_name, destination_url) =
         match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
             Some(result) => result,
             None => {
@@ -93,7 +93,7 @@ async fn linkup_ws_request_handler(
             }
         };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name);
+    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
@@ -191,11 +191,7 @@ async fn linkup_request_handler(
         }
     };
 
-    println!("url: {}", url);
-    println!("headers: {:?}", headers);
-    println!("session_name: {}", session_name);
-
-    let (_, destination_url) =
+    let (dest_service_name, destination_url) =
         match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
             Some(result) => result,
             None => {
@@ -205,7 +201,7 @@ async fn linkup_request_handler(
             }
         };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name);
+    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
