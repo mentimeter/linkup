@@ -83,17 +83,17 @@ async fn linkup_ws_request_handler(
         }
     };
 
-    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
-    {
-        Some(result) => result,
-        None => {
-            return HttpResponse::NotFound()
-                .append_header(header::ContentType::plaintext())
-                .body("Not target url for request - local server")
-        }
-    };
+    let (dest_service_name, destination_url) =
+        match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
+            Some(result) => result,
+            None => {
+                return HttpResponse::NotFound()
+                    .append_header(header::ContentType::plaintext())
+                    .body("Not target url for request - local server")
+            }
+        };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name);
+    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
@@ -191,17 +191,17 @@ async fn linkup_request_handler(
         }
     };
 
-    let destination_url = match get_target_url(url.clone(), headers.clone(), &config, &session_name)
-    {
-        Some(result) => result,
-        None => {
-            return HttpResponse::NotFound()
-                .append_header(header::ContentType::plaintext())
-                .body("Not target url for request - local server")
-        }
-    };
+    let (dest_service_name, destination_url) =
+        match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
+            Some(result) => result,
+            None => {
+                return HttpResponse::NotFound()
+                    .append_header(header::ContentType::plaintext())
+                    .body("Not target url for request - local server")
+            }
+        };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name);
+    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
