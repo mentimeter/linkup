@@ -65,10 +65,7 @@ pub fn get_additional_headers(
     }
 
     let tracestate = headers.get("tracestate");
-    let linkup_session = format!(
-        "linkup-session={},linkup-destination={}",
-        session_name, destination_service_name
-    );
+    let linkup_session = format!("linkup-session={}", session_name,);
     match tracestate {
         Some(ts) if !ts.contains(&linkup_session) => {
             let new_tracestate = format!("{},{}", ts, linkup_session);
@@ -79,6 +76,13 @@ pub fn get_additional_headers(
             additional_headers.insert("tracestate".to_string(), new_tracestate);
         }
         _ => {}
+    }
+
+    if !headers.contains_key("linkup-destination") {
+        additional_headers.insert(
+            "linkup-destination".to_string(),
+            destination_service_name.to_string(),
+        );
     }
 
     if !headers.contains_key("X-Forwarded-Host") {
@@ -117,14 +121,10 @@ pub fn get_target_service(
 
     // If there was a destination created in a previous linkup, we don't want to
     // re-do path rewrites, so we use the destination service.
-    if let Some(tracestate) = headers.get("tracestate") {
-        if tracestate.contains("linkup-destination") {
-            let destination_service = extract_tracestate_destination(tracestate);
-
-            if let Some(service) = config.services.get(&destination_service) {
-                let target = redirect(target.clone(), &service.origin, Some(path.to_string()));
-                return Some((destination_service, String::from(target)));
-            }
+    if let Some(destination_service) = headers.get("linkup-destination") {
+        if let Some(service) = config.services.get(destination_service) {
+            let target = redirect(target.clone(), &service.origin, Some(path.to_string()));
+            return Some((destination_service.to_string(), String::from(target)));
         }
     }
 
@@ -241,10 +241,6 @@ fn first_subdomain(url: &str) -> String {
     } else {
         String::from(parts[0])
     }
-}
-
-fn extract_tracestate_destination(tracestate: &str) -> String {
-    extrace_tracestate(tracestate, String::from("linkup-destination"))
 }
 
 fn extract_tracestate_session(tracestate: &str) -> String {
@@ -392,17 +388,19 @@ mod tests {
         assert_eq!(add_headers.get("traceparent").unwrap().len(), 55);
         assert_eq!(
             add_headers.get("tracestate").unwrap(),
-            "linkup-session=tiny-cow,linkup-destination=frontend"
+            "linkup-session=tiny-cow"
         );
         assert_eq!(add_headers.get("X-Forwarded-Host").unwrap(), "example.com");
+        assert_eq!(add_headers.get("linkup-destination").unwrap(), "frontend");
 
         let mut already_headers: HashMap<String, String> = HashMap::new();
         already_headers.insert("traceparent".to_string(), "anything".to_string());
         already_headers.insert(
             "tracestate".to_string(),
-            "linkup-session=tiny-cow,linkup-destination=frontend".to_string(),
+            "linkup-session=tiny-cow".to_string(),
         );
         already_headers.insert("X-Forwarded-Host".to_string(), "example.com".to_string());
+        already_headers.insert("linkup-destination".to_string(), "frontend".to_string());
         let add_headers = get_additional_headers(
             "https://abc.some-tunnel.com/abc-xyz".to_string(),
             &already_headers,
@@ -411,8 +409,9 @@ mod tests {
         );
 
         assert!(add_headers.get("traceparent").is_none());
-        assert!(add_headers.get("X-Forwarded-Host").is_none());
         assert!(add_headers.get("tracestate").is_none());
+        assert!(add_headers.get("X-Forwarded-Host").is_none());
+        assert!(add_headers.get("linkup-destination").is_none());
 
         let mut already_headers_two: HashMap<String, String> = HashMap::new();
         already_headers_two.insert("traceparent".to_string(), "anything".to_string());
@@ -429,7 +428,7 @@ mod tests {
         assert!(add_headers.get("X-Forwarded-Host").is_none());
         assert_eq!(
             add_headers.get("tracestate").unwrap(),
-            "other-service=32,linkup-session=tiny-cow,linkup-destination=frontend"
+            "other-service=32,linkup-session=tiny-cow"
         );
     }
 
