@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     linkup_file_path,
-    start::{config_path, get_config},
+    local_config::{config_path, get_config},
     CliError, Result, LINKUP_LOCALDNS_INSTALL,
 };
 

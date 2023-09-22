@@ -1,10 +1,16 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    env,
+    fmt::{self, Display, Formatter},
+    fs,
+};
 
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use linkup::{StorableDomain, StorableRewrite};
+
+use crate::{CliError, LINKUP_CONFIG_ENV};
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct LocalState {
@@ -128,6 +134,52 @@ pub fn config_to_state(yaml_config: YamlLocalConfig, config_path: String) -> Loc
         domains,
         services,
     }
+}
+
+pub fn config_path(config_arg: &Option<String>) -> Result<String, CliError> {
+    match config_arg {
+        Some(path) => {
+            let absolute_path = fs::canonicalize(path)
+                .map_err(|_| CliError::NoConfig("Unable to resolve absolute path".to_string()))?;
+            Ok(absolute_path.to_string_lossy().into_owned())
+        }
+        None => match env::var(LINKUP_CONFIG_ENV) {
+            Ok(val) => {
+                let absolute_path = fs::canonicalize(val).map_err(|_| {
+                    CliError::NoConfig("Unable to resolve absolute path".to_string())
+                })?;
+                Ok(absolute_path.to_string_lossy().into_owned())
+            }
+            Err(_) => Err(CliError::NoConfig(
+                "No config argument provided and LINKUP_CONFIG environment variable not set"
+                    .to_string(),
+            )),
+        },
+    }
+}
+
+pub fn get_config(config_path: &str) -> Result<YamlLocalConfig, CliError> {
+    let content = match fs::read_to_string(config_path) {
+        Ok(content) => content,
+        Err(_) => {
+            return Err(CliError::BadConfig(format!(
+                "Failed to read the config file at {}",
+                config_path
+            )))
+        }
+    };
+
+    let yaml_config: YamlLocalConfig = match serde_yaml::from_str(&content) {
+        Ok(config) => config,
+        Err(_) => {
+            return Err(CliError::BadConfig(format!(
+                "Failed to deserialize the config file at {}",
+                config_path
+            )))
+        }
+    };
+
+    Ok(yaml_config)
 }
 
 #[cfg(test)]
