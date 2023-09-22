@@ -1,7 +1,6 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::{
-    env,
     fs::{self, File, OpenOptions},
     path::{Path, PathBuf},
 };
@@ -12,7 +11,7 @@ use crate::{
     linkup_file_path,
     local_config::{config_to_state, LocalState, YamlLocalConfig},
     status::{server_status, ServerStatus},
-    CliError, LINKUP_CONFIG_ENV, LINKUP_ENV_SEPARATOR, LINKUP_STATE_FILE,
+    CliError, LINKUP_ENV_SEPARATOR, LINKUP_STATE_FILE,
 };
 use crate::{
     linkup_dir_path, LINKUP_CADDYFILE, LINKUP_CADDY_PID_FILE, LINKUP_DNSMASQ_CONF_FILE,
