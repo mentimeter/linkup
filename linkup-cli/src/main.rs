@@ -9,6 +9,7 @@ mod background_local_server;
 mod background_tunnel;
 mod completion;
 mod local_config;
+mod local_dns;
 mod local_server;
 mod remote_local;
 mod reset;
@@ -31,8 +32,14 @@ const LINKUP_STATE_FILE: &str = "state";
 const LINKUP_LOCALSERVER_PID_FILE: &str = "localserver-pid";
 const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
 const LINKUP_ENV_SEPARATOR: &str = "##### Linkup environment - DO NOT EDIT #####";
+const LINKUP_LOCALDNS_INSTALL: &str = "localdns-install";
+const LINKUP_CADDYFILE: &str = "Caddyfile";
+const LINKUP_CADDY_PID_FILE: &str = "caddy-pid";
+const LINKUP_DNSMASQ_CONF_FILE: &str = "dnsmasq-conf";
+const LINKUP_DNSMASQ_LOG_FILE: &str = "dnsmasq-log";
+const LINKUP_DNSMASQ_PID_FILE: &str = "dnsmasq-pid";
 
-pub fn linkup_file_path(file: &str) -> PathBuf {
+pub fn linkup_dir_path() -> PathBuf {
     let storage_dir = match env::var("HOME") {
         Ok(val) => val,
         Err(_e) => "/var/tmp".to_string(),
@@ -41,19 +48,17 @@ pub fn linkup_file_path(file: &str) -> PathBuf {
     let mut path = PathBuf::new();
     path.push(storage_dir);
     path.push(LINKUP_DIR);
+    path
+}
+
+pub fn linkup_file_path(file: &str) -> PathBuf {
+    let mut path = linkup_dir_path();
     path.push(file);
     path
 }
 
-fn ensure_linkup_dir() -> Result<(), CliError> {
-    let storage_dir = match env::var("HOME") {
-        Ok(val) => val,
-        Err(_e) => "/var/tmp".to_string(),
-    };
-
-    let mut path = PathBuf::new();
-    path.push(storage_dir);
-    path.push(LINKUP_DIR);
+fn ensure_linkup_dir() -> Result<()> {
+    let path = linkup_dir_path();
 
     match fs::create_dir(&path) {
         Ok(_) => Ok(()),
@@ -67,6 +72,8 @@ fn ensure_linkup_dir() -> Result<(), CliError> {
         },
     }
 }
+
+pub type Result<T> = std::result::Result<T, CliError>;
 
 #[derive(Error, Debug)]
 pub enum CliError {
@@ -90,6 +97,8 @@ pub enum CliError {
     StartLocalTunnel(String),
     #[error("linkup component did not start in time: {0}")]
     StartLinkupTimeout(String),
+    #[error("could not start Caddy: {0}")]
+    StartCaddy(String),
     #[error("could not load config to {0}: {1}")]
     LoadConfig(String, String),
     #[error("could not stop: {0}")]
@@ -100,6 +109,8 @@ pub enum CliError {
     InconsistentState,
     #[error("no such service: {0}")]
     NoSuchService(String),
+    #[error("failed to install local dns: {0}")]
+    LocalDNSInstall(String),
 }
 
 #[derive(Parser)]
@@ -110,6 +121,11 @@ pub enum CliError {
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+#[derive(Subcommand)]
+enum LocalDNSSubcommand {
+    Install,
+    Uninstall,
 }
 
 #[derive(Subcommand)]
@@ -140,6 +156,18 @@ enum Commands {
         #[arg(short, long)]
         all: bool,
     },
+    LocalDNS {
+        #[arg(
+            short,
+            long,
+            value_name = "CONFIG",
+            help = "Path to config file, overriding environment variable."
+        )]
+        config: Option<String>,
+
+        #[clap(subcommand)]
+        subcommand: LocalDNSSubcommand,
+    },
     #[clap(about = "Generate completions for your shell")]
     Completion {
         #[arg(long, value_enum)]
@@ -147,7 +175,7 @@ enum Commands {
     },
 }
 
-fn main() -> Result<(), CliError> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     ensure_linkup_dir()?;
@@ -159,6 +187,10 @@ fn main() -> Result<(), CliError> {
         Commands::Local { service_names } => local(service_names.clone()),
         Commands::Remote { service_names } => remote(service_names.clone()),
         Commands::Status { json, all } => status(*json, *all),
+        Commands::LocalDNS { config, subcommand } => match subcommand {
+            LocalDNSSubcommand::Install => local_dns::install(config),
+            LocalDNSSubcommand::Uninstall => local_dns::install(config),
+        },
         Commands::Completion { shell } => completion(shell),
     }
 }

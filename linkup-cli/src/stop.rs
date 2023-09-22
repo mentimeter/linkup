@@ -1,12 +1,13 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use crate::signal::{send_sigint, PidError};
 use crate::start::get_state;
 use crate::{
-    linkup_file_path, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_ENV_SEPARATOR,
-    LINKUP_LOCALSERVER_PID_FILE,
+    linkup_dir_path, linkup_file_path, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_DNSMASQ_PID_FILE,
+    LINKUP_ENV_SEPARATOR, LINKUP_LOCALDNS_INSTALL, LINKUP_LOCALSERVER_PID_FILE,
 };
 
 pub fn stop() -> Result<(), CliError> {
@@ -34,6 +35,10 @@ pub fn shutdown() -> Result<(), CliError> {
     let tunnel_stopped = stop_pid_file(LINKUP_CLOUDFLARED_PID);
     if tunnel_stopped.is_ok() {
         let _ = std::fs::remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
+    }
+
+    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
+        stop_localdns_services();
     }
 
     match (local_stopped, tunnel_stopped) {
@@ -144,4 +149,16 @@ fn remove_service_env(directory: String, config_path: String) -> Result<(), CliE
     }
 
     Ok(())
+}
+
+fn stop_localdns_services() {
+    let _ = Command::new("caddy")
+        .current_dir(linkup_dir_path())
+        .arg("stop")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|err| CliError::StopErr(err.to_string()));
+
+    let _ = stop_pid_file(LINKUP_DNSMASQ_PID_FILE);
 }

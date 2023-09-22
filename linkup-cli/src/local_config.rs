@@ -48,20 +48,35 @@ impl Display for ServiceTarget {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct YamlLocalConfig {
     linkup: LinkupConfig,
     services: Vec<YamlLocalService>,
     domains: Vec<StorableDomain>,
 }
 
-#[derive(Deserialize)]
+impl YamlLocalConfig {
+    pub fn top_level_domains(&self) -> Vec<String> {
+        self.domains
+            .iter()
+            .filter(|&d| {
+                !self
+                    .domains
+                    .iter()
+                    .any(|other| other.domain != d.domain && d.domain.ends_with(&other.domain))
+            })
+            .map(|d| d.domain.clone())
+            .collect::<Vec<String>>()
+    }
+}
+
+#[derive(Deserialize, Clone)]
 struct LinkupConfig {
     remote: Url,
     cache_routes: Option<Vec<String>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct YamlLocalService {
     name: String,
     remote: Url,

@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::process::{Command, Stdio};
 use std::{
     env,
     fs::{self, File, OpenOptions},
@@ -12,13 +13,17 @@ use crate::{
     status::{server_status, ServerStatus},
     CliError, LINKUP_CONFIG_ENV, LINKUP_ENV_SEPARATOR, LINKUP_STATE_FILE,
 };
+use crate::{
+    linkup_dir_path, LINKUP_CADDYFILE, LINKUP_CADDY_PID_FILE, LINKUP_DNSMASQ_CONF_FILE,
+    LINKUP_DNSMASQ_LOG_FILE, LINKUP_DNSMASQ_PID_FILE, LINKUP_LOCALDNS_INSTALL,
+};
 
 pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
     let previous_state = get_state();
     let config_path = config_path(config_arg)?;
     let input_config = get_config(config_path.clone())?;
 
-    let mut state = config_to_state(input_config, config_path);
+    let mut state = config_to_state(input_config.clone(), config_path);
 
     // Reuse previous session name if possible
     if let Ok(ps) = previous_state {
@@ -41,12 +46,18 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
 
     boot_background_services()?;
 
+    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
+        boot_local_dns(&input_config)?;
+    }
+
     check_local_not_started()?;
 
     Ok(())
 }
 
-fn config_path(config_arg: Option<String>) -> Result<String, CliError> {
+// TODO(augustoccesar)[2023-09-22]: Move this into a shared file. Maybe local_config?
+// TODO(augustoccesar)[2023-09-22]: Does this function really ownership of the param?
+pub fn config_path(config_arg: Option<String>) -> Result<String, CliError> {
     match config_arg {
         Some(path) => {
             let absolute_path = fs::canonicalize(path)
@@ -68,7 +79,9 @@ fn config_path(config_arg: Option<String>) -> Result<String, CliError> {
     }
 }
 
-fn get_config(config_path: String) -> Result<YamlLocalConfig, CliError> {
+// TODO(augustoccesar)[2023-09-22]: Move this into a shared file. Maybe local_config?
+// TODO(augustoccesar)[2023-09-22]: Does this function really ownership of the param?
+pub fn get_config(config_path: String) -> Result<YamlLocalConfig, CliError> {
     let content = match fs::read_to_string(&config_path) {
         Ok(content) => content,
         Err(_) => {
@@ -223,5 +236,97 @@ fn check_local_not_started() -> Result<(), CliError> {
             println!("⚠️  Service {} is already running locally!! You need to restart it for linkup's environment variables to be loaded.", service.name);
         }
     }
+    Ok(())
+}
+
+fn boot_local_dns(local_config: &YamlLocalConfig) -> Result<(), CliError> {
+    // Start caddy
+    let domains: Vec<String> = local_config
+        .top_level_domains()
+        .iter()
+        .map(|domain| format!("*.{}", domain))
+        .collect();
+
+    let caddy_template = format!(
+        "
+            {{
+                http_port 80
+                https_port 443
+                log {{
+                    output file {}
+                }}
+            }}
+            
+            {} {{
+                reverse_proxy localhost:9066
+                tls {{
+                    dns cloudflare {{env.CF_API_TOKEN}}
+                }}
+            }}
+    ",
+        linkup_file_path("caddy-log").as_path().to_str().unwrap(), // TODO(augustoccesar)[2023-09-22]: Fix this. No unwrap
+        domains.join(", "),
+    );
+
+    if fs::write(linkup_file_path(LINKUP_CADDYFILE), caddy_template).is_err() {
+        return Err(CliError::SaveState(format!(
+            "Failed to write Caddyfile at {}",
+            linkup_file_path(LINKUP_CADDYFILE).display()
+        )));
+    }
+
+    Command::new("caddy")
+        .current_dir(linkup_dir_path())
+        .arg("start")
+        .arg("--pidfile")
+        .arg(linkup_file_path(LINKUP_CADDY_PID_FILE))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|err| CliError::StartCaddy(err.to_string()))?;
+
+    // Start dnsmasq
+
+    if fs::write(linkup_file_path(LINKUP_DNSMASQ_LOG_FILE), "").is_err() {
+        return Err(CliError::SaveState(format!(
+            "Failed to write dnsmasq log file at {}",
+            linkup_file_path(LINKUP_DNSMASQ_LOG_FILE).display()
+        )));
+    }
+
+    let dnsmasq_template = format!(
+        "
+            address=/#/127.0.0.1
+            port=8053
+            log-facility={}
+            pid-file={}
+        ",
+        linkup_file_path(LINKUP_DNSMASQ_LOG_FILE)
+            .as_path()
+            .to_str()
+            .unwrap(), // TODO(augustoccesar)[2023-09-22]: Fix this. No unwrap
+        linkup_file_path(LINKUP_DNSMASQ_PID_FILE)
+            .as_path()
+            .to_str()
+            .unwrap(), // TODO(augustoccesar)[2023-09-22]: Fix this. No unwrap
+    );
+
+    if fs::write(linkup_file_path(LINKUP_DNSMASQ_CONF_FILE), dnsmasq_template).is_err() {
+        return Err(CliError::SaveState(format!(
+            "Failed to write dnsmasq config at {}",
+            linkup_file_path(LINKUP_DNSMASQ_CONF_FILE).display()
+        )));
+    }
+
+    Command::new("dnsmasq")
+        .current_dir(linkup_dir_path())
+        .arg("--log-queries") // TODO(augustoccesar)[2023-09-22]: Do we really need this?
+        .arg("-C")
+        .arg(linkup_file_path(LINKUP_DNSMASQ_CONF_FILE))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|err| CliError::StartCaddy(err.to_string()))?;
+
     Ok(())
 }
