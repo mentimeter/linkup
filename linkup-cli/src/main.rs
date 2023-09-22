@@ -189,7 +189,7 @@ fn main() -> Result<()> {
         Commands::Status { json, all } => status(*json, *all),
         Commands::LocalDNS { config, subcommand } => match subcommand {
             LocalDNSSubcommand::Install => local_dns::install(config),
-            LocalDNSSubcommand::Uninstall => local_dns::install(config),
+            LocalDNSSubcommand::Uninstall => local_dns::uninstall(config),
         },
         Commands::Completion { shell } => completion(shell),
     }
