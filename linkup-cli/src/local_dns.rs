@@ -28,7 +28,7 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
     Ok(())
 }
 
-pub fn uninstall(config: &Option<String>) -> Result<()> {
+pub fn uninstall(_config: &Option<String>) -> Result<()> {
     todo!()
 }
 
@@ -36,7 +36,7 @@ pub fn uninstall(config: &Option<String>) -> Result<()> {
 
 fn ensure_resolver_dir() -> Result<()> {
     Command::new("sudo")
-        .args(&["mkdir", "/etc/resolver"])
+        .args(["mkdir", "/etc/resolver"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -50,7 +50,7 @@ fn ensure_resolver_dir() -> Result<()> {
     Ok(())
 }
 
-fn install_resolvers(resolve_domains: &Vec<String>) -> Result<()> {
+fn install_resolvers(resolve_domains: &[String]) -> Result<()> {
     for domain in resolve_domains.iter() {
         let cmd_str = format!(
             "echo \"nameserver 127.0.0.1\nport 8053\" > /etc/resolver/{}",
@@ -77,9 +77,11 @@ fn install_resolvers(resolve_domains: &Vec<String>) -> Result<()> {
     }
 
     let status_flush = Command::new("sudo")
-        .args(&["dscacheutil", "-flushcache"])
+        .args(["dscacheutil", "-flushcache"])
         .status()
-        .map_err(|err| CliError::LocalDNSInstall("Failed to run dscacheutil -flushcache".into()))?;
+        .map_err(|_err| {
+            CliError::LocalDNSInstall("Failed to run dscacheutil -flushcache".into())
+        })?;
 
     if !status_flush.success() {
         return Err(CliError::LocalDNSInstall(
@@ -88,9 +90,9 @@ fn install_resolvers(resolve_domains: &Vec<String>) -> Result<()> {
     }
 
     let status_killall = Command::new("sudo")
-        .args(&["killall", "-HUP", "mDNSResponder"])
+        .args(["killall", "-HUP", "mDNSResponder"])
         .status()
-        .map_err(|err| {
+        .map_err(|_err| {
             CliError::LocalDNSInstall("Failed to run killall -HUP mDNSResponder".into())
         })?;
 
