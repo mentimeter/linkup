@@ -10,9 +10,8 @@ use crate::{
 };
 
 pub fn install(config_arg: &Option<String>) -> Result<()> {
-    // TODO(augustoccesar)[2023-09-22]: Does this function really need a copy of the config arg?
-    let config_path = config_path(config_arg.clone())?;
-    let input_config = get_config(config_path.clone())?;
+    let config_path = config_path(config_arg)?;
+    let input_config = get_config(&config_path)?;
 
     println!("Installing local-dns requires sudo.");
     println!("Linkup will put files into /etc/resolver/<domain>.");

@@ -20,8 +20,8 @@ use crate::{
 
 pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
     let previous_state = get_state();
-    let config_path = config_path(config_arg)?;
-    let input_config = get_config(config_path.clone())?;
+    let config_path = config_path(&config_arg)?;
+    let input_config = get_config(&config_path)?;
 
     let mut state = config_to_state(input_config.clone(), config_path);
 
@@ -56,8 +56,7 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
 }
 
 // TODO(augustoccesar)[2023-09-22]: Move this into a shared file. Maybe local_config?
-// TODO(augustoccesar)[2023-09-22]: Does this function really ownership of the param?
-pub fn config_path(config_arg: Option<String>) -> Result<String, CliError> {
+pub fn config_path(config_arg: &Option<String>) -> Result<String, CliError> {
     match config_arg {
         Some(path) => {
             let absolute_path = fs::canonicalize(path)
@@ -80,9 +79,8 @@ pub fn config_path(config_arg: Option<String>) -> Result<String, CliError> {
 }
 
 // TODO(augustoccesar)[2023-09-22]: Move this into a shared file. Maybe local_config?
-// TODO(augustoccesar)[2023-09-22]: Does this function really ownership of the param?
-pub fn get_config(config_path: String) -> Result<YamlLocalConfig, CliError> {
-    let content = match fs::read_to_string(&config_path) {
+pub fn get_config(config_path: &str) -> Result<YamlLocalConfig, CliError> {
+    let content = match fs::read_to_string(config_path) {
         Ok(content) => content,
         Err(_) => {
             return Err(CliError::BadConfig(format!(
