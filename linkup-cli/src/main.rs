@@ -111,6 +111,8 @@ pub enum CliError {
     NoSuchService(String),
     #[error("failed to install local dns: {0}")]
     LocalDNSInstall(String),
+    #[error("failed to uninstall local dns: {0}")]
+    LocalDNSUninstall(String),
 }
 
 #[derive(Parser)]
