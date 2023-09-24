@@ -10,8 +10,13 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
-    println!("Installing local-dns requires sudo.");
-    println!("Linkup will put files into /etc/resolver/<domain>.");
+    if !is_sudo() {
+        println!("Linkup needs sudo access to:");
+        println!("  - Ensure there is a folder /etc/resolvers");
+        println!("  - Create file(s) for /etc/resolver/<domain>");
+        println!("  - Flush DNS cache");
+    }
+
     ensure_resolver_dir()?;
     install_resolvers(&input_config.top_level_domains())?;
 
@@ -28,14 +33,19 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
 pub fn uninstall(config_arg: &Option<String>) -> Result<()> {
     let install_check_file = linkup_file_path(LINKUP_LOCALDNS_INSTALL);
     if !install_check_file.exists() {
+        println!("Linkup local-dns is not installed");
         return Ok(());
     }
 
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
-    println!("Uninstalling local-dns requires sudo.");
-    println!("Linkup will delete the domain files /etc/resolver/<domain>.");
+    if !is_sudo() {
+        println!("Linkup needs sudo access to:");
+        println!("  - Delete file(s) on /etc/resolver");
+        println!("  - Flush DNS cache");
+    }
+
     uninstall_resolvers(&input_config.top_level_domains())?;
 
     if let Err(err) = fs::remove_file(install_check_file) {
@@ -151,4 +161,21 @@ fn kill_dns_responder() -> Result<()> {
     }
 
     Ok(())
+}
+
+
+fn is_sudo() -> bool {
+    let sudo_check = Command::new("sudo")
+        .arg("-n")
+        .arg("true")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    if let Ok(exit_status) = sudo_check {
+        return exit_status.success();
+    }
+
+    return false;
 }
