@@ -35,6 +35,7 @@ const LINKUP_ENV_SEPARATOR: &str = "##### Linkup environment - DO NOT EDIT #####
 const LINKUP_LOCALDNS_INSTALL: &str = "localdns-install";
 const LINKUP_CADDYFILE: &str = "Caddyfile";
 const LINKUP_CADDY_PID_FILE: &str = "caddy-pid";
+const LINKUP_CF_TLS_API_ENV_VAR: &str = "LINKUP_CF_API_TOKEN";
 const LINKUP_DNSMASQ_CONF_FILE: &str = "dnsmasq-conf";
 const LINKUP_DNSMASQ_LOG_FILE: &str = "dnsmasq-log";
 const LINKUP_DNSMASQ_PID_FILE: &str = "dnsmasq-pid";

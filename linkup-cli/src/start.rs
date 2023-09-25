@@ -15,7 +15,7 @@ use crate::{
 };
 use crate::{
     linkup_dir_path, LINKUP_CADDYFILE, LINKUP_CADDY_PID_FILE, LINKUP_DNSMASQ_CONF_FILE,
-    LINKUP_DNSMASQ_LOG_FILE, LINKUP_DNSMASQ_PID_FILE, LINKUP_LOCALDNS_INSTALL,
+    LINKUP_DNSMASQ_LOG_FILE, LINKUP_DNSMASQ_PID_FILE, LINKUP_LOCALDNS_INSTALL, LINKUP_CF_TLS_API_ENV_VAR,
 };
 
 pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
@@ -190,6 +190,12 @@ fn check_local_not_started() -> Result<(), CliError> {
 }
 
 fn boot_local_dns(local_config: &YamlLocalConfig) -> Result<(), CliError> {
+    if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
+        return Err(CliError::StartCaddy(
+            format!("{} env var is not set", LINKUP_CF_TLS_API_ENV_VAR),
+        ));
+    }
+
     // Start caddy
     let domains: Vec<String> = local_config
         .top_level_domains()
@@ -210,12 +216,13 @@ fn boot_local_dns(local_config: &YamlLocalConfig) -> Result<(), CliError> {
             {} {{
                 reverse_proxy localhost:9066
                 tls {{
-                    dns cloudflare {{env.CF_API_TOKEN}}
+                    dns cloudflare {{env.{}}}
                 }}
             }}
     ",
         linkup_file_path("caddy-log").as_path().to_str().unwrap(), // TODO(augustoccesar)[2023-09-22]: Fix this. No unwrap
         domains.join(", "),
+        LINKUP_CF_TLS_API_ENV_VAR
     );
 
     if fs::write(linkup_file_path(LINKUP_CADDYFILE), caddy_template).is_err() {
