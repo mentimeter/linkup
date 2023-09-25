@@ -34,8 +34,9 @@ async fn linkup_config_handler(
     match update_session_req_from_json(input_json_conf) {
         Ok((desired_name, server_conf)) => {
             let session_name = sessions
-                .store_session(server_conf, NameKind::Animal, desired_name)
+                .store_session(server_conf.clone(), NameKind::Animal, desired_name)
                 .await;
+            println!("Stored session: {:?}, {:?}", session_name, server_conf);
             match session_name {
                 Ok(session_name) => HttpResponse::Ok().body(session_name),
                 Err(e) => HttpResponse::InternalServerError()
@@ -200,8 +201,14 @@ async fn linkup_request_handler(
                     .body("Not target url for request - local server")
             }
         };
+    
+    println!("dest_service_name: {:?}", dest_service_name);
+    println!("destination_url: {:?}", destination_url);
 
     let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
+    println!("extra_headers: {:?}", extra_headers);
+    println!("method: {:?}", req.method());
+    println!("body: {:?}", req_body);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
