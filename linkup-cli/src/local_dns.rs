@@ -6,16 +6,20 @@ use std::{
 use crate::{
     linkup_file_path,
     local_config::{config_path, get_config},
-    CliError, Result, LINKUP_LOCALDNS_INSTALL, LINKUP_CF_TLS_API_ENV_VAR,
+    services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALDNS_INSTALL,
 };
 
 pub fn install(config_arg: &Option<String>) -> Result<()> {
     if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
         println!("local-dns uses Cloudflare to enable https through local certificates.");
-        println!("To use it, you need to set the {} environment variable.", LINKUP_CF_TLS_API_ENV_VAR);
-        return Err(CliError::LocalDNSInstall(
-            format!("{} env var is not set", LINKUP_CF_TLS_API_ENV_VAR),
-        ));
+        println!(
+            "To use it, you need to set the {} environment variable.",
+            LINKUP_CF_TLS_API_ENV_VAR
+        );
+        return Err(CliError::LocalDNSInstall(format!(
+            "{} env var is not set",
+            LINKUP_CF_TLS_API_ENV_VAR
+        )));
     }
 
     let config_path = config_path(config_arg)?;
@@ -30,6 +34,7 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
 
     ensure_resolver_dir()?;
     install_resolvers(&input_config.top_level_domains())?;
+    services::caddy::install_cloudflare_package()?;
 
     if fs::write(linkup_file_path(LINKUP_LOCALDNS_INSTALL), "").is_err() {
         return Err(CliError::LocalDNSInstall(format!(

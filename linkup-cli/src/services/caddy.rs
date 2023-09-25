@@ -53,6 +53,17 @@ pub fn stop() -> Result<()> {
     Ok(())
 }
 
+pub fn install_cloudflare_package() -> Result<()> {
+    Command::new("caddy")
+        .args(["add-package", "github.com/caddy-dns/cloudflare"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|err| CliError::StartCaddy(err.to_string()))?;
+
+    Ok(())
+}
+
 fn write_caddyfile(domains: &[String]) -> Result<()> {
     let caddy_template = format!(
         "
