@@ -1,9 +1,12 @@
-use std::{fs, process::{Command, Stdio}};
+use std::{
+    fs,
+    process::{Command, Stdio},
+};
 
 use crate::{
-    CliError,
     linkup_file_path,
-    LINKUP_LOCALDNS_INSTALL, local_config::{config_path, get_config}, Result,
+    local_config::{config_path, get_config},
+    CliError, Result, LINKUP_LOCALDNS_INSTALL,
 };
 
 pub fn install(config_arg: &Option<String>) -> Result<()> {
@@ -163,7 +166,6 @@ fn kill_dns_responder() -> Result<()> {
     Ok(())
 }
 
-
 fn is_sudo() -> bool {
     let sudo_check = Command::new("sudo")
         .arg("-n")
@@ -177,5 +179,5 @@ fn is_sudo() -> bool {
         return exit_status.success();
     }
 
-    return false;
+    false
 }
