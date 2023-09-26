@@ -6,10 +6,11 @@ use std::thread;
 use std::time::Duration;
 
 use daemonize::{Daemonize, Outcome};
+use nix::sys::signal::Signal;
 use regex::Regex;
 use url::Url;
 
-use crate::signal::send_sigint;
+use crate::signal::send_signal;
 
 use crate::stop::stop_pid_file;
 use crate::{linkup_file_path, CliError};
@@ -133,7 +134,7 @@ fn try_start_tunnel() -> Result<Url, CliError> {
     match rx.recv_timeout(Duration::from_secs(TUNNEL_START_WAIT)) {
         Ok(result) => result,
         Err(e) => {
-            stop_pid_file(LINKUP_CLOUDFLARED_PID)?;
+            stop_pid_file(&linkup_file_path(LINKUP_CLOUDFLARED_PID), Signal::SIGINT)?;
             Err(CliError::StartLocalTunnel(format!(
                 "Failed to obtain tunnel URL within {} seconds: {}",
                 TUNNEL_START_WAIT, e
@@ -161,7 +162,7 @@ fn daemonized_tunnel_child() {
     ONCE.call_once(|| {
         ctrlc::set_handler(move || {
             println!("Killing child process {}", pid);
-            let kill_res = send_sigint(pid.to_string().as_str());
+            let kill_res = send_signal(pid.to_string().as_str(), Signal::SIGINT);
             println!("Kill result: {:?}", kill_res);
 
             let _ = remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));

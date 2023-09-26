@@ -4,7 +4,9 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{linkup_dir_path, linkup_file_path, stop::kill_pid_file, CliError, Result};
+use nix::sys::signal::Signal;
+
+use crate::{linkup_dir_path, linkup_file_path, stop::stop_pid_file, CliError, Result};
 
 const PORT: u16 = 8053;
 const CONF_FILE: &str = "dnsmasq-conf";
@@ -38,13 +40,9 @@ pub fn start() -> Result<()> {
     Ok(())
 }
 
-pub fn stop() -> Result<()> {
-    let dnsmasq_stopped = kill_pid_file(PID_FILE);
-    if dnsmasq_stopped.is_ok() {
-        let _ = std::fs::remove_file(linkup_file_path(PID_FILE));
-    }
-
-    Ok(())
+// TODO(augustoccesar)[2023-09-26]: Do we really want to swallow these errors?
+pub fn stop() {
+    let _ = stop_pid_file(&linkup_file_path(PID_FILE), Signal::SIGKILL);
 }
 
 fn write_conf_file(conf_file_path: &Path, logfile_path: &Path, pidfile_path: &Path) -> Result<()> {
