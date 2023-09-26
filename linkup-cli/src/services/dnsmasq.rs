@@ -27,7 +27,7 @@ pub fn start() -> Result<()> {
 
     Command::new("dnsmasq")
         .current_dir(linkup_dir_path())
-        .arg("--log-queries") // TODO(augustoccesar)[2023-09-22]: Do we really need this?
+        .arg("--log-queries")
         .arg("-C")
         .arg(conf_file_path)
         .stdout(Stdio::null())

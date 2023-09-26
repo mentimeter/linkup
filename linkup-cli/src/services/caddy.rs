@@ -82,7 +82,7 @@ fn write_caddyfile(domains: &[String]) -> Result<()> {
             }}
         }}
         ",
-        linkup_file_path(LOG_FILE).display(), // TODO(augustoccesar)[2023-09-25]: Is display enough for this?
+        linkup_file_path(LOG_FILE).display(),
         domains.join(", "),
         LINKUP_LOCALSERVER_PORT,
         LINKUP_CF_TLS_API_ENV_VAR,
