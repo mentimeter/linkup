@@ -110,6 +110,8 @@ pub enum CliError {
     LocalDNSInstall(String),
     #[error("failed to uninstall local dns: {0}")]
     LocalDNSUninstall(String),
+    #[error("failed to write file: {0}")]
+    WriteFile(String),
 }
 
 #[derive(Parser)]

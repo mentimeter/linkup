@@ -90,7 +90,7 @@ fn write_caddyfile(domains: &[String]) -> Result<()> {
 
     let caddyfile_path = linkup_file_path(CADDYFILE);
     if fs::write(&caddyfile_path, caddy_template).is_err() {
-        return Err(CliError::SaveState(format!(
+        return Err(CliError::WriteFile(format!(
             "Failed to write Caddyfile at {}",
             caddyfile_path.display(),
         )));

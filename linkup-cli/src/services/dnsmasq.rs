@@ -17,8 +17,7 @@ pub fn start() -> Result<()> {
     let pidfile_path = linkup_file_path(PID_FILE);
 
     if fs::write(&logfile_path, "").is_err() {
-        return Err(CliError::SaveState(format!(
-            // TODO(augustoccesar)[2023-09-25]: Is SaveState the error that we want here?
+        return Err(CliError::WriteFile(format!(
             "Failed to write dnsmasq log file at {}",
             logfile_path.display()
         )));
@@ -59,8 +58,7 @@ fn write_conf_file(conf_file_path: &Path, logfile_path: &Path, pidfile_path: &Pa
     );
 
     if fs::write(conf_file_path, dnsmasq_template).is_err() {
-        return Err(CliError::SaveState(format!(
-            // TODO(augustoccesar)[2023-09-25]: Is SaveState the error that we want here?
+        return Err(CliError::WriteFile(format!(
             "Failed to write dnsmasq config at {}",
             conf_file_path.display()
         )));
