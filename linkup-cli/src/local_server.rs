@@ -60,7 +60,7 @@ async fn linkup_ws_request_handler(
 ) -> impl Responder {
     let sessions = SessionAllocator::new(string_store.into_inner());
 
-    let url = format!("http://localhost:9066{}", req.uri());
+    let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
     let headers = req
         .headers()
         .iter()
@@ -168,7 +168,7 @@ async fn linkup_request_handler(
 ) -> impl Responder {
     let sessions = SessionAllocator::new(string_store.into_inner());
 
-    let url = format!("http://localhost:9066{}", req.uri());
+    let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
     let headers = req
         .headers()
         .iter()
