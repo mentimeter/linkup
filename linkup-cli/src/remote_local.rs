@@ -7,7 +7,7 @@ use crate::{
     CliError, LINKUP_LOCALSERVER_PORT,
 };
 
-pub fn remote(service_names: Vec<String>) -> Result<(), CliError> {
+pub fn remote(service_names: &[String]) -> Result<(), CliError> {
     if service_names.is_empty() {
         return Err(CliError::NoSuchService(
             "No service names provided".to_string(),
@@ -19,8 +19,8 @@ pub fn remote(service_names: Vec<String>) -> Result<(), CliError> {
         let service = state
             .services
             .iter_mut()
-            .find(|s| s.name == service_name)
-            .ok_or(CliError::NoSuchService(service_name))?;
+            .find(|s| s.name.as_str() == service_name)
+            .ok_or_else(|| CliError::NoSuchService(service_name.to_string()))?;
         service.current = ServiceTarget::Remote;
     }
 
@@ -35,7 +35,7 @@ pub fn remote(service_names: Vec<String>) -> Result<(), CliError> {
     Ok(())
 }
 
-pub fn local(service_names: Vec<String>) -> Result<(), CliError> {
+pub fn local(service_names: &[String]) -> Result<(), CliError> {
     if service_names.is_empty() {
         return Err(CliError::NoSuchService(
             "No service names provided".to_string(),
@@ -48,8 +48,8 @@ pub fn local(service_names: Vec<String>) -> Result<(), CliError> {
         let service = state
             .services
             .iter_mut()
-            .find(|s| s.name == service_name)
-            .ok_or(CliError::NoSuchService(service_name))?;
+            .find(|s| s.name.as_str() == service_name)
+            .ok_or_else(|| CliError::NoSuchService(service_name.to_string()))?;
         service.current = ServiceTarget::Local;
     }
 
