@@ -153,11 +153,11 @@ fn main() -> Result<(), CliError> {
     ensure_linkup_dir()?;
 
     match &cli.command {
-        Commands::Start { config } => start(config.clone()),
+        Commands::Start { config } => start(config),
         Commands::Stop {} => stop(),
         Commands::Reset {} => reset(),
-        Commands::Local { service_names } => local(service_names.clone()),
-        Commands::Remote { service_names } => remote(service_names.clone()),
+        Commands::Local { service_names } => local(service_names),
+        Commands::Remote { service_names } => remote(service_names),
         Commands::Status { json, all } => status(*json, *all),
         Commands::Completion { shell } => completion(shell),
     }

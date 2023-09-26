@@ -13,7 +13,7 @@ use crate::{
     CliError, LINKUP_CONFIG_ENV, LINKUP_ENV_SEPARATOR, LINKUP_STATE_FILE,
 };
 
-pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
+pub fn start(config_arg: &Option<String>) -> Result<(), CliError> {
     let previous_state = get_state();
     let config_path = config_path(config_arg)?;
     let input_config = get_config(config_path.clone())?;
@@ -46,7 +46,7 @@ pub fn start(config_arg: Option<String>) -> Result<(), CliError> {
     Ok(())
 }
 
-fn config_path(config_arg: Option<String>) -> Result<String, CliError> {
+fn config_path(config_arg: &Option<String>) -> Result<String, CliError> {
     match config_arg {
         Some(path) => {
             let absolute_path = fs::canonicalize(path)
