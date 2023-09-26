@@ -42,7 +42,7 @@ pub fn start() -> Result<()> {
 
 // TODO(augustoccesar)[2023-09-26]: Do we really want to swallow these errors?
 pub fn stop() {
-    let _ = stop_pid_file(&linkup_file_path(PID_FILE), Signal::SIGKILL);
+    let _ = stop_pid_file(&linkup_file_path(PID_FILE), Signal::SIGTERM);
 }
 
 fn write_conf_file(conf_file_path: &Path, logfile_path: &Path, pidfile_path: &Path) -> Result<()> {
