@@ -16,7 +16,7 @@ use crate::{services, LINKUP_LOCALDNS_INSTALL};
 
 pub fn start(config_arg: &Option<String>) -> Result<(), CliError> {
     let previous_state = get_state();
-    let config_path = config_path(&config_arg)?;
+    let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
     let mut state = config_to_state(input_config.clone(), config_path);
