@@ -144,7 +144,15 @@ enum Commands {
     #[clap(about = "Stop a running linkup session")]
     Stop {},
     #[clap(about = "Reset a linkup session")]
-    Reset {},
+    Reset {
+        #[arg(
+            short,
+            long,
+            value_name = "CONFIG",
+            help = "Path to config file, overriding environment variable."
+        )]
+        config: Option<String>,
+    },
     #[clap(about = "Route session traffic to a local service")]
     Local { service_names: Vec<String> },
     #[clap(about = "Route session traffic to a remote service")]
@@ -184,7 +192,7 @@ fn main() -> Result<()> {
     match &cli.command {
         Commands::Start { config } => start(config.clone()),
         Commands::Stop {} => stop(),
-        Commands::Reset {} => reset(),
+        Commands::Reset { config } => reset(config),
         Commands::Local { service_names } => local(service_names.clone()),
         Commands::Remote { service_names } => remote(service_names.clone()),
         Commands::Status { json, all } => status(*json, *all),

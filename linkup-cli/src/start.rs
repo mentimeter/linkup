@@ -185,7 +185,7 @@ fn check_local_not_started() -> Result<(), CliError> {
     Ok(())
 }
 
-fn boot_local_dns(local_config: &YamlLocalConfig) -> Result<(), CliError> {
+pub fn boot_local_dns(local_config: &YamlLocalConfig) -> Result<(), CliError> {
     services::caddy::start(local_config)?;
     services::dnsmasq::start()?;
 

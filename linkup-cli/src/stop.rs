@@ -2,7 +2,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::signal::{send_sigint, PidError};
+use crate::signal::{send_sigint, send_sigkill, PidError};
 use crate::start::get_state;
 use crate::{
     linkup_file_path, services, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_ENV_SEPARATOR,
@@ -52,17 +52,33 @@ pub fn shutdown() -> Result<(), CliError> {
 
 pub fn stop_pid_file(pid_file: &str) -> Result<(), CliError> {
     match get_pid(pid_file) {
-        Ok(pid) => {
-            match send_sigint(&pid) {
-                Ok(_) => Ok(()),
-                // If we're trying to stop it but it's already died, that's fine
-                Err(PidError::NoSuchProcess(_)) => Ok(()),
-                Err(e) => Err(CliError::StopErr(format!(
-                    "Could not send SIGINT to {} pid {}: {}",
-                    pid_file, pid, e
-                ))),
-            }
-        }
+        Ok(pid) => match send_sigint(&pid) {
+            Ok(_) => Ok(()),
+            Err(PidError::NoSuchProcess(_)) => Ok(()),
+            Err(e) => Err(CliError::StopErr(format!(
+                "Could not send SIGINT to {} pid {}: {}",
+                pid_file, pid, e
+            ))),
+        },
+        Err(PidError::NoPidFile(_)) => Ok(()),
+        Err(e) => Err(CliError::StopErr(format!(
+            "Could not get {} pid: {}",
+            pid_file, e
+        ))),
+    }
+}
+
+// TODO(augustoccesar)[2023-09-26]: Maybe this and stop_pid_file could be nicer?
+pub fn kill_pid_file(pid_file: &str) -> Result<(), CliError> {
+    match get_pid(pid_file) {
+        Ok(pid) => match send_sigkill(&pid) {
+            Ok(_) => Ok(()),
+            Err(PidError::NoSuchProcess(_)) => Ok(()),
+            Err(e) => Err(CliError::StopErr(format!(
+                "Could not send SIGKILL to {} pid {}: {}",
+                pid_file, pid, e
+            ))),
+        },
         Err(PidError::NoPidFile(_)) => Ok(()),
         Err(e) => Err(CliError::StopErr(format!(
             "Could not get {} pid: {}",

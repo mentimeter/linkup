@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{linkup_dir_path, linkup_file_path, stop::stop_pid_file, CliError, Result};
+use crate::{linkup_dir_path, linkup_file_path, stop::kill_pid_file, CliError, Result};
 
 const PORT: u16 = 8053;
 const CONF_FILE: &str = "dnsmasq-conf";
@@ -39,7 +39,10 @@ pub fn start() -> Result<()> {
 }
 
 pub fn stop() -> Result<()> {
-    stop_pid_file(PID_FILE)?;
+    let dnsmasq_stopped = kill_pid_file(PID_FILE);
+    if dnsmasq_stopped.is_ok() {
+        let _ = std::fs::remove_file(linkup_file_path(PID_FILE));
+    }
 
     Ok(())
 }

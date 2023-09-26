@@ -28,3 +28,17 @@ pub fn send_sigint(pid_str: &str) -> Result<(), PidError> {
         Err(e) => Err(PidError::SignalErr(e.to_string())),
     }
 }
+
+pub fn send_sigkill(pid_str: &str) -> Result<(), PidError> {
+    // Parse the PID string to a i32
+    let pid_num = i32::from_str(pid_str).map_err(|e| PidError::BadPidFile(e.to_string()))?;
+
+    // Create a Pid from the i32
+    let pid = Pid::from_raw(pid_num);
+
+    match kill(pid, Some(Signal::SIGKILL)) {
+        Ok(_) => Ok(()),
+        Err(nix::Error::ESRCH) => Err(PidError::NoSuchProcess(pid_str.to_string())),
+        Err(e) => Err(PidError::SignalErr(e.to_string())),
+    }
+}

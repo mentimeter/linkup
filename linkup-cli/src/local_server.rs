@@ -205,7 +205,7 @@ async fn linkup_request_handler(
     let mut extra_headers =
         get_additional_headers(url, &headers, &session_name, &dest_service_name);
 
-    // TODO: this is ugly
+    // TODO(ostenbom): Consider moving host override into additional_headers function
     extra_headers.insert(
         "host".to_string(),
         Url::parse(&destination_url)
