@@ -34,8 +34,6 @@ pub fn shutdown() -> Result<(), CliError> {
         Signal::SIGINT,
     );
 
-    // TODO(augustoccesar)[2023-09-26]: This pidfile seems to have the liknkup process pid, not cloudflared pid. So this is deleting the file
-    //   but not actually stopping cloudflared
     let tunnel_stopped = stop_pid_file(&linkup_file_path(LINKUP_CLOUDFLARED_PID), Signal::SIGINT);
 
     if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
