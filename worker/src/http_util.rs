@@ -42,7 +42,7 @@ pub fn merge_headers(
     {
         if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
             if let Ok(header_value) = reqwest::header::HeaderValue::from_str(&value) {
-                header_map.append(header_name, header_value);
+                header_map.insert(header_name, header_value);
             }
         }
     }

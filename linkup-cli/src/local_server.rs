@@ -7,6 +7,7 @@ use futures::stream::StreamExt;
 use thiserror::Error;
 
 use linkup::*;
+use url::Url;
 
 use crate::LINKUP_LOCALSERVER_PORT;
 
@@ -201,7 +202,18 @@ async fn linkup_request_handler(
             }
         };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
+    let mut extra_headers =
+        get_additional_headers(url, &headers, &session_name, &dest_service_name);
+
+    // TODO: this is ugly
+    extra_headers.insert(
+        "host".to_string(),
+        Url::parse(&destination_url)
+            .unwrap()
+            .host_str()
+            .unwrap()
+            .to_string(),
+    );
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
@@ -238,10 +250,11 @@ fn merge_headers(
     extra_headers: &HashMap<String, String>,
 ) -> reqwest::header::HeaderMap {
     let mut header_map = reqwest::header::HeaderMap::new();
+    // Give the extra headers precedence
     for (key, value) in original_headers.iter().chain(extra_headers.iter()) {
         if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
             if let Ok(header_value) = reqwest::header::HeaderValue::from_str(value) {
-                header_map.append(header_name, header_value);
+                header_map.insert(header_name, header_value);
             }
         }
     }

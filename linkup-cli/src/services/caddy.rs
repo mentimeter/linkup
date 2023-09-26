@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     linkup_dir_path, linkup_file_path, local_config::YamlLocalConfig, CliError, Result,
-    LINKUP_CF_TLS_API_ENV_VAR,
+    LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALSERVER_PORT,
 };
 
 const CADDYFILE: &str = "Caddyfile";
@@ -76,7 +76,7 @@ fn write_caddyfile(domains: &[String]) -> Result<()> {
         }}
 
         {} {{
-            reverse_proxy localhost:9066
+            reverse_proxy localhost:{}
             tls {{
                 dns cloudflare {{env.{}}}
             }}
@@ -84,6 +84,7 @@ fn write_caddyfile(domains: &[String]) -> Result<()> {
         ",
         linkup_file_path(LOG_FILE).display(), // TODO(augustoccesar)[2023-09-25]: Is display enough for this?
         domains.join(", "),
+        LINKUP_LOCALSERVER_PORT,
         LINKUP_CF_TLS_API_ENV_VAR,
     );
 
