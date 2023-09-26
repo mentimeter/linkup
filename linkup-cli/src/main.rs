@@ -190,11 +190,11 @@ fn main() -> Result<()> {
     ensure_linkup_dir()?;
 
     match &cli.command {
-        Commands::Start { config } => start(config.clone()),
+        Commands::Start { config } => start(config),
         Commands::Stop {} => stop(),
         Commands::Reset { config } => reset(config),
-        Commands::Local { service_names } => local(service_names.clone()),
-        Commands::Remote { service_names } => remote(service_names.clone()),
+        Commands::Local { service_names } => local(service_names),
+        Commands::Remote { service_names } => remote(service_names),
         Commands::Status { json, all } => status(*json, *all),
         Commands::LocalDNS { config, subcommand } => match subcommand {
             LocalDNSSubcommand::Install => local_dns::install(config),
