@@ -1,24 +1,25 @@
 use std::io::Write;
 use std::{
-    env,
     fs::{self, File, OpenOptions},
     path::{Path, PathBuf},
 };
 
+use crate::local_config::{config_path, get_config};
 use crate::{
     background_booting::boot_background_services,
     linkup_file_path,
     local_config::{config_to_state, LocalState, YamlLocalConfig},
     status::{server_status, ServerStatus},
-    CliError, LINKUP_CONFIG_ENV, LINKUP_ENV_SEPARATOR, LINKUP_STATE_FILE,
+    CliError, LINKUP_ENV_SEPARATOR, LINKUP_STATE_FILE,
 };
+use crate::{services, LINKUP_LOCALDNS_INSTALL};
 
 pub fn start(config_arg: &Option<String>) -> Result<(), CliError> {
     let previous_state = get_state();
     let config_path = config_path(config_arg)?;
-    let input_config = get_config(config_path.clone())?;
+    let input_config = get_config(&config_path)?;
 
-    let mut state = config_to_state(input_config, config_path);
+    let mut state = config_to_state(input_config.clone(), config_path);
 
     // Reuse previous session name if possible
     if let Ok(ps) = previous_state {
@@ -41,55 +42,13 @@ pub fn start(config_arg: &Option<String>) -> Result<(), CliError> {
 
     boot_background_services()?;
 
+    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
+        boot_local_dns(&input_config)?;
+    }
+
     check_local_not_started()?;
 
     Ok(())
-}
-
-fn config_path(config_arg: &Option<String>) -> Result<String, CliError> {
-    match config_arg {
-        Some(path) => {
-            let absolute_path = fs::canonicalize(path)
-                .map_err(|_| CliError::NoConfig("Unable to resolve absolute path".to_string()))?;
-            Ok(absolute_path.to_string_lossy().into_owned())
-        }
-        None => match env::var(LINKUP_CONFIG_ENV) {
-            Ok(val) => {
-                let absolute_path = fs::canonicalize(val).map_err(|_| {
-                    CliError::NoConfig("Unable to resolve absolute path".to_string())
-                })?;
-                Ok(absolute_path.to_string_lossy().into_owned())
-            }
-            Err(_) => Err(CliError::NoConfig(
-                "No config argument provided and LINKUP_CONFIG environment variable not set"
-                    .to_string(),
-            )),
-        },
-    }
-}
-
-fn get_config(config_path: String) -> Result<YamlLocalConfig, CliError> {
-    let content = match fs::read_to_string(&config_path) {
-        Ok(content) => content,
-        Err(_) => {
-            return Err(CliError::BadConfig(format!(
-                "Failed to read the config file at {}",
-                config_path
-            )))
-        }
-    };
-
-    let yaml_config: YamlLocalConfig = match serde_yaml::from_str(&content) {
-        Ok(config) => config,
-        Err(_) => {
-            return Err(CliError::BadConfig(format!(
-                "Failed to deserialize the config file at {}",
-                config_path
-            )))
-        }
-    };
-
-    Ok(yaml_config)
 }
 
 pub fn get_state() -> Result<LocalState, CliError> {
@@ -223,5 +182,12 @@ fn check_local_not_started() -> Result<(), CliError> {
             println!("⚠️  Service {} is already running locally!! You need to restart it for linkup's environment variables to be loaded.", service.name);
         }
     }
+    Ok(())
+}
+
+pub fn boot_local_dns(local_config: &YamlLocalConfig) -> Result<(), CliError> {
+    services::caddy::start(local_config)?;
+    services::dnsmasq::start()?;
+
     Ok(())
 }

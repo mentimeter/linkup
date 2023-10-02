@@ -80,11 +80,9 @@ pub fn status(json: bool, all: bool) -> Result<(), CliError> {
     };
 
     if !all && !json {
-        status.services = status
+        status
             .services
-            .into_iter()
-            .filter(|s| s.status != ServerStatus::Ok || s.component_kind == "local")
-            .collect();
+            .retain(|s| s.status != ServerStatus::Ok || s.component_kind == "local");
     }
 
     if json {

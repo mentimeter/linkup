@@ -1,12 +1,14 @@
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::signal::{send_sigint, PidError};
+use nix::sys::signal::Signal;
+
+use crate::signal::{get_pid, send_signal, PidError};
 use crate::start::get_state;
 use crate::{
-    linkup_file_path, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_ENV_SEPARATOR,
-    LINKUP_LOCALSERVER_PID_FILE,
+    linkup_file_path, services, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_ENV_SEPARATOR,
+    LINKUP_LOCALDNS_INSTALL, LINKUP_LOCALSERVER_PID_FILE,
 };
 
 pub fn stop() -> Result<(), CliError> {
@@ -27,13 +29,15 @@ pub fn stop() -> Result<(), CliError> {
 }
 
 pub fn shutdown() -> Result<(), CliError> {
-    let local_stopped = stop_pid_file(LINKUP_LOCALSERVER_PID_FILE);
-    if local_stopped.is_ok() {
-        let _ = std::fs::remove_file(linkup_file_path(LINKUP_LOCALSERVER_PID_FILE));
-    }
-    let tunnel_stopped = stop_pid_file(LINKUP_CLOUDFLARED_PID);
-    if tunnel_stopped.is_ok() {
-        let _ = std::fs::remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));
+    let local_stopped = stop_pid_file(
+        &linkup_file_path(LINKUP_LOCALSERVER_PID_FILE),
+        Signal::SIGINT,
+    );
+
+    let tunnel_stopped = stop_pid_file(&linkup_file_path(LINKUP_CLOUDFLARED_PID), Signal::SIGINT);
+
+    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
+        stop_localdns_services();
     }
 
     match (local_stopped, tunnel_stopped) {
@@ -46,36 +50,32 @@ pub fn shutdown() -> Result<(), CliError> {
     }
 }
 
-pub fn stop_pid_file(pid_file: &str) -> Result<(), CliError> {
-    match get_pid(pid_file) {
-        Ok(pid) => {
-            match send_sigint(&pid) {
-                Ok(_) => Ok(()),
-                // If we're trying to stop it but it's already died, that's fine
-                Err(PidError::NoSuchProcess(_)) => Ok(()),
-                Err(e) => Err(CliError::StopErr(format!(
-                    "Could not send SIGINT to {} pid {}: {}",
-                    pid_file, pid, e
-                ))),
-            }
-        }
+pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), CliError> {
+    let stopped = match get_pid(pid_file) {
+        Ok(pid) => match send_signal(&pid, signal) {
+            Ok(_) => Ok(()),
+            Err(PidError::NoSuchProcess(_)) => Ok(()),
+            Err(e) => Err(CliError::StopErr(format!(
+                "Could not send {} to {} pid {}: {}",
+                signal,
+                pid_file.display(),
+                pid,
+                e
+            ))),
+        },
         Err(PidError::NoPidFile(_)) => Ok(()),
         Err(e) => Err(CliError::StopErr(format!(
             "Could not get {} pid: {}",
-            pid_file, e
+            pid_file.display(),
+            e
         ))),
-    }
-}
+    };
 
-fn get_pid(file_name: &str) -> Result<String, PidError> {
-    if let Err(e) = File::open(linkup_file_path(file_name)) {
-        return Err(PidError::NoPidFile(e.to_string()));
+    if stopped.is_ok() {
+        let _ = std::fs::remove_file(pid_file);
     }
 
-    match fs::read_to_string(linkup_file_path(file_name)) {
-        Ok(content) => Ok(content.trim().to_string()),
-        Err(e) => Err(PidError::BadPidFile(e.to_string())),
-    }
+    stopped
 }
 
 fn remove_service_env(directory: String, config_path: String) -> Result<(), CliError> {
@@ -144,4 +144,9 @@ fn remove_service_env(directory: String, config_path: String) -> Result<(), CliE
     }
 
     Ok(())
+}
+
+fn stop_localdns_services() {
+    let _ = services::caddy::stop();
+    services::dnsmasq::stop();
 }

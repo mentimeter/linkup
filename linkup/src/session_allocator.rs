@@ -24,6 +24,13 @@ impl SessionAllocator {
             return Ok((url_name, config));
         }
 
+        if let Some(forwarded_host) = headers.get("x-forwarded-host") {
+            let forwarded_host_name = first_subdomain(forwarded_host);
+            if let Some(config) = self.get_session_config(forwarded_host_name.to_string()).await? {
+                return Ok((forwarded_host_name, config));
+            }
+        }
+
         if let Some(referer) = headers.get("referer") {
             let referer_name = first_subdomain(referer);
             if let Some(config) = self.get_session_config(referer_name.to_string()).await? {

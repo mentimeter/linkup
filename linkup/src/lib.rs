@@ -85,9 +85,9 @@ pub fn get_additional_headers(
         );
     }
 
-    if !headers.contains_key("X-Forwarded-Host") {
+    if !headers.contains_key("x-forwarded-host") {
         additional_headers.insert(
-            "X-Forwarded-Host".to_string(),
+            "x-forwarded-host".to_string(),
             get_target_domain(&url, session_name),
         );
     }
@@ -116,7 +116,11 @@ pub fn get_target_service(
     config: &Session,
     session_name: &str,
 ) -> Option<(String, String)> {
-    let target = Url::parse(&url).unwrap();
+    let mut target = Url::parse(&url).unwrap();
+    // Ensure always the default port, even when the local server is hit first
+    target
+        .set_port(None)
+        .expect("setting port to None is always valid");
     let path = target.path();
 
     // If there was a destination created in a previous linkup, we don't want to
@@ -131,13 +135,14 @@ pub fn get_target_service(
     let url_target = config.domains.get(&get_target_domain(&url, session_name));
 
     // Forwarded hosts persist over the tunnel
-    let forwarded_host_target = config.domains.get(
+    let forwarded_host_target = config.domains.get(&get_target_domain(
         headers.get("x-forwarded-host").unwrap_or(
             headers
                 .get("X-Forwarded-Host")
                 .unwrap_or(&"does-not-exist".to_string()),
         ),
-    );
+        session_name,
+    ));
 
     // This is more for e2e tests to work
     let referer_target = config.domains.get(&get_target_domain(
