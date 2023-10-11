@@ -129,12 +129,16 @@ fn set_service_env(directory: String, config_path: String) -> Result<(), CliErro
             }
         }
 
-        let dev_env_content = fs::read_to_string(&dev_env_path).map_err(|e| {
+        let mut dev_env_content = fs::read_to_string(&dev_env_path).map_err(|e| {
             CliError::SetServiceEnv(
                 directory.clone(),
                 format!("could not read dev env file: {}", e),
             )
         })?;
+
+        if dev_env_content.ends_with('\n') {
+            dev_env_content.pop();
+        }
 
         let mut env_file = OpenOptions::new()
             .create(true)
@@ -147,7 +151,7 @@ fn set_service_env(directory: String, config_path: String) -> Result<(), CliErro
                 )
             })?;
 
-        writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
+        writeln!(env_file, "\n{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
             CliError::SetServiceEnv(
                 directory.clone(),
                 format!("could not write to env file: {}", e),
