@@ -115,10 +115,23 @@ fn remove_service_env(directory: String, config_path: String) -> Result<(), CliE
         let start_idx = file_content.find(LINKUP_ENV_SEPARATOR);
         let end_idx = file_content.rfind(LINKUP_ENV_SEPARATOR);
 
-        if let (Some(start), Some(end)) = (start_idx, end_idx) {
+        if let (Some(mut start), Some(mut end)) = (start_idx, end_idx) {
             if start < end {
-                file_content.drain(start..=end + LINKUP_ENV_SEPARATOR.len() - 1);
+                let new_line_above_start =
+                    start > 1 && file_content.chars().nth(start - 1) == Some('\n');
+                let new_line_bellow_end = file_content.chars().nth(end + 1) == Some('\n');
+
+                if new_line_above_start {
+                    start = start - 1;
+                }
+
+                if new_line_bellow_end {
+                    end = end + 1;
+                }
+
+                file_content.drain(start..=end + LINKUP_ENV_SEPARATOR.len());
             }
+
             if file_content.ends_with('\n') {
                 file_content.pop();
             }
