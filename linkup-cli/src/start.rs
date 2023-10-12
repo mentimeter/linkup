@@ -1,16 +1,16 @@
-use std::io::Write;
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     path::{Path, PathBuf},
 };
 
+use crate::env_files::write_to_env_file;
 use crate::local_config::{config_path, get_config};
 use crate::{
     background_booting::boot_background_services,
     linkup_file_path,
     local_config::{config_to_state, LocalState, YamlLocalConfig},
     status::{server_status, ServerStatus},
-    CliError, LINKUP_ENV_SEPARATOR, LINKUP_STATE_FILE,
+    CliError, LINKUP_STATE_FILE,
 };
 use crate::{services, LINKUP_LOCALDNS_INSTALL};
 
@@ -123,54 +123,7 @@ fn set_service_env(directory: String, config_path: String) -> Result<(), CliErro
         let env_path =
             PathBuf::from(dev_env_path.parent().unwrap()).join(dev_env_path.file_stem().unwrap());
 
-        if let Ok(env_content) = fs::read_to_string(&env_path) {
-            if env_content.contains(LINKUP_ENV_SEPARATOR) {
-                continue;
-            }
-        }
-
-        let mut dev_env_content = fs::read_to_string(&dev_env_path).map_err(|e| {
-            CliError::SetServiceEnv(
-                directory.clone(),
-                format!("could not read dev env file: {}", e),
-            )
-        })?;
-
-        if dev_env_content.ends_with('\n') {
-            dev_env_content.pop();
-        }
-
-        let mut env_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&env_path)
-            .map_err(|e| {
-                CliError::SetServiceEnv(
-                    directory.clone(),
-                    format!("Failed to open .env file: {}", e),
-                )
-            })?;
-
-        writeln!(env_file, "\n{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
-            CliError::SetServiceEnv(
-                directory.clone(),
-                format!("could not write to env file: {}", e),
-            )
-        })?;
-
-        writeln!(env_file, "{}", dev_env_content).map_err(|e| {
-            CliError::SetServiceEnv(
-                directory.clone(),
-                format!("could not write to env file: {}", e),
-            )
-        })?;
-
-        writeln!(env_file, "{}", LINKUP_ENV_SEPARATOR).map_err(|e| {
-            CliError::SetServiceEnv(
-                directory.clone(),
-                format!("could not write to env file: {}", e),
-            )
-        })?;
+        write_to_env_file(&directory, &dev_env_path, &env_path)?;
     }
 
     Ok(())
