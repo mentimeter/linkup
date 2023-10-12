@@ -96,6 +96,8 @@ pub enum CliError {
     StartLinkupTimeout(String),
     #[error("could not start Caddy: {0}")]
     StartCaddy(String),
+    #[error("could not start DNSMasq: {0}")]
+    StartDNSMasq(String),
     #[error("could not load config to {0}: {1}")]
     LoadConfig(String, String),
     #[error("could not stop: {0}")]

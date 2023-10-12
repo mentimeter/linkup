@@ -35,7 +35,7 @@ pub fn start() -> Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map_err(|err| CliError::StartCaddy(err.to_string()))?;
+        .map_err(|err| CliError::StartDNSMasq(err.to_string()))?;
 
     Ok(())
 }
