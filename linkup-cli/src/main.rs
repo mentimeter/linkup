@@ -8,6 +8,7 @@ mod background_booting;
 mod background_local_server;
 mod background_tunnel;
 mod completion;
+mod env_files;
 mod local_config;
 mod local_dns;
 mod local_server;
@@ -32,7 +33,6 @@ const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
 const LINKUP_LOCALSERVER_PID_FILE: &str = "localserver-pid";
 const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
-const LINKUP_ENV_SEPARATOR: &str = "##### Linkup environment - DO NOT EDIT #####";
 const LINKUP_LOCALDNS_INSTALL: &str = "localdns-install";
 const LINKUP_CF_TLS_API_ENV_VAR: &str = "LINKUP_CF_API_TOKEN";
 

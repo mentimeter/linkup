@@ -1,13 +1,13 @@
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs::{self};
 use std::path::{Path, PathBuf};
 
 use nix::sys::signal::Signal;
 
+use crate::env_files::clear_env_file;
 use crate::signal::{get_pid, send_signal, PidError};
 use crate::start::get_state;
 use crate::{
-    linkup_file_path, services, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_ENV_SEPARATOR,
+    linkup_file_path, services, CliError, LINKUP_CLOUDFLARED_PID,
     LINKUP_LOCALDNS_INSTALL, LINKUP_LOCALSERVER_PID_FILE,
 };
 
@@ -105,55 +105,7 @@ fn remove_service_env(directory: String, config_path: String) -> Result<(), CliE
     for env_file in env_files {
         let env_path = env_file.path();
 
-        let mut file_content = fs::read_to_string(&env_path).map_err(|e| {
-            CliError::RemoveServiceEnv(
-                directory.clone(),
-                format!("could not read dev env file: {}", e),
-            )
-        })?;
-
-        let start_idx = file_content.find(LINKUP_ENV_SEPARATOR);
-        let end_idx = file_content.rfind(LINKUP_ENV_SEPARATOR);
-
-        if let (Some(mut start), Some(mut end)) = (start_idx, end_idx) {
-            if start < end {
-                let new_line_above_start =
-                    start > 1 && file_content.chars().nth(start - 1) == Some('\n');
-                let new_line_bellow_end = file_content.chars().nth(end + 1) == Some('\n');
-
-                if new_line_above_start {
-                    start = start - 1;
-                }
-
-                if new_line_bellow_end {
-                    end = end + 1;
-                }
-
-                file_content.drain(start..=end + LINKUP_ENV_SEPARATOR.len());
-            }
-
-            if file_content.ends_with('\n') {
-                file_content.pop();
-            }
-
-            // Write the updated content back to the file
-            let mut file = OpenOptions::new()
-                .write(true)
-                .truncate(true)
-                .open(&env_path)
-                .map_err(|e| {
-                    CliError::RemoveServiceEnv(
-                        directory.clone(),
-                        format!("Failed to open .env file for writing: {}", e),
-                    )
-                })?;
-            file.write_all(file_content.as_bytes()).map_err(|e| {
-                CliError::RemoveServiceEnv(
-                    directory.clone(),
-                    format!("Failed to write .env file: {}", e),
-                )
-            })?;
-        }
+        clear_env_file(&directory, &env_path)?;
     }
 
     Ok(())
