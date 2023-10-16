@@ -8,9 +8,14 @@ on:
         required: true
 
 jobs:
+  get-next-version:
+    uses: semantic-release-action/next-release-version/.github/workflows/next-release-version.yml@v4
+
   publish-to-github:
     name: Publish to Github
     runs-on: ${{matrix.os}}
+    needs:
+      - get-next-version
     strategy:
       matrix:
         include:
@@ -40,6 +45,16 @@ jobs:
         uses: actions/checkout@v2
         with:
           fetch-depth: 1
+
+      - name: Install semantic-release-cargo
+        if: needs.get-next-version.outputs.new-release-published == 'true'
+        uses: EricCrosson/install-github-release-binary@v2
+        with:
+          targets: semantic-release-cargo@2
+
+      - name: Prepare semantic-release for Rust
+        if: needs.get-next-version.outputs.new-release-published == 'true'
+        run: semantic-release-cargo prepare ${{ needs.get-next-version.outputs.new-release-version }}
 
       - name: Install Linker
         if: matrix.cross

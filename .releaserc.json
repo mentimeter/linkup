@@ -1,0 +1,5 @@
+{
+    "plugins": [
+        "@semantic-release-cargo/semantic-release-cargo"
+    ]
+}
