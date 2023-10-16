@@ -113,7 +113,7 @@ fn forward_ws_event(
                     Ok(_) => Ok(()),
                     Err(e) => {
                         let err_msg = format!("Error sending {} with string: {:?}", description, e);
-                        close_with_internal_error(err_msg.clone(), &from, &to);
+                        close_with_internal_error(err_msg.clone(), from, to);
                         Err(Error::RustError(err_msg))
                     }
                 }
@@ -122,13 +122,13 @@ fn forward_ws_event(
                     Ok(_) => Ok(()),
                     Err(e) => {
                         let err_msg = format!("Error sending {} with bytes: {:?}", description, e);
-                        close_with_internal_error(err_msg.clone(), &from, &to);
+                        close_with_internal_error(err_msg.clone(), from, to);
                         Err(Error::RustError(err_msg))
                     }
                 }
             } else {
                 let err_msg = format!("Error message {} no text or bytes", description);
-                close_with_internal_error(err_msg.clone(), &from, &to);
+                close_with_internal_error(err_msg.clone(), from, to);
                 Err(Error::RustError(err_msg))
             }
         }
@@ -139,7 +139,7 @@ fn forward_ws_event(
         }
         Err(e) => {
             let err_msg = format!("Other {} error: {:?}", description, e);
-            close_with_internal_error(err_msg.clone(), &from, &to);
+            close_with_internal_error(err_msg.clone(), from, to);
             Err(Error::RustError(err_msg))
         }
     }
