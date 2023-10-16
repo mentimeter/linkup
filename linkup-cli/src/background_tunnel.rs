@@ -115,10 +115,11 @@ fn try_start_tunnel() -> Result<Url, CliError> {
                             found_started = true;
                         }
 
-                        if url.is_some() && found_started {
-                            let u = url.unwrap();
-                            tx.send(Ok(u)).expect("Failed to send tunnel URL");
-                            return;
+                        if found_started {
+                            if let Some(url) = &url {
+                                tx.send(Ok(url.clone())).expect("Failed to send tunnel URL");
+                                return;
+                            }       
                         }
                     }
                 }
