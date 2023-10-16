@@ -395,7 +395,7 @@ mod tests {
             add_headers.get("tracestate").unwrap(),
             "linkup-session=tiny-cow"
         );
-        assert_eq!(add_headers.get("X-Forwarded-Host").unwrap(), "example.com");
+        assert_eq!(add_headers.get("x-forwarded-host").unwrap(), "example.com");
         assert_eq!(add_headers.get("linkup-destination").unwrap(), "frontend");
 
         let mut already_headers: HashMap<String, String> = HashMap::new();
