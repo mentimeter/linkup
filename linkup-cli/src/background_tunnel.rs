@@ -119,7 +119,7 @@ fn try_start_tunnel() -> Result<Url, CliError> {
                             if let Some(url) = &url {
                                 tx.send(Ok(url.clone())).expect("Failed to send tunnel URL");
                                 return;
-                            }       
+                            }
                         }
                     }
                 }
