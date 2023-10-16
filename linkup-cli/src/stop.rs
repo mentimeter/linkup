@@ -7,8 +7,8 @@ use crate::env_files::clear_env_file;
 use crate::signal::{get_pid, send_signal, PidError};
 use crate::start::get_state;
 use crate::{
-    linkup_file_path, services, CliError, LINKUP_CLOUDFLARED_PID,
-    LINKUP_LOCALDNS_INSTALL, LINKUP_LOCALSERVER_PID_FILE,
+    linkup_file_path, services, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_LOCALDNS_INSTALL,
+    LINKUP_LOCALSERVER_PID_FILE,
 };
 
 pub fn stop() -> Result<(), CliError> {
