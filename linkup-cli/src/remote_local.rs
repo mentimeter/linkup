@@ -15,7 +15,7 @@ pub fn remote(service_names: &[String]) -> Result<(), CliError> {
     }
     let mut state = get_state()?;
 
-    for service_name in service_names.clone() {
+    for service_name in service_names {
         let service = state
             .services
             .iter_mut()
@@ -44,7 +44,7 @@ pub fn local(service_names: &[String]) -> Result<(), CliError> {
 
     let mut state = get_state()?;
 
-    for service_name in service_names.clone() {
+    for service_name in service_names {
         let service = state
             .services
             .iter_mut()
