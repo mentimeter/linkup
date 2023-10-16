@@ -1,3 +1,8 @@
+// TODO(augustoccesar)[2023-10-16]: We need to revisit the session allocator and how we are using Arc.
+//   It seems that `CfWorkerStringStore` is not really Send or Sync, which is making so that clippy warn about this.
+//   For more info check: https://rust-lang.github.io/rust-clippy/master/index.html#arc_with_non_send_sync
+#![allow(clippy::arc_with_non_send_sync)]
+
 use regex::Regex;
 use std::{collections::HashMap, sync::Arc};
 use ws::linkup_ws_handler;
