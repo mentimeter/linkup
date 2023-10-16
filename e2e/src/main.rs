@@ -197,29 +197,6 @@ fn check_process_dead(pid_str: &str) -> Result<()> {
     }
 }
 
-fn print_linkup_files() -> Result<()> {
-    // Get the home directory
-    let home = env::var("HOME").unwrap();
-    let linkup_dir = format!("{}/.linkup", home);
-
-    // Read the directory entries
-    for entry in fs::read_dir(linkup_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            // Print the file name
-            let file_name = path.file_name().unwrap().to_string_lossy();
-            println!("File name: {}", file_name);
-
-            // Read and print the file content
-            let content = fs::read_to_string(&path)?;
-            println!("File content: {}", content);
-        }
-    }
-
-    Ok(())
-}
-
 fn main() {
     if let Err(e) = run_with_cleanup() {
         println!("An error occurred: {}", e);
