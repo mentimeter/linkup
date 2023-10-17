@@ -34,8 +34,10 @@ impl HeaderMap {
         self.0.contains_key(&UniCase::new(key.to_string()))
     }
 
-    pub fn get(&self, key: &str) -> Option<&String> {
-        self.0.get(&UniCase::new(key.to_string()))
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.0
+            .get(&UniCase::new(key.to_string()))
+            .map(String::as_ref)
     }
 
     pub fn get_or_default<'a>(&'a self, key: &'a str, default: &'a str) -> &'a str {

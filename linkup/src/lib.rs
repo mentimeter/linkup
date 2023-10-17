@@ -139,7 +139,7 @@ pub fn get_target_service(
         if let Some(service) = config.services.get(destination_service) {
             let target = redirect(target.clone(), &service.origin, Some(path.to_string()));
             return Some(TargetService {
-                name: destination_service.clone(),
+                name: destination_service.to_string(),
                 url: target.to_string(),
             });
         }
