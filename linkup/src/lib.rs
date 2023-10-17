@@ -149,25 +149,19 @@ pub fn get_target_service(
 
     // Forwarded hosts persist over the tunnel
     let forwarded_host_target = config.domains.get(&get_target_domain(
-        headers
-            .get("X-Forwarded-Host")
-            .unwrap_or(&"does-not-exist".to_string()),
+        headers.get_or_default("X-Forwarded-Host", "does-not-exist"),
         session_name,
     ));
 
     // This is more for e2e tests to work
     let referer_target = config.domains.get(&get_target_domain(
-        headers
-            .get("referer")
-            .unwrap_or(&"does-not-exist".to_string()),
+        headers.get_or_default("referer", "does-not-exist"),
         session_name,
     ));
 
     // This one is for redirects, where the referer doesn't exist
     let origin_target = config.domains.get(&get_target_domain(
-        headers
-            .get("origin")
-            .unwrap_or(&"does-not-exist".to_string()),
+        headers.get_or_default("origin", "does-not-exist"),
         session_name,
     ));
 

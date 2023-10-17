@@ -38,6 +38,13 @@ impl HeaderMap {
         self.0.get(&UniCase::new(key.to_string()))
     }
 
+    pub fn get_or_default<'a>(&'a self, key: &'a str, default: &'a str) -> &'a str {
+        match self.get(key) {
+            Some(value) => value,
+            None => default,
+        }
+    }
+
     pub fn insert(&mut self, key: &str, value: impl ToString) -> Option<String> {
         self.0
             .insert(UniCase::new(key.to_string()), value.to_string())
