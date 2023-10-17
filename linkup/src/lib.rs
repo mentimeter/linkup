@@ -87,14 +87,7 @@ pub fn get_additional_headers(
         additional_headers.insert("x-forwarded-host", get_target_domain(url, session_name));
     }
 
-    additional_headers.insert(
-        "host",
-        Url::parse(&target_service.url)
-            .unwrap()
-            .host_str()
-            .unwrap()
-            .to_string(),
-    );
+    additional_headers.insert("host", Url::parse(&target_service.url).unwrap());
 
     additional_headers
 }
