@@ -30,24 +30,24 @@ impl HeaderMap {
         Self(HashMap::new())
     }
 
-    pub fn contains_key(&self, key: &str) -> bool {
+    pub fn contains_key(&self, key: impl ToString) -> bool {
         self.0.contains_key(&UniCase::new(key.to_string()))
     }
 
-    pub fn get(&self, key: &str) -> Option<&str> {
+    pub fn get(&self, key: impl ToString) -> Option<&str> {
         self.0
             .get(&UniCase::new(key.to_string()))
             .map(String::as_ref)
     }
 
-    pub fn get_or_default<'a>(&'a self, key: &'a str, default: &'a str) -> &'a str {
+    pub fn get_or_default<'a>(&'a self, key: impl ToString, default: &'a str) -> &'a str {
         match self.get(key) {
             Some(value) => value,
             None => default,
         }
     }
 
-    pub fn insert(&mut self, key: &str, value: impl ToString) -> Option<String> {
+    pub fn insert(&mut self, key: impl ToString, value: impl ToString) -> Option<String> {
         self.0
             .insert(UniCase::new(key.to_string()), value.to_string())
     }
