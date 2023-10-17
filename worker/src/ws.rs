@@ -14,7 +14,7 @@ pub async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Resu
         Err(_) => return plaintext_error("Bad or missing request url", 400),
     };
 
-    let mut headers = req.headers().clone().entries().collect::<LinkupHeaderMap>();
+    let mut headers = LinkupHeaderMap::from_worker_request(&req);
 
     let (session_name, config) =
         match sessions.get_request_session(&url, &headers).await {
