@@ -124,7 +124,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
     headers.extend(&extra_headers);
     let response_result = client
         .request(method, &target_service.url)
-        .headers((&headers).into())
+        .headers(headers.into())
         .body(body_bytes)
         .send()
         .await;

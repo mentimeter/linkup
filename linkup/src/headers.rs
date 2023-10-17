@@ -59,8 +59,8 @@ impl HeaderMap {
 }
 
 #[cfg(feature = "reqwest")]
-impl From<&HeaderMap> for reqwest::header::HeaderMap {
-    fn from(value: &HeaderMap) -> Self {
+impl From<HeaderMap> for reqwest::header::HeaderMap {
+    fn from(value: HeaderMap) -> Self {
         let mut header_map = reqwest::header::HeaderMap::new();
 
         for (key, value) in value.into_iter() {

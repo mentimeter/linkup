@@ -94,7 +94,7 @@ async fn linkup_ws_request_handler(
     headers.extend(&extra_headers);
     let response_result = client
         .request(req.method().clone(), &target_service.url)
-        .headers(headers.as_ref().into())
+        .headers(headers.into())
         .send()
         .await;
 
@@ -196,7 +196,7 @@ async fn linkup_request_handler(
     headers.extend(&extra_headers);
     let response_result = client
         .request(req.method().clone(), &target_service.url)
-        .headers(headers.as_ref().into())
+        .headers(headers.into())
         .body(req_body)
         .send()
         .await;
