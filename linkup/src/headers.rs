@@ -95,8 +95,8 @@ impl FromIterator<(String, String)> for HeaderMap {
 }
 
 #[cfg(feature = "actix")]
-impl From<&actix_http::header::HeaderMap> for HeaderMap {
-    fn from(value: &actix_http::header::HeaderMap) -> Self {
+impl From<&actix_web::http::header::HeaderMap> for HeaderMap {
+    fn from(value: &actix_web::http::header::HeaderMap) -> Self {
         value.into_iter().collect::<HeaderMap>()
     }
 }
@@ -104,15 +104,15 @@ impl From<&actix_http::header::HeaderMap> for HeaderMap {
 #[cfg(feature = "actix")]
 impl<'a>
     FromIterator<(
-        &'a actix_http::header::HeaderName,
-        &'a actix_http::header::HeaderValue,
+        &'a actix_web::http::header::HeaderName,
+        &'a actix_web::http::header::HeaderValue,
     )> for HeaderMap
 {
     fn from_iter<
         T: IntoIterator<
             Item = (
-                &'a actix_http::header::HeaderName,
-                &'a actix_http::header::HeaderValue,
+                &'a actix_web::http::header::HeaderName,
+                &'a actix_web::http::header::HeaderValue,
             ),
         >,
     >(
