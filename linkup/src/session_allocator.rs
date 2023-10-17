@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use crate::{
-    extract_tracestate_session, first_subdomain, random_animal, random_six_char, session_to_json,
-    ConfigError, HeaderMap, NameKind, Session, SessionError, StringStore,
+    extract_tracestate_session, first_subdomain, headers::HeaderName, random_animal,
+    random_six_char, session_to_json, ConfigError, HeaderMap, NameKind, Session, SessionError,
+    StringStore,
 };
 
 pub struct SessionAllocator {
@@ -24,7 +25,7 @@ impl SessionAllocator {
             return Ok((url_name, config));
         }
 
-        if let Some(forwarded_host) = headers.get("x-forwarded-host") {
+        if let Some(forwarded_host) = headers.get(HeaderName::ForwardedHost) {
             let forwarded_host_name = first_subdomain(forwarded_host);
             if let Some(config) = self
                 .get_session_config(forwarded_host_name.to_string())

@@ -5,6 +5,7 @@ mod session;
 mod session_allocator;
 
 use async_trait::async_trait;
+use headers::HeaderName;
 use rand::Rng;
 use thiserror::Error;
 
@@ -49,7 +50,7 @@ pub fn get_additional_headers(
 ) -> HeaderMap {
     let mut additional_headers = HeaderMap::new();
 
-    if !headers.contains_key("traceparent") {
+    if !headers.contains_key(HeaderName::ForwardedHost) {
         let mut rng = rand::thread_rng();
         let trace: [u8; 16] = rng.gen();
         let parent: [u8; 8] = rng.gen();
@@ -62,29 +63,32 @@ pub fn get_additional_headers(
         let flags_hex = hex::encode(flags);
 
         let traceparent = format!("{}-{}-{}-{}", version_hex, trace_hex, parent_hex, flags_hex);
-        additional_headers.insert("traceparent", traceparent);
+        additional_headers.insert(HeaderName::TraceParent, traceparent);
     }
 
-    let tracestate = headers.get("tracestate");
+    let tracestate = headers.get(HeaderName::TraceState);
     let linkup_session = format!("linkup-session={}", session_name,);
     match tracestate {
         Some(ts) if !ts.contains(&linkup_session) => {
             let new_tracestate = format!("{},{}", ts, linkup_session);
-            additional_headers.insert("tracestate", new_tracestate);
+            additional_headers.insert(HeaderName::TraceState, new_tracestate);
         }
         None => {
             let new_tracestate = linkup_session;
-            additional_headers.insert("tracestate", new_tracestate);
+            additional_headers.insert(HeaderName::TraceState, new_tracestate);
         }
         _ => {}
     }
 
-    if !headers.contains_key("linkup-destination") {
-        additional_headers.insert("linkup-destination", &target_service.name);
+    if !headers.contains_key(HeaderName::LinkupDestination) {
+        additional_headers.insert(HeaderName::LinkupDestination, &target_service.name);
     }
 
-    if !headers.contains_key("x-forwarded-host") {
-        additional_headers.insert("x-forwarded-host", get_target_domain(url, session_name));
+    if !headers.contains_key(HeaderName::ForwardedHost) {
+        additional_headers.insert(
+            HeaderName::ForwardedHost,
+            get_target_domain(url, session_name),
+        );
     }
 
     additional_headers.insert("host", Url::parse(&target_service.url).unwrap());
@@ -128,7 +132,7 @@ pub fn get_target_service(
 
     // If there was a destination created in a previous linkup, we don't want to
     // re-do path rewrites, so we use the destination service.
-    if let Some(destination_service) = headers.get("linkup-destination") {
+    if let Some(destination_service) = headers.get(HeaderName::LinkupDestination) {
         if let Some(service) = config.services.get(destination_service) {
             let target = redirect(target.clone(), &service.origin, Some(path.to_string()));
             return Some(TargetService {
@@ -142,19 +146,19 @@ pub fn get_target_service(
 
     // Forwarded hosts persist over the tunnel
     let forwarded_host_target = config.domains.get(&get_target_domain(
-        headers.get_or_default("X-Forwarded-Host", "does-not-exist"),
+        headers.get_or_default(HeaderName::ForwardedHost, "does-not-exist"),
         session_name,
     ));
 
     // This is more for e2e tests to work
     let referer_target = config.domains.get(&get_target_domain(
-        headers.get_or_default("referer", "does-not-exist"),
+        headers.get_or_default(HeaderName::Referer, "does-not-exist"),
         session_name,
     ));
 
     // This one is for redirects, where the referer doesn't exist
     let origin_target = config.domains.get(&get_target_domain(
-        headers.get_or_default("origin", "does-not-exist"),
+        headers.get_or_default(HeaderName::Origin, "does-not-exist"),
         session_name,
     ));
 
@@ -360,7 +364,7 @@ mod tests {
         // Trace state
         let mut trace_headers = HeaderMap::new();
         trace_headers.insert(
-            "tracestate",
+            HeaderName::TraceState,
             format!("some-other=xyz,linkup-session={}", name),
         );
         sessions
@@ -369,7 +373,7 @@ mod tests {
             .unwrap();
 
         let mut trace_headers_two = HeaderMap::new();
-        trace_headers_two.insert("tracestate", format!("linkup-session={}", name));
+        trace_headers_two.insert(HeaderName::TraceState, format!("linkup-session={}", name));
         sessions
             .get_request_session("example.com", &trace_headers_two)
             .await
@@ -391,19 +395,25 @@ mod tests {
             &target_service,
         );
 
-        assert_eq!(add_headers.get("traceparent").unwrap().len(), 55);
+        assert_eq!(add_headers.get(HeaderName::TraceParent).unwrap().len(), 55);
         assert_eq!(
-            add_headers.get("tracestate").unwrap(),
+            add_headers.get(HeaderName::TraceState).unwrap(),
             "linkup-session=tiny-cow"
         );
-        assert_eq!(add_headers.get("x-forwarded-host").unwrap(), "example.com");
-        assert_eq!(add_headers.get("linkup-destination").unwrap(), "frontend");
+        assert_eq!(
+            add_headers.get(HeaderName::ForwardedHost).unwrap(),
+            "example.com"
+        );
+        assert_eq!(
+            add_headers.get(HeaderName::LinkupDestination).unwrap(),
+            "frontend"
+        );
 
         let mut already_headers = HeaderMap::new();
-        already_headers.insert("traceparent", "anything");
-        already_headers.insert("tracestate", "linkup-session=tiny-cow");
-        already_headers.insert("X-Forwarded-Host", "example.com");
-        already_headers.insert("linkup-destination", "frontend");
+        already_headers.insert(HeaderName::TraceParent, "anything");
+        already_headers.insert(HeaderName::TraceState, "linkup-session=tiny-cow");
+        already_headers.insert(HeaderName::ForwardedHost, "example.com");
+        already_headers.insert(HeaderName::LinkupDestination, "frontend");
         let add_headers = get_additional_headers(
             "https://abc.some-tunnel.com/abc-xyz",
             &already_headers,
@@ -411,15 +421,15 @@ mod tests {
             &target_service,
         );
 
-        assert!(add_headers.get("traceparent").is_none());
-        assert!(add_headers.get("tracestate").is_none());
-        assert!(add_headers.get("X-Forwarded-Host").is_none());
-        assert!(add_headers.get("linkup-destination").is_none());
+        assert!(add_headers.get(HeaderName::TraceParent).is_none());
+        assert!(add_headers.get(HeaderName::TraceState).is_none());
+        assert!(add_headers.get(HeaderName::ForwardedHost).is_none());
+        assert!(add_headers.get(HeaderName::LinkupDestination).is_none());
 
         let mut already_headers_two = HeaderMap::new();
-        already_headers_two.insert("traceparent", "anything");
-        already_headers_two.insert("tracestate", "other-service=32");
-        already_headers_two.insert("X-Forwarded-Host", "example.com");
+        already_headers_two.insert(HeaderName::TraceParent, "anything");
+        already_headers_two.insert(HeaderName::TraceState, "other-service=32");
+        already_headers_two.insert(HeaderName::ForwardedHost, "example.com");
         let add_headers = get_additional_headers(
             "https://abc.some-tunnel.com/abc-xyz",
             &already_headers_two,
@@ -427,10 +437,10 @@ mod tests {
             &target_service,
         );
 
-        assert!(add_headers.get("traceparent").is_none());
-        assert!(add_headers.get("X-Forwarded-Host").is_none());
+        assert!(add_headers.get(HeaderName::TraceParent).is_none());
+        assert!(add_headers.get(HeaderName::ForwardedHost).is_none());
         assert_eq!(
-            add_headers.get("tracestate").unwrap(),
+            add_headers.get(HeaderName::TraceState).unwrap(),
             "other-service=32,linkup-session=tiny-cow"
         );
     }

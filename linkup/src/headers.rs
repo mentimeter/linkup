@@ -4,6 +4,28 @@ use unicase::UniCase;
 
 pub struct HeaderMap(HashMap<UniCase<String>, String>);
 
+pub enum HeaderName {
+    ForwardedHost,
+    TraceParent,
+    TraceState,
+    LinkupDestination,
+    Referer,
+    Origin,
+}
+
+impl From<HeaderName> for UniCase<String> {
+    fn from(value: HeaderName) -> Self {
+        match value {
+            HeaderName::ForwardedHost => "x-forwarded-host".into(),
+            HeaderName::TraceParent => "traceparent".into(),
+            HeaderName::TraceState => "tracestate".into(),
+            HeaderName::LinkupDestination => "linkup-destination".into(),
+            HeaderName::Referer => "referer".into(),
+            HeaderName::Origin => "origin".into(),
+        }
+    }
+}
+
 impl IntoIterator for &HeaderMap {
     type Item = (UniCase<String>, String);
     type IntoIter = std::collections::hash_map::IntoIter<UniCase<String>, String>;
@@ -30,26 +52,31 @@ impl HeaderMap {
         Self(HashMap::new())
     }
 
-    pub fn contains_key(&self, key: impl ToString) -> bool {
-        self.0.contains_key(&UniCase::new(key.to_string()))
+    pub fn contains_key(&self, key: impl Into<UniCase<String>>) -> bool {
+        self.0.contains_key(&key.into())
     }
 
-    pub fn get(&self, key: impl ToString) -> Option<&str> {
-        self.0
-            .get(&UniCase::new(key.to_string()))
-            .map(String::as_ref)
+    pub fn get(&self, key: impl Into<UniCase<String>>) -> Option<&str> {
+        self.0.get(&key.into()).map(String::as_ref)
     }
 
-    pub fn get_or_default<'a>(&'a self, key: impl ToString, default: &'a str) -> &'a str {
+    pub fn get_or_default<'a>(
+        &'a self,
+        key: impl Into<UniCase<String>>,
+        default: &'a str,
+    ) -> &'a str {
         match self.get(key) {
             Some(value) => value,
             None => default,
         }
     }
 
-    pub fn insert(&mut self, key: impl ToString, value: impl ToString) -> Option<String> {
-        self.0
-            .insert(UniCase::new(key.to_string()), value.to_string())
+    pub fn insert(
+        &mut self,
+        key: impl Into<UniCase<String>>,
+        value: impl ToString,
+    ) -> Option<String> {
+        self.0.insert(key.into(), value.to_string())
     }
 
     pub fn extend(&mut self, iter: &HeaderMap) {
