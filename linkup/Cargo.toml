@@ -17,9 +17,9 @@ url = { version = "2.3.1", features = ["serde"] }
 
 # features dependencies
 reqwest = { version = "0.11.14", default-features = false, optional = true }
-actix-http = {version = "*", optional = true}
-actix-web = {version = "*", optional = true}
-worker = { version = "0.0.18", optional = true}
+actix-http = { version = "3.4", default-features = false, optional = true }
+actix-web = { version = "4.4", default-features = false, optional = true }
+worker = { version = "0.0.18", default-features = false, optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.28.0", features = ["test-util", "macros"] }
