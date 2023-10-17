@@ -135,3 +135,17 @@ impl<'a>
         headers
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::HeaderMap;
+
+    #[test]
+    fn get_case_insensitive() {
+        let mut header_map = HeaderMap::new();
+        header_map.insert("key", "value");
+
+        assert_eq!(header_map.get("key"), Some("value"));
+        assert_eq!(header_map.get("KEY"), Some("value"));
+    }
+}
