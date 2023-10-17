@@ -1,13 +1,14 @@
-use async_trait::async_trait;
-use rand::Rng;
-use std::collections::HashMap;
-use thiserror::Error;
-
+mod headers;
 mod memory_session_store;
 mod name_gen;
 mod session;
 mod session_allocator;
 
+use async_trait::async_trait;
+use rand::Rng;
+use thiserror::Error;
+
+pub use headers::HeaderMap;
 pub use memory_session_store::*;
 pub use name_gen::{new_session_name, random_animal, random_six_char};
 pub use session::*;
@@ -41,12 +42,12 @@ pub enum NameKind {
 }
 
 pub fn get_additional_headers(
-    url: String,
-    headers: &HashMap<String, String>,
+    url: &str,
+    headers: &HeaderMap,
     session_name: &str,
     destination_service_name: &str,
-) -> HashMap<String, String> {
-    let mut additional_headers = HashMap::new();
+) -> HeaderMap {
+    let mut additional_headers = HeaderMap::new();
 
     if !headers.contains_key("traceparent") {
         let mut rng = rand::thread_rng();
@@ -61,7 +62,7 @@ pub fn get_additional_headers(
         let flags_hex = hex::encode(flags);
 
         let traceparent = format!("{}-{}-{}-{}", version_hex, trace_hex, parent_hex, flags_hex);
-        additional_headers.insert("traceparent".to_string(), traceparent);
+        additional_headers.insert("traceparent", traceparent);
     }
 
     let tracestate = headers.get("tracestate");
@@ -69,54 +70,48 @@ pub fn get_additional_headers(
     match tracestate {
         Some(ts) if !ts.contains(&linkup_session) => {
             let new_tracestate = format!("{},{}", ts, linkup_session);
-            additional_headers.insert("tracestate".to_string(), new_tracestate);
+            additional_headers.insert("tracestate", new_tracestate);
         }
         None => {
             let new_tracestate = linkup_session;
-            additional_headers.insert("tracestate".to_string(), new_tracestate);
+            additional_headers.insert("tracestate", new_tracestate);
         }
         _ => {}
     }
 
     if !headers.contains_key("linkup-destination") {
-        additional_headers.insert(
-            "linkup-destination".to_string(),
-            destination_service_name.to_string(),
-        );
+        additional_headers.insert("linkup-destination", destination_service_name);
     }
 
     if !headers.contains_key("x-forwarded-host") {
-        additional_headers.insert(
-            "x-forwarded-host".to_string(),
-            get_target_domain(&url, session_name),
-        );
+        additional_headers.insert("x-forwarded-host", get_target_domain(url, session_name));
     }
 
     additional_headers
 }
 
-pub fn additional_response_headers() -> HashMap<String, String> {
-    let mut headers = HashMap::new();
+pub fn additional_response_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
 
     headers.insert(
-        "Access-Control-Allow-Methods".to_string(),
-        "GET, POST, PUT, PATCH, DELETE, HEAD, CONNECT, TRACE, OPTIONS".to_string(),
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, PATCH, DELETE, HEAD, CONNECT, TRACE, OPTIONS",
     );
-    headers.insert("Access-Control-Allow-Origin".to_string(), "*".to_string());
-    headers.insert("Access-Control-Allow-Headers".to_string(), "*".to_string());
-    headers.insert("Access-Control-Max-Age".to_string(), "86400".to_string());
+    headers.insert("Access-Control-Allow-Origin", "*");
+    headers.insert("Access-Control-Allow-Headers", "*");
+    headers.insert("Access-Control-Max-Age", "86400");
 
     headers
 }
 
 // Returns a (name, url) pair for the destination service, if the request could be served by the config
 pub fn get_target_service(
-    url: String,
-    headers: HashMap<String, String>,
+    url: &str,
+    headers: &HeaderMap,
     config: &Session,
     session_name: &str,
 ) -> Option<(String, String)> {
-    let mut target = Url::parse(&url).unwrap();
+    let mut target = Url::parse(url).unwrap();
     // Ensure always the default port, even when the local server is hit first
     target
         .set_port(None)
@@ -132,15 +127,13 @@ pub fn get_target_service(
         }
     }
 
-    let url_target = config.domains.get(&get_target_domain(&url, session_name));
+    let url_target = config.domains.get(&get_target_domain(url, session_name));
 
     // Forwarded hosts persist over the tunnel
     let forwarded_host_target = config.domains.get(&get_target_domain(
-        headers.get("x-forwarded-host").unwrap_or(
-            headers
-                .get("X-Forwarded-Host")
-                .unwrap_or(&"does-not-exist".to_string()),
-        ),
+        headers
+            .get("X-Forwarded-Host")
+            .unwrap_or(&"does-not-exist".to_string()),
         session_name,
     ));
 
@@ -335,45 +328,42 @@ mod tests {
 
         // Normal subdomain
         sessions
-            .get_request_session(format!("{}.example.com", name), HashMap::new())
+            .get_request_session(&format!("{}.example.com", name), &HeaderMap::new())
             .await
             .unwrap();
 
         // Referer
-        let mut referer_headers: HashMap<String, String> = HashMap::new();
+        let mut referer_headers = HeaderMap::new();
         // TODO check header capitalization
-        referer_headers.insert(
-            "referer".to_string(),
-            format!("http://{}.example.com", name),
-        );
+        referer_headers.insert("referer", format!("http://{}.example.com", name));
         sessions
-            .get_request_session("example.com".to_string(), referer_headers)
+            .get_request_session("example.com", &referer_headers)
             .await
             .unwrap();
 
         // Origin
-        let mut origin_headers: HashMap<String, String> = HashMap::new();
-        origin_headers.insert("origin".to_string(), format!("http://{}.example.com", name));
+        let mut origin_headers = HeaderMap::new();
+        origin_headers.insert("origin", format!("http://{}.example.com", name));
         sessions
-            .get_request_session("example.com".to_string(), origin_headers)
+            .get_request_session("example.com", &origin_headers)
             .await
             .unwrap();
 
         // Trace state
-        let mut trace_headers: HashMap<String, String> = HashMap::new();
+        let mut trace_headers = HeaderMap::new();
         trace_headers.insert(
-            "tracestate".to_string(),
+            "tracestate",
             format!("some-other=xyz,linkup-session={}", name),
         );
         sessions
-            .get_request_session("example.com".to_string(), trace_headers)
+            .get_request_session("example.com", &trace_headers)
             .await
             .unwrap();
 
-        let mut trace_headers_two: HashMap<String, String> = HashMap::new();
-        trace_headers_two.insert("tracestate".to_string(), format!("linkup-session={}", name));
+        let mut trace_headers_two = HeaderMap::new();
+        trace_headers_two.insert("tracestate", format!("linkup-session={}", name));
         sessions
-            .get_request_session("example.com".to_string(), trace_headers_two)
+            .get_request_session("example.com", &trace_headers_two)
             .await
             .unwrap();
     }
@@ -382,9 +372,9 @@ mod tests {
     fn test_get_additional_headers() {
         let session_name = String::from("tiny-cow");
         let destination_service_name = String::from("frontend");
-        let headers = HashMap::new();
+        let headers = HeaderMap::new();
         let add_headers = get_additional_headers(
-            "https://tiny-cow.example.com/abc-xyz".to_string(),
+            "https://tiny-cow.example.com/abc-xyz",
             &headers,
             &session_name,
             &destination_service_name,
@@ -398,16 +388,13 @@ mod tests {
         assert_eq!(add_headers.get("x-forwarded-host").unwrap(), "example.com");
         assert_eq!(add_headers.get("linkup-destination").unwrap(), "frontend");
 
-        let mut already_headers: HashMap<String, String> = HashMap::new();
-        already_headers.insert("traceparent".to_string(), "anything".to_string());
-        already_headers.insert(
-            "tracestate".to_string(),
-            "linkup-session=tiny-cow".to_string(),
-        );
-        already_headers.insert("X-Forwarded-Host".to_string(), "example.com".to_string());
-        already_headers.insert("linkup-destination".to_string(), "frontend".to_string());
+        let mut already_headers = HeaderMap::new();
+        already_headers.insert("traceparent", "anything");
+        already_headers.insert("tracestate", "linkup-session=tiny-cow");
+        already_headers.insert("X-Forwarded-Host", "example.com");
+        already_headers.insert("linkup-destination", "frontend");
         let add_headers = get_additional_headers(
-            "https://abc.some-tunnel.com/abc-xyz".to_string(),
+            "https://abc.some-tunnel.com/abc-xyz",
             &already_headers,
             &session_name,
             &destination_service_name,
@@ -418,12 +405,12 @@ mod tests {
         assert!(add_headers.get("X-Forwarded-Host").is_none());
         assert!(add_headers.get("linkup-destination").is_none());
 
-        let mut already_headers_two: HashMap<String, String> = HashMap::new();
-        already_headers_two.insert("traceparent".to_string(), "anything".to_string());
-        already_headers_two.insert("tracestate".to_string(), "other-service=32".to_string());
-        already_headers_two.insert("X-Forwarded-Host".to_string(), "example.com".to_string());
+        let mut already_headers_two = HeaderMap::new();
+        already_headers_two.insert("traceparent", "anything");
+        already_headers_two.insert("tracestate", "other-service=32");
+        already_headers_two.insert("X-Forwarded-Host", "example.com");
         let add_headers = get_additional_headers(
-            "https://abc.some-tunnel.com/abc-xyz".to_string(),
+            "https://abc.some-tunnel.com/abc-xyz",
             &already_headers_two,
             &session_name,
             &destination_service_name,
@@ -439,13 +426,13 @@ mod tests {
 
     #[test]
     fn test_get_target_domain() {
-        let url1 = "tiny-cow.example.com/path/to/page.html".to_string();
-        let url2 = "api.example.com".to_string();
-        let url3 = "https://tiny-cow.example.com/a/b/c?a=b".to_string();
+        let url1 = "tiny-cow.example.com/path/to/page.html";
+        let url2 = "api.example.com";
+        let url3 = "https://tiny-cow.example.com/a/b/c?a=b";
 
-        assert_eq!(get_target_domain(&url1, "tiny-cow"), "example.com");
-        assert_eq!(get_target_domain(&url2, "tiny-cow"), "api.example.com");
-        assert_eq!(get_target_domain(&url3, "tiny-cow"), "example.com");
+        assert_eq!(get_target_domain(url1, "tiny-cow"), "example.com");
+        assert_eq!(get_target_domain(url2, "tiny-cow"), "api.example.com");
+        assert_eq!(get_target_domain(url3, "tiny-cow"), "example.com");
     }
 
     #[tokio::test]
@@ -461,15 +448,15 @@ mod tests {
             .unwrap();
 
         let (name, config) = sessions
-            .get_request_session(format!("{}.example.com", name), HashMap::new())
+            .get_request_session(&format!("{}.example.com", name), &HeaderMap::new())
             .await
             .unwrap();
 
         // Standard named subdomain
         assert_eq!(
             get_target_service(
-                format!("http://{}.example.com/?a=b", &name),
-                HashMap::new(),
+                &format!("http://{}.example.com/?a=b", &name),
+                &HeaderMap::new(),
                 &config,
                 &name
             )
@@ -482,8 +469,8 @@ mod tests {
         // With path
         assert_eq!(
             get_target_service(
-                format!("http://{}.example.com/a/b/c/?a=b", &name),
-                HashMap::new(),
+                &format!("http://{}.example.com/a/b/c/?a=b", &name),
+                &HeaderMap::new(),
                 &config,
                 &name
             )
@@ -496,8 +483,8 @@ mod tests {
         // Test rewrites
         assert_eq!(
             get_target_service(
-                format!("http://{}.example.com/foo/b/c/?a=b", &name),
-                HashMap::new(),
+                &format!("http://{}.example.com/foo/b/c/?a=b", &name),
+                &HeaderMap::new(),
                 &config,
                 &name
             )
@@ -510,8 +497,8 @@ mod tests {
         // Test domain routes
         assert_eq!(
             get_target_service(
-                format!("http://{}.example.com/api/v1/?a=b", &name),
-                HashMap::new(),
+                &format!("http://{}.example.com/api/v1/?a=b", &name),
+                &HeaderMap::new(),
                 &config,
                 &name
             )
@@ -524,8 +511,8 @@ mod tests {
         // Test no named subdomain
         assert_eq!(
             get_target_service(
-                "http://api.example.com/api/v1/?a=b".to_string(),
-                HashMap::new(),
+                "http://api.example.com/api/v1/?a=b",
+                &HeaderMap::new(),
                 &config,
                 &name
             )
@@ -550,7 +537,7 @@ mod tests {
             .unwrap();
 
         let (name, config) = sessions
-            .get_request_session(format!("{}.example.com", name), HashMap::new())
+            .get_request_session(&format!("{}.example.com", name), &HeaderMap::new())
             .await
             .unwrap();
 
@@ -559,8 +546,8 @@ mod tests {
         // the right service in the local server
 
         let (service, service_url) = get_target_service(
-            "http://example.com/api/v2/user".to_string(),
-            HashMap::new(),
+            "http://example.com/api/v2/user",
+            &HeaderMap::new(),
             &config,
             &name,
         )
@@ -571,19 +558,15 @@ mod tests {
         assert_eq!(service_url, "http://localhost:8001/user");
 
         let extra_headers = get_additional_headers(
-            "http://example.com/api/v2/user".to_string(),
-            &HashMap::new(),
+            "http://example.com/api/v2/user",
+            &HeaderMap::new(),
             &name,
             &service,
         );
 
-        let (service, service_url) = get_target_service(
-            "http://localhost:8001/user".to_string(),
-            extra_headers,
-            &config,
-            &name,
-        )
-        .unwrap();
+        let (service, service_url) =
+            get_target_service("http://localhost:8001/user", &extra_headers, &config, &name)
+                .unwrap();
 
         // Second request should have the same outcome
         // The secret sauce should be in the extra headers that have been propogated

@@ -1,5 +1,6 @@
+use linkup::HeaderMap as LinkupHeaderMap;
 use reqwest::{Method as ReqwestMethod, Response as ReqwestResponse};
-use std::{collections::HashMap, convert::TryFrom};
+use std::convert::TryFrom;
 use worker::{
     console_log, Headers as CfHeaders, Method as CfMethod, Response as CfResponse,
     Result as CfResult,
@@ -31,27 +32,9 @@ pub fn convert_cf_method_to_reqwest(
     ReqwestMethod::try_from(method_str)
 }
 
-pub fn merge_headers(
-    original_headers: HashMap<String, String>,
-    extra_headers: HashMap<String, String>,
-) -> reqwest::header::HeaderMap {
-    let mut header_map = reqwest::header::HeaderMap::new();
-    for (key, value) in original_headers
-        .into_iter()
-        .chain(extra_headers.into_iter())
-    {
-        if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
-            if let Ok(header_value) = reqwest::header::HeaderValue::from_str(&value) {
-                header_map.insert(header_name, header_value);
-            }
-        }
-    }
-    header_map
-}
-
 pub async fn convert_reqwest_response_to_cf(
     response: ReqwestResponse,
-    extra_headers: HashMap<String, String>,
+    extra_headers: &LinkupHeaderMap,
 ) -> worker::Result<CfResponse> {
     let status = response.status();
     let headers = response.headers().clone();
@@ -68,7 +51,7 @@ pub async fn convert_reqwest_response_to_cf(
 
     let mut cf_headers = CfHeaders::from(headers);
 
-    for (key, value) in extra_headers {
+    for (key, value) in extra_headers.into_iter() {
         let header_res = cf_headers.set(&key, &value);
         if header_res.is_err() {
             console_log!("failed to set response header: {}", header_res.unwrap_err());
