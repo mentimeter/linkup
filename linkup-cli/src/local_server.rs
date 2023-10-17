@@ -8,7 +8,6 @@ use futures::stream::StreamExt;
 use thiserror::Error;
 
 use linkup::{HeaderMap as LinkupHeaderMap, *};
-use url::Url;
 
 use crate::LINKUP_LOCALSERVER_PORT;
 
@@ -79,23 +78,22 @@ async fn linkup_ws_request_handler(
         }
     };
 
-    let (dest_service_name, destination_url) =
-        match get_target_service(&url, &headers, &config, &session_name) {
-            Some(result) => result,
-            None => {
-                return HttpResponse::NotFound()
-                    .append_header(ContentType::plaintext())
-                    .body("Not target url for request - local server")
-            }
-        };
+    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
+        Some(result) => result,
+        None => {
+            return HttpResponse::NotFound()
+                .append_header(ContentType::plaintext())
+                .body("Not target url for request - local server")
+        }
+    };
 
-    let extra_headers = get_additional_headers(&url, &headers, &session_name, &dest_service_name);
+    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
     headers.extend(&extra_headers);
     let response_result = client
-        .request(req.method().clone(), &destination_url)
+        .request(req.method().clone(), &target_service.url)
         .headers(headers.as_ref().into())
         .send()
         .await;
@@ -182,34 +180,22 @@ async fn linkup_request_handler(
         }
     };
 
-    let (dest_service_name, destination_url) =
-        match get_target_service(&url, &headers, &config, &session_name) {
-            Some(result) => result,
-            None => {
-                return HttpResponse::NotFound()
-                    .append_header(ContentType::plaintext())
-                    .body("Not target url for request - local server")
-            }
-        };
+    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
+        Some(result) => result,
+        None => {
+            return HttpResponse::NotFound()
+                .append_header(ContentType::plaintext())
+                .body("Not target url for request - local server")
+        }
+    };
 
-    let mut extra_headers =
-        get_additional_headers(&url, &headers, &session_name, &dest_service_name);
-
-    // TODO(ostenbom): Consider moving host override into additional_headers function
-    extra_headers.insert(
-        "host",
-        Url::parse(&destination_url)
-            .unwrap()
-            .host_str()
-            .unwrap()
-            .to_string(),
-    );
+    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
     headers.extend(&extra_headers);
     let response_result = client
-        .request(req.method().clone(), &destination_url)
+        .request(req.method().clone(), &target_service.url)
         .headers(headers.as_ref().into())
         .body(req_body)
         .send()

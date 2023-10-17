@@ -45,7 +45,7 @@ pub fn get_additional_headers(
     url: &str,
     headers: &HeaderMap,
     session_name: &str,
-    destination_service_name: &str,
+    target_service: &TargetService,
 ) -> HeaderMap {
     let mut additional_headers = HeaderMap::new();
 
@@ -80,12 +80,21 @@ pub fn get_additional_headers(
     }
 
     if !headers.contains_key("linkup-destination") {
-        additional_headers.insert("linkup-destination", destination_service_name);
+        additional_headers.insert("linkup-destination", &target_service.name);
     }
 
     if !headers.contains_key("x-forwarded-host") {
         additional_headers.insert("x-forwarded-host", get_target_domain(url, session_name));
     }
+
+    additional_headers.insert(
+        "host",
+        Url::parse(&target_service.url)
+            .unwrap()
+            .host_str()
+            .unwrap()
+            .to_string(),
+    );
 
     additional_headers
 }
@@ -104,13 +113,19 @@ pub fn additional_response_headers() -> HeaderMap {
     headers
 }
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
+pub struct TargetService {
+    pub name: String,
+    pub url: String,
+}
+
 // Returns a (name, url) pair for the destination service, if the request could be served by the config
 pub fn get_target_service(
     url: &str,
     headers: &HeaderMap,
     config: &Session,
     session_name: &str,
-) -> Option<(String, String)> {
+) -> Option<TargetService> {
     let mut target = Url::parse(url).unwrap();
     // Ensure always the default port, even when the local server is hit first
     target
@@ -123,7 +138,10 @@ pub fn get_target_service(
     if let Some(destination_service) = headers.get("linkup-destination") {
         if let Some(service) = config.services.get(destination_service) {
             let target = redirect(target.clone(), &service.origin, Some(path.to_string()));
-            return Some((destination_service.to_string(), String::from(target)));
+            return Some(TargetService {
+                name: destination_service.clone(),
+                url: target.to_string(),
+            });
         }
     }
 
@@ -188,7 +206,11 @@ pub fn get_target_service(
             }
 
             let target = redirect(target, &service.origin, Some(new_path));
-            return Some((service_name, String::from(target)));
+            return Some(TargetService {
+                name: service_name,
+                url: target.to_string(),
+            });
+            // return Some((service_name, String::from(target)));
         }
     }
 
@@ -371,13 +393,16 @@ mod tests {
     #[test]
     fn test_get_additional_headers() {
         let session_name = String::from("tiny-cow");
-        let destination_service_name = String::from("frontend");
+        let target_service = TargetService {
+            name: String::from("frontend"),
+            url: String::from("http://example.com"),
+        };
         let headers = HeaderMap::new();
         let add_headers = get_additional_headers(
             "https://tiny-cow.example.com/abc-xyz",
             &headers,
             &session_name,
-            &destination_service_name,
+            &target_service,
         );
 
         assert_eq!(add_headers.get("traceparent").unwrap().len(), 55);
@@ -397,7 +422,7 @@ mod tests {
             "https://abc.some-tunnel.com/abc-xyz",
             &already_headers,
             &session_name,
-            &destination_service_name,
+            &target_service,
         );
 
         assert!(add_headers.get("traceparent").is_none());
@@ -413,7 +438,7 @@ mod tests {
             "https://abc.some-tunnel.com/abc-xyz",
             &already_headers_two,
             &session_name,
-            &destination_service_name,
+            &target_service,
         );
 
         assert!(add_headers.get("traceparent").is_none());
@@ -461,10 +486,10 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (
-                "frontend".to_string(),
-                "http://localhost:8000/?a=b".to_string()
-            ),
+            TargetService {
+                name: String::from("frontend"),
+                url: String::from("http://localhost:8000/?a=b")
+            },
         );
         // With path
         assert_eq!(
@@ -475,10 +500,10 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (
-                "frontend".to_string(),
-                "http://localhost:8000/a/b/c/?a=b".to_string()
-            ),
+            TargetService {
+                name: String::from("frontend"),
+                url: String::from("http://localhost:8000/a/b/c/?a=b")
+            },
         );
         // Test rewrites
         assert_eq!(
@@ -489,10 +514,10 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (
-                "frontend".to_string(),
-                "http://localhost:8000/bar/b/c/?a=b".to_string()
-            ),
+            TargetService {
+                name: String::from("frontend"),
+                url: String::from("http://localhost:8000/bar/b/c/?a=b")
+            },
         );
         // Test domain routes
         assert_eq!(
@@ -503,10 +528,10 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (
-                "backend".to_string(),
-                "http://localhost:8001/api/v1/?a=b".to_string()
-            )
+            TargetService {
+                name: String::from("backend"),
+                url: String::from("http://localhost:8001/api/v1/?a=b")
+            },
         );
         // Test no named subdomain
         assert_eq!(
@@ -517,10 +542,10 @@ mod tests {
                 &name
             )
             .unwrap(),
-            (
-                "backend".to_string(),
-                "http://localhost:8001/api/v1/?a=b".to_string()
-            )
+            TargetService {
+                name: String::from("backend"),
+                url: String::from("http://localhost:8001/api/v1/?a=b")
+            },
         );
     }
 
@@ -545,7 +570,7 @@ mod tests {
         // If the path gets rewritten once remotely, it can throw off finding
         // the right service in the local server
 
-        let (service, service_url) = get_target_service(
+        let target = get_target_service(
             "http://example.com/api/v2/user",
             &HeaderMap::new(),
             &config,
@@ -554,23 +579,23 @@ mod tests {
         .unwrap();
 
         // First request as normal
-        assert_eq!(service, "backend");
-        assert_eq!(service_url, "http://localhost:8001/user");
+        assert_eq!(target.name, "backend");
+        assert_eq!(target.url, "http://localhost:8001/user");
 
         let extra_headers = get_additional_headers(
             "http://example.com/api/v2/user",
             &HeaderMap::new(),
             &name,
-            &service,
+            &target,
         );
 
-        let (service, service_url) =
+        let target =
             get_target_service("http://localhost:8001/user", &extra_headers, &config, &name)
                 .unwrap();
 
         // Second request should have the same outcome
         // The secret sauce should be in the extra headers that have been propogated
-        assert_eq!(service, "backend");
-        assert_eq!(service_url, "http://localhost:8001/user");
+        assert_eq!(target.name, "backend");
+        assert_eq!(target.url, "http://localhost:8001/user");
     }
 }
