@@ -78,17 +78,13 @@ impl From<&HeaderMap> for reqwest::header::HeaderMap {
 #[cfg(feature = "worker")]
 impl From<&worker::Headers> for HeaderMap {
     fn from(value: &worker::Headers) -> Self {
-        value
-            .into_iter()
-            .collect::<HeaderMap>()
+        value.into_iter().collect::<HeaderMap>()
     }
 }
 
 #[cfg(feature = "worker")]
 impl FromIterator<(String, String)> for HeaderMap {
-    fn from_iter<T: IntoIterator<Item = (String, String)>>(
-        iter: T,
-    ) -> Self {
+    fn from_iter<T: IntoIterator<Item = (String, String)>>(iter: T) -> Self {
         let mut headers = HeaderMap::new();
         for (k, v) in iter {
             headers.insert(k.as_str(), v);
@@ -101,15 +97,25 @@ impl FromIterator<(String, String)> for HeaderMap {
 #[cfg(feature = "actix")]
 impl From<&actix_http::header::HeaderMap> for HeaderMap {
     fn from(value: &actix_http::header::HeaderMap) -> Self {
-        value
-            .into_iter()
-            .collect::<HeaderMap>()
+        value.into_iter().collect::<HeaderMap>()
     }
 }
 
 #[cfg(feature = "actix")]
-impl <'a> FromIterator<(&'a actix_http::header::HeaderName, &'a actix_http::header::HeaderValue)> for HeaderMap {
-    fn from_iter<T: IntoIterator<Item = (&'a actix_http::header::HeaderName, &'a actix_http::header::HeaderValue)>>(
+impl<'a>
+    FromIterator<(
+        &'a actix_http::header::HeaderName,
+        &'a actix_http::header::HeaderValue,
+    )> for HeaderMap
+{
+    fn from_iter<
+        T: IntoIterator<
+            Item = (
+                &'a actix_http::header::HeaderName,
+                &'a actix_http::header::HeaderValue,
+            ),
+        >,
+    >(
         iter: T,
     ) -> Self {
         let mut headers = HeaderMap::new();
