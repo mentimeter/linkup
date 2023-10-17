@@ -210,7 +210,6 @@ pub fn get_target_service(
                 name: service_name,
                 url: target.to_string(),
             });
-            // return Some((service_name, String::from(target)));
         }
     }
 
