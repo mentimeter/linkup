@@ -41,12 +41,6 @@ impl Default for HeaderMap {
     }
 }
 
-impl AsRef<HeaderMap> for HeaderMap {
-    fn as_ref(&self) -> &HeaderMap {
-        self
-    }
-}
-
 impl HeaderMap {
     pub fn new() -> Self {
         Self(HashMap::new())
