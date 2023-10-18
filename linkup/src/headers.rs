@@ -168,5 +168,9 @@ mod test {
 
         assert_eq!(header_map.get("key"), Some("value"));
         assert_eq!(header_map.get("KEY"), Some("value"));
+        
+        header_map.insert("KEY", "value_2");
+        assert_eq!(header_map.get("key"), Some("value_2"));
+        assert_eq!(header_map.get("KEY"), Some("value_2"));
     }
 }
