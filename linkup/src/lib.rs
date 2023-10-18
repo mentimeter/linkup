@@ -5,11 +5,10 @@ mod session;
 mod session_allocator;
 
 use async_trait::async_trait;
-use headers::HeaderName;
 use rand::Rng;
 use thiserror::Error;
 
-pub use headers::HeaderMap;
+pub use headers::{HeaderMap, HeaderName};
 pub use memory_session_store::*;
 pub use name_gen::{new_session_name, random_animal, random_six_char};
 pub use session::*;
@@ -90,8 +89,6 @@ pub fn get_additional_headers(
             get_target_domain(url, session_name),
         );
     }
-
-    additional_headers.insert("host", Url::parse(&target_service.url).unwrap());
 
     additional_headers
 }

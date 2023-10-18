@@ -11,6 +11,7 @@ pub enum HeaderName {
     LinkupDestination,
     Referer,
     Origin,
+    Host,
 }
 
 impl From<HeaderName> for UniCase<String> {
@@ -22,6 +23,7 @@ impl From<HeaderName> for UniCase<String> {
             HeaderName::LinkupDestination => "linkup-destination".into(),
             HeaderName::Referer => "referer".into(),
             HeaderName::Origin => "origin".into(),
+            HeaderName::Host => "host".into(),
         }
     }
 }
@@ -168,7 +170,7 @@ mod test {
 
         assert_eq!(header_map.get("key"), Some("value"));
         assert_eq!(header_map.get("KEY"), Some("value"));
-        
+
         header_map.insert("KEY", "value_2");
         assert_eq!(header_map.get("key"), Some("value_2"));
         assert_eq!(header_map.get("KEY"), Some("value_2"));
