@@ -3,20 +3,18 @@
 //   For more info check: https://rust-lang.github.io/rust-clippy/master/index.html#arc_with_non_send_sync
 #![allow(clippy::arc_with_non_send_sync)]
 
-use regex::Regex;
-use std::{collections::HashMap, sync::Arc};
-use ws::linkup_ws_handler;
-
+use http_util::*;
 use kv_store::CfWorkerStringStore;
-use linkup::*;
+use linkup::{HeaderMap as LinkupHeaderMap, *};
+use regex::Regex;
+use std::sync::Arc;
 use worker::*;
+use ws::linkup_ws_handler;
 
 mod http_util;
 mod kv_store;
 mod utils;
 mod ws;
-
-use http_util::*;
 
 async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
     let body_bytes = match req.bytes().await {
@@ -92,14 +90,10 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Err(_) => return plaintext_error("Bad or missing request url", 400),
     };
 
-    let headers = req
-        .headers()
-        .clone()
-        .entries()
-        .collect::<HashMap<String, String>>();
+    let mut headers = LinkupHeaderMap::from_worker_request(&req);
 
     let (session_name, config) =
-        match sessions.get_request_session(url.clone(), headers.clone()).await {
+        match sessions.get_request_session(&url, &headers).await {
             Ok(result) => result,
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
@@ -113,13 +107,12 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
         Err(_) => return plaintext_error("Bad or missing request body", 400),
     };
 
-    let (dest_service_name, destination_url) =
-        match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
-            Some(result) => result,
-            None => return plaintext_error("No target URL for request", 422),
-        };
+    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
+        Some(result) => result,
+        None => return plaintext_error("No target URL for request", 422),
+    };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
+    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     let method = match convert_cf_method_to_reqwest(&req.method()) {
         Ok(method) => method,
@@ -128,9 +121,10 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
 
     // // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
+    headers.extend(&extra_headers);
     let response_result = client
-        .request(method, &destination_url)
-        .headers(merge_headers(headers, extra_headers))
+        .request(method, &target_service.url)
+        .headers(headers.into())
         .body(body_bytes)
         .send()
         .await;
@@ -141,7 +135,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
     };
 
     let mut cf_resp =
-        convert_reqwest_response_to_cf(response, additional_response_headers()).await?;
+        convert_reqwest_response_to_cf(response, &additional_response_headers()).await?;
 
     cf_resp = set_cached_req(&req, cf_resp, config.cache_routes).await?;
 

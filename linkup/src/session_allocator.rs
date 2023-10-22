@@ -1,8 +1,9 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
-    extract_tracestate_session, first_subdomain, random_animal, random_six_char, session_to_json,
-    ConfigError, NameKind, Session, SessionError, StringStore,
+    extract_tracestate_session, first_subdomain, headers::HeaderName, random_animal,
+    random_six_char, session_to_json, ConfigError, HeaderMap, NameKind, Session, SessionError,
+    StringStore,
 };
 
 pub struct SessionAllocator {
@@ -16,15 +17,15 @@ impl SessionAllocator {
 
     pub async fn get_request_session(
         &self,
-        url: String,
-        headers: HashMap<String, String>,
+        url: &str,
+        headers: &HeaderMap,
     ) -> Result<(String, Session), SessionError> {
-        let url_name = first_subdomain(&url);
+        let url_name = first_subdomain(url);
         if let Some(config) = self.get_session_config(url_name.to_string()).await? {
             return Ok((url_name, config));
         }
 
-        if let Some(forwarded_host) = headers.get("x-forwarded-host") {
+        if let Some(forwarded_host) = headers.get(HeaderName::ForwardedHost) {
             let forwarded_host_name = first_subdomain(forwarded_host);
             if let Some(config) = self
                 .get_session_config(forwarded_host_name.to_string())
@@ -55,7 +56,7 @@ impl SessionAllocator {
             }
         }
 
-        Err(SessionError::NoSuchSession(url))
+        Err(SessionError::NoSuchSession(url.to_string()))
     }
 
     pub async fn store_session(

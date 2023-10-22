@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use linkup::*;
+use linkup::{HeaderMap as LinkupHeaderMap, *};
 use worker::*;
 
 use futures::{
@@ -16,28 +14,23 @@ pub async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Resu
         Err(_) => return plaintext_error("Bad or missing request url", 400),
     };
 
-    let mut headers = req
-        .headers()
-        .clone()
-        .entries()
-        .collect::<HashMap<String, String>>();
+    let mut headers = LinkupHeaderMap::from_worker_request(&req);
 
     let (session_name, config) =
-        match sessions.get_request_session(url.clone(), headers.clone()).await {
+        match sessions.get_request_session(&url, &headers).await {
             Ok(result) => result,
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
 
-    let (dest_service_name, destination_url) =
-        match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
-            Some(result) => result,
-            None => return plaintext_error("No target URL for request", 422),
-        };
+    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
+        Some(result) => result,
+        None => return plaintext_error("No target URL for request", 422),
+    };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
-    headers.extend(extra_headers);
+    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
+    headers.extend(&extra_headers);
 
-    let dest_ws_res = websocket_connect(&destination_url, headers).await;
+    let dest_ws_res = websocket_connect(&target_service.url, &headers).await;
     let dest_ws = match dest_ws_res {
         Ok(ws) => ws,
         Err(e) => {
@@ -145,10 +138,7 @@ fn forward_ws_event(
     }
 }
 
-async fn websocket_connect(
-    url: &str,
-    additional_headers: HashMap<String, String>,
-) -> Result<WebSocket> {
+async fn websocket_connect(url: &str, additional_headers: &LinkupHeaderMap) -> Result<WebSocket> {
     let mut proper_url = match url.parse::<Url>() {
         Ok(url) => url,
         Err(_) => return Err(Error::RustError("invalid url".into())),
@@ -164,10 +154,10 @@ async fn websocket_connect(
 
     proper_url.set_scheme(&scheme).unwrap();
 
-    let mut headers = Headers::new();
-    additional_headers.iter().for_each(|(k, v)| {
+    let mut headers = worker::Headers::new();
+    additional_headers.into_iter().for_each(|(k, v)| {
         headers
-            .append(k, v)
+            .append(k.as_str(), v.as_str())
             .expect("could not append header to websocket request");
     });
     headers.set("upgrade", "websocket")?;

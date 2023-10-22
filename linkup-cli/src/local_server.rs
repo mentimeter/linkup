@@ -1,12 +1,13 @@
-use std::{collections::HashMap, io};
+use std::io;
 
 use actix_web::{
-    guard, http::header, middleware, rt, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+    guard, http::header::ContentType, middleware, rt, web, App, HttpRequest, HttpResponse,
+    HttpServer, Responder,
 };
 use futures::stream::StreamExt;
 use thiserror::Error;
 
-use linkup::*;
+use linkup::{HeaderMap as LinkupHeaderMap, HeaderName as LinkupHeaderName, *};
 use url::Url;
 
 use crate::LINKUP_LOCALSERVER_PORT;
@@ -27,7 +28,7 @@ async fn linkup_config_handler(
         Ok(input_json_conf) => input_json_conf,
         Err(_) => {
             return HttpResponse::BadRequest()
-                .append_header(header::ContentType::plaintext())
+                .append_header(ContentType::plaintext())
                 .body("Invalid request body encoding - local server")
         }
     };
@@ -40,12 +41,12 @@ async fn linkup_config_handler(
             match session_name {
                 Ok(session_name) => HttpResponse::Ok().body(session_name),
                 Err(e) => HttpResponse::InternalServerError()
-                    .append_header(header::ContentType::plaintext())
+                    .append_header(ContentType::plaintext())
                     .body(format!("Failed to store server config: {}", e)),
             }
         }
         Err(e) => HttpResponse::BadRequest()
-            .append_header(header::ContentType::plaintext())
+            .append_header(ContentType::plaintext())
             .body(format!(
                 "Failed to parse server config: {} - local server",
                 e
@@ -61,15 +62,9 @@ async fn linkup_ws_request_handler(
     let sessions = SessionAllocator::new(string_store.into_inner());
 
     let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
-    let headers = req
-        .headers()
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-        .collect::<HashMap<String, String>>();
+    let mut headers = LinkupHeaderMap::from_actix_request(&req);
 
-    let session_result = sessions
-        .get_request_session(url.clone(), headers.clone())
-        .await;
+    let session_result = sessions.get_request_session(&url, &headers).await;
 
     if session_result.is_err() {
         println!("Failed to get session: {:?}", session_result);
@@ -79,28 +74,28 @@ async fn linkup_ws_request_handler(
         Ok(result) => result,
         Err(_) => {
             return HttpResponse::UnprocessableEntity()
-                .append_header(header::ContentType::plaintext())
+                .append_header(ContentType::plaintext())
                 .body("Unprocessable Content - local server")
         }
     };
 
-    let (dest_service_name, destination_url) =
-        match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
-            Some(result) => result,
-            None => {
-                return HttpResponse::NotFound()
-                    .append_header(header::ContentType::plaintext())
-                    .body("Not target url for request - local server")
-            }
-        };
+    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
+        Some(result) => result,
+        None => {
+            return HttpResponse::NotFound()
+                .append_header(ContentType::plaintext())
+                .body("Not target url for request - local server")
+        }
+    };
 
-    let extra_headers = get_additional_headers(url, &headers, &session_name, &dest_service_name);
+    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
+    headers.extend(&extra_headers);
     let response_result = client
-        .request(req.method().clone(), &destination_url)
-        .headers(merge_headers(&headers, &extra_headers))
+        .request(req.method().clone(), &target_service.url)
+        .headers(headers.into())
         .send()
         .await;
 
@@ -108,7 +103,7 @@ async fn linkup_ws_request_handler(
         match response_result {
             Ok(response) => response,
             Err(_) => return HttpResponse::BadGateway()
-                .append_header(header::ContentType::plaintext())
+                .append_header(ContentType::plaintext())
                 .body(
                     "Bad Gateway from local server, could you have forgotten to start the server?",
                 ),
@@ -118,7 +113,7 @@ async fn linkup_ws_request_handler(
     let status = response.status().as_u16();
     if status != 101 {
         return HttpResponse::BadGateway()
-            .append_header(header::ContentType::plaintext())
+            .append_header(ContentType::plaintext())
             .body("The underlying server did not accept the websocket connection.");
     }
 
@@ -128,8 +123,8 @@ async fn linkup_ws_request_handler(
     for (header, value) in response.headers() {
         client_response.insert_header((header.to_owned(), value.to_owned()));
     }
-    for (header, value) in additional_response_headers() {
-        client_response.insert_header((header.to_owned(), value.to_owned()));
+    for (header, value) in &additional_response_headers() {
+        client_response.insert_header((header.to_string(), value.to_string()));
     }
 
     let upgrade_result = response.upgrade().await;
@@ -137,7 +132,7 @@ async fn linkup_ws_request_handler(
         Ok(response) => response,
         Err(_) => {
             return HttpResponse::BadGateway()
-                .append_header(header::ContentType::plaintext())
+                .append_header(ContentType::plaintext())
                 .body("could not upgrade to websocket connection.")
         }
     };
@@ -169,15 +164,9 @@ async fn linkup_request_handler(
     let sessions = SessionAllocator::new(string_store.into_inner());
 
     let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
-    let headers = req
-        .headers()
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-        .collect::<HashMap<String, String>>();
+    let mut headers = LinkupHeaderMap::from_actix_request(&req);
 
-    let session_result = sessions
-        .get_request_session(url.clone(), headers.clone())
-        .await;
+    let session_result = sessions.get_request_session(&url, &headers).await;
 
     if session_result.is_err() {
         println!("Failed to get session: {:?}", session_result);
@@ -187,39 +176,33 @@ async fn linkup_request_handler(
         Ok(result) => result,
         Err(_) => {
             return HttpResponse::UnprocessableEntity()
-                .append_header(header::ContentType::plaintext())
+                .append_header(ContentType::plaintext())
                 .body("Unprocessable Content - local server")
         }
     };
 
-    let (dest_service_name, destination_url) =
-        match get_target_service(url.clone(), headers.clone(), &config, &session_name) {
-            Some(result) => result,
-            None => {
-                return HttpResponse::NotFound()
-                    .append_header(header::ContentType::plaintext())
-                    .body("Not target url for request - local server")
-            }
-        };
+    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
+        Some(result) => result,
+        None => {
+            return HttpResponse::NotFound()
+                .append_header(ContentType::plaintext())
+                .body("Not target url for request - local server")
+        }
+    };
 
-    let mut extra_headers =
-        get_additional_headers(url, &headers, &session_name, &dest_service_name);
-
-    // TODO(ostenbom): Consider moving host override into additional_headers function
+    let mut extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
     extra_headers.insert(
-        "host".to_string(),
-        Url::parse(&destination_url)
-            .unwrap()
-            .host_str()
-            .unwrap()
-            .to_string(),
+        LinkupHeaderName::Host,
+        Url::parse(&target_service.url).unwrap(),
     );
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
+    headers.extend(&extra_headers);
+
     let response_result = client
-        .request(req.method().clone(), &destination_url)
-        .headers(merge_headers(&headers, &extra_headers))
+        .request(req.method().clone(), &target_service.url)
+        .headers(headers.into())
         .body(req_body)
         .send()
         .await;
@@ -228,42 +211,24 @@ async fn linkup_request_handler(
         match response_result {
             Ok(response) => response,
             Err(_) => return HttpResponse::BadGateway()
-                .append_header(header::ContentType::plaintext())
+                .append_header(ContentType::plaintext())
                 .body(
                     "Bad Gateway from local server, could you have forgotten to start the server?",
                 ),
         };
 
-    let extra_resp_headers = additional_response_headers();
-
-    convert_reqwest_response(response, extra_resp_headers)
+    convert_reqwest_response(response, &additional_response_headers())
         .await
         .unwrap_or_else(|_| {
             HttpResponse::InternalServerError()
-                .append_header(header::ContentType::plaintext())
+                .append_header(ContentType::plaintext())
                 .body("Could not convert response from reqwest - local server")
         })
 }
 
-fn merge_headers(
-    original_headers: &HashMap<String, String>,
-    extra_headers: &HashMap<String, String>,
-) -> reqwest::header::HeaderMap {
-    let mut header_map = reqwest::header::HeaderMap::new();
-    // Give the extra headers precedence
-    for (key, value) in original_headers.iter().chain(extra_headers.iter()) {
-        if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
-            if let Ok(header_value) = reqwest::header::HeaderValue::from_str(value) {
-                header_map.insert(header_name, header_value);
-            }
-        }
-    }
-    header_map
-}
-
 async fn convert_reqwest_response(
     response: reqwest::Response,
-    extra_headers: HashMap<String, String>,
+    extra_headers: &LinkupHeaderMap,
 ) -> Result<HttpResponse, ProxyError> {
     let status_code = response.status();
     let headers = response.headers().clone();
@@ -277,8 +242,8 @@ async fn convert_reqwest_response(
         response_builder.append_header((key, value));
     }
 
-    for (key, value) in extra_headers.iter() {
-        response_builder.insert_header((key.to_owned(), value.to_owned()));
+    for (key, value) in extra_headers.into_iter() {
+        response_builder.insert_header((key.to_string(), value.to_string()));
     }
 
     Ok(response_builder.body(body))
