@@ -329,13 +329,13 @@ mod tests {
         let config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let config: Session = config_value.try_into().unwrap();
 
-        let name = session_allocator
+        let name = sessions
             .store_session(config, NameKind::Animal, "".to_string())
             .await
             .unwrap();
 
         // Normal subdomain
-        session_allocator
+        sessions
             .get_request_session(&format!("{}.example.com", name), &HeaderMap::new())
             .await
             .unwrap();
@@ -344,7 +344,7 @@ mod tests {
         let mut referer_headers = HeaderMap::new();
         // TODO check header capitalization
         referer_headers.insert("referer", format!("http://{}.example.com", name));
-        session_allocator
+        sessions
             .get_request_session("example.com", &referer_headers)
             .await
             .unwrap();
@@ -352,7 +352,7 @@ mod tests {
         // Origin
         let mut origin_headers = HeaderMap::new();
         origin_headers.insert("origin", format!("http://{}.example.com", name));
-        session_allocator
+        sessions
             .get_request_session("example.com", &origin_headers)
             .await
             .unwrap();
@@ -363,14 +363,14 @@ mod tests {
             HeaderName::TraceState,
             format!("some-other=xyz,linkup-session={}", name),
         );
-        session_allocator
+        sessions
             .get_request_session("example.com", &trace_headers)
             .await
             .unwrap();
 
         let mut trace_headers_two = HeaderMap::new();
         trace_headers_two.insert(HeaderName::TraceState, format!("linkup-session={}", name));
-        session_allocator
+        sessions
             .get_request_session("example.com", &trace_headers_two)
             .await
             .unwrap();
@@ -460,12 +460,12 @@ mod tests {
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
 
-        let name = session_allocator
+        let name = sessions
             .store_session(input_config, NameKind::Animal, "".to_string())
             .await
             .unwrap();
 
-        let (name, config) = session_allocator
+        let (name, config) = sessions
             .get_request_session(&format!("{}.example.com", name), &HeaderMap::new())
             .await
             .unwrap();
@@ -550,12 +550,12 @@ mod tests {
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
 
-        let name = session_allocator
+        let name = sessions
             .store_session(input_config, NameKind::Animal, "".to_string())
             .await
             .unwrap();
 
-        let (name, config) = session_allocator
+        let (name, config) = sessions
             .get_request_session(&format!("{}.example.com", name), &HeaderMap::new())
             .await
             .unwrap();
