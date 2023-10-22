@@ -22,8 +22,6 @@ async fn linkup_config_handler(
     string_store: web::Data<MemoryStringStore>,
     req_body: web::Bytes,
 ) -> impl Responder {
-    let sessions = SessionAllocator::new(string_store.into_inner());
-
     let input_json_conf = match String::from_utf8(req_body.to_vec()) {
         Ok(input_json_conf) => input_json_conf,
         Err(_) => {
@@ -35,9 +33,13 @@ async fn linkup_config_handler(
 
     match update_session_req_from_json(input_json_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name = sessions
-                .store_session(server_conf, NameKind::Animal, desired_name)
-                .await;
+            let session_name = store_session(
+                string_store.as_ref(),
+                server_conf,
+                NameKind::Animal,
+                desired_name,
+            )
+            .await;
             match session_name {
                 Ok(session_name) => HttpResponse::Ok().body(session_name),
                 Err(e) => HttpResponse::InternalServerError()
@@ -59,12 +61,10 @@ async fn linkup_ws_request_handler(
     req: HttpRequest,
     req_stream: web::Payload,
 ) -> impl Responder {
-    let sessions = SessionAllocator::new(string_store.into_inner());
-
     let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
     let mut headers = LinkupHeaderMap::from_actix_request(&req);
 
-    let session_result = sessions.get_request_session(&url, &headers).await;
+    let session_result = get_request_session(string_store.as_ref(), &url, &headers).await;
 
     if session_result.is_err() {
         println!("Failed to get session: {:?}", session_result);
@@ -161,12 +161,10 @@ async fn linkup_request_handler(
     req: HttpRequest,
     req_body: web::Bytes,
 ) -> impl Responder {
-    let sessions = SessionAllocator::new(string_store.into_inner());
-
     let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
     let mut headers = LinkupHeaderMap::from_actix_request(&req);
 
-    let session_result = sessions.get_request_session(&url, &headers).await;
+    let session_result = get_request_session(string_store.as_ref(), &url, &headers).await;
 
     if session_result.is_err() {
         println!("Failed to get session: {:?}", session_result);

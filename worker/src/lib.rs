@@ -1,13 +1,7 @@
-// TODO(augustoccesar)[2023-10-16]: We need to revisit the session allocator and how we are using Arc.
-//   It seems that `CfWorkerStringStore` is not really Send or Sync, which is making so that clippy warn about this.
-//   For more info check: https://rust-lang.github.io/rust-clippy/master/index.html#arc_with_non_send_sync
-#![allow(clippy::arc_with_non_send_sync)]
-
 use http_util::*;
 use kv_store::CfWorkerStringStore;
 use linkup::{HeaderMap as LinkupHeaderMap, *};
 use regex::Regex;
-use std::sync::Arc;
 use worker::*;
 use ws::linkup_ws_handler;
 
@@ -16,7 +10,10 @@ mod kv_store;
 mod utils;
 mod ws;
 
-async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
+async fn linkup_session_handler(
+    mut req: Request,
+    string_store: &impl StringStore,
+) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
         Err(_) => return plaintext_error("Bad or missing request body", 400),
@@ -29,9 +26,8 @@ async fn linkup_session_handler(mut req: Request, sessions: SessionAllocator) ->
 
     match update_session_req_from_json(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name = sessions
-                .store_session(server_conf, NameKind::Animal, desired_name)
-                .await;
+            let session_name =
+                store_session(string_store, server_conf, NameKind::Animal, desired_name).await;
 
             match session_name {
                 Ok(session_name) => Response::ok(session_name),
@@ -84,7 +80,10 @@ async fn set_cached_req(
     Ok(resp)
 }
 
-async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) -> Result<Response> {
+async fn linkup_request_handler(
+    mut req: Request,
+    string_store: &impl StringStore,
+) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),
         Err(_) => return plaintext_error("Bad or missing request url", 400),
@@ -93,7 +92,7 @@ async fn linkup_request_handler(mut req: Request, sessions: SessionAllocator) ->
     let mut headers = LinkupHeaderMap::from_worker_request(&req);
 
     let (session_name, config) =
-        match sessions.get_request_session(&url, &headers).await {
+        match get_request_session(string_store, &url, &headers).await {
             Ok(result) => result,
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
@@ -154,17 +153,15 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     let string_store = CfWorkerStringStore::new(kv);
 
-    let sessions = SessionAllocator::new(Arc::new(string_store));
-
     if let Ok(Some(upgrade)) = req.headers().get("upgrade") {
         if upgrade == "websocket" {
-            return linkup_ws_handler(req, sessions).await;
+            return linkup_ws_handler(req, &string_store).await;
         }
     }
 
     if req.method() == Method::Post && req.path() == "/linkup" {
-        return linkup_session_handler(req, sessions).await;
+        return linkup_session_handler(req, &string_store).await;
     }
 
-    linkup_request_handler(req, sessions).await
+    linkup_request_handler(req, &string_store).await
 }
