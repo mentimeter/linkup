@@ -10,7 +10,7 @@ use crate::http_util::plaintext_error;
 
 pub async fn linkup_ws_handler<'a>(
     req: Request,
-    allocator: &SessionAllocator<'a>,
+    sessions: &'a SessionAllocator<'a>,
 ) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),
@@ -20,7 +20,7 @@ pub async fn linkup_ws_handler<'a>(
     let mut headers = LinkupHeaderMap::from_worker_request(&req);
 
     let (session_name, config) =
-        match allocator.get_request_session(&url, &headers).await {
+        match sessions.get_request_session(&url, &headers).await {
             Ok(result) => result,
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };

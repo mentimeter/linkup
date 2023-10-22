@@ -12,7 +12,7 @@ mod ws;
 
 async fn linkup_session_handler<'a>(
     mut req: Request,
-    session_allocator: &'a SessionAllocator<'a>,
+    sessions: &'a SessionAllocator<'a>,
 ) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
@@ -26,7 +26,7 @@ async fn linkup_session_handler<'a>(
 
     match update_session_req_from_json(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name = session_allocator
+            let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)
                 .await;
 
@@ -83,7 +83,7 @@ async fn set_cached_req(
 
 async fn linkup_request_handler<'a>(
     mut req: Request,
-    session_allocator: &'a SessionAllocator<'a>,
+    sessions: &'a SessionAllocator<'a>,
 ) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),
@@ -93,7 +93,7 @@ async fn linkup_request_handler<'a>(
     let mut headers = LinkupHeaderMap::from_worker_request(&req);
 
     let (session_name, config) =
-        match session_allocator.get_request_session(&url, &headers).await {
+        match sessions.get_request_session(&url, &headers).await {
             Ok(result) => result,
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
@@ -153,17 +153,18 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     };
 
     let string_store = CfWorkerStringStore::new(kv);
-    let allocator = SessionAllocator::new(&string_store);
+
+    let sessions = SessionAllocator::new(&string_store);
 
     if let Ok(Some(upgrade)) = req.headers().get("upgrade") {
         if upgrade == "websocket" {
-            return linkup_ws_handler(req, &allocator).await;
+            return linkup_ws_handler(req, &sessions).await;
         }
     }
 
     if req.method() == Method::Post && req.path() == "/linkup" {
-        return linkup_session_handler(req, &allocator).await;
+        return linkup_session_handler(req, &sessions).await;
     }
 
-    linkup_request_handler(req, &allocator).await
+    linkup_request_handler(req, &sessions).await
 }
