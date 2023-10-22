@@ -22,8 +22,6 @@ async fn linkup_config_handler(
     string_store: web::Data<MemoryStringStore>,
     req_body: web::Bytes,
 ) -> impl Responder {
-    let sessions = SessionAllocator::new(string_store.as_ref());
-
     let input_json_conf = match String::from_utf8(req_body.to_vec()) {
         Ok(input_json_conf) => input_json_conf,
         Err(_) => {
@@ -35,6 +33,7 @@ async fn linkup_config_handler(
 
     match update_session_req_from_json(input_json_conf) {
         Ok((desired_name, server_conf)) => {
+            let sessions = SessionAllocator::new(string_store.as_ref());
             let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)
                 .await;
