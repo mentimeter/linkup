@@ -10,9 +10,9 @@ mod kv_store;
 mod utils;
 mod ws;
 
-async fn linkup_session_handler(
+async fn linkup_session_handler<'a>(
     mut req: Request,
-    string_store: &impl StringStore,
+    session_allocator: &'a SessionAllocator<'a>,
 ) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
@@ -26,8 +26,9 @@ async fn linkup_session_handler(
 
     match update_session_req_from_json(input_yaml_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name =
-                store_session(string_store, server_conf, NameKind::Animal, desired_name).await;
+            let session_name = session_allocator
+                .store_session(server_conf, NameKind::Animal, desired_name)
+                .await;
 
             match session_name {
                 Ok(session_name) => Response::ok(session_name),
@@ -80,9 +81,9 @@ async fn set_cached_req(
     Ok(resp)
 }
 
-async fn linkup_request_handler(
+async fn linkup_request_handler<'a>(
     mut req: Request,
-    string_store: &impl StringStore,
+    session_allocator: &'a SessionAllocator<'a>,
 ) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),
@@ -92,7 +93,7 @@ async fn linkup_request_handler(
     let mut headers = LinkupHeaderMap::from_worker_request(&req);
 
     let (session_name, config) =
-        match get_request_session(string_store, &url, &headers).await {
+        match session_allocator.get_request_session(&url, &headers).await {
             Ok(result) => result,
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
@@ -152,16 +153,17 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     };
 
     let string_store = CfWorkerStringStore::new(kv);
+    let allocator = SessionAllocator::new(&string_store);
 
     if let Ok(Some(upgrade)) = req.headers().get("upgrade") {
         if upgrade == "websocket" {
-            return linkup_ws_handler(req, &string_store).await;
+            return linkup_ws_handler(req, &allocator).await;
         }
     }
 
     if req.method() == Method::Post && req.path() == "/linkup" {
-        return linkup_session_handler(req, &string_store).await;
+        return linkup_session_handler(req, &allocator).await;
     }
 
-    linkup_request_handler(req, &string_store).await
+    linkup_request_handler(req, &allocator).await
 }

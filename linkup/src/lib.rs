@@ -271,8 +271,6 @@ fn extrace_tracestate(tracestate: &str, linkup_key: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
 
     const CONF_STR: &str = r#"
@@ -326,35 +324,36 @@ mod tests {
     #[tokio::test]
     async fn test_get_request_session_by_subdomain() {
         let string_store = MemoryStringStore::new();
+        let session_allocator = SessionAllocator::new(&string_store);
 
         let config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let config: Session = config_value.try_into().unwrap();
 
-        let name = store_session(&string_store, config, NameKind::Animal, "".to_string())
+        let name = session_allocator
+            .store_session(config, NameKind::Animal, "".to_string())
             .await
             .unwrap();
 
         // Normal subdomain
-        get_request_session(
-            &string_store,
-            &format!("{}.example.com", name),
-            &HeaderMap::new(),
-        )
-        .await
-        .unwrap();
+        session_allocator
+            .get_request_session(&format!("{}.example.com", name), &HeaderMap::new())
+            .await
+            .unwrap();
 
         // Referer
         let mut referer_headers = HeaderMap::new();
         // TODO check header capitalization
         referer_headers.insert("referer", format!("http://{}.example.com", name));
-        get_request_session(&string_store, "example.com", &referer_headers)
+        session_allocator
+            .get_request_session("example.com", &referer_headers)
             .await
             .unwrap();
 
         // Origin
         let mut origin_headers = HeaderMap::new();
         origin_headers.insert("origin", format!("http://{}.example.com", name));
-        get_request_session(&string_store, "example.com", &origin_headers)
+        session_allocator
+            .get_request_session("example.com", &origin_headers)
             .await
             .unwrap();
 
@@ -364,13 +363,15 @@ mod tests {
             HeaderName::TraceState,
             format!("some-other=xyz,linkup-session={}", name),
         );
-        get_request_session(&string_store, "example.com", &trace_headers)
+        session_allocator
+            .get_request_session("example.com", &trace_headers)
             .await
             .unwrap();
 
         let mut trace_headers_two = HeaderMap::new();
         trace_headers_two.insert(HeaderName::TraceState, format!("linkup-session={}", name));
-        get_request_session(&string_store, "example.com", &trace_headers_two)
+        session_allocator
+            .get_request_session("example.com", &trace_headers_two)
             .await
             .unwrap();
     }
@@ -454,26 +455,20 @@ mod tests {
     #[tokio::test]
     async fn test_get_target_url() {
         let string_store = MemoryStringStore::new();
+        let session_allocator = SessionAllocator::new(&string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
 
-        let name = store_session(
-            &string_store,
-            input_config,
-            NameKind::Animal,
-            "".to_string(),
-        )
-        .await
-        .unwrap();
+        let name = session_allocator
+            .store_session(input_config, NameKind::Animal, "".to_string())
+            .await
+            .unwrap();
 
-        let (name, config) = get_request_session(
-            &string_store,
-            &format!("{}.example.com", name),
-            &HeaderMap::new(),
-        )
-        .await
-        .unwrap();
+        let (name, config) = session_allocator
+            .get_request_session(&format!("{}.example.com", name), &HeaderMap::new())
+            .await
+            .unwrap();
 
         // Standard named subdomain
         assert_eq!(
@@ -550,26 +545,20 @@ mod tests {
     #[tokio::test]
     async fn test_repeatable_rewritten_routes() {
         let string_store = MemoryStringStore::new();
+        let session_allocator = SessionAllocator::new(&string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
 
-        let name = store_session(
-            &string_store,
-            input_config,
-            NameKind::Animal,
-            "".to_string(),
-        )
-        .await
-        .unwrap();
+        let name = session_allocator
+            .store_session(input_config, NameKind::Animal, "".to_string())
+            .await
+            .unwrap();
 
-        let (name, config) = get_request_session(
-            &string_store,
-            &format!("{}.example.com", name),
-            &HeaderMap::new(),
-        )
-        .await
-        .unwrap();
+        let (name, config) = session_allocator
+            .get_request_session(&format!("{}.example.com", name), &HeaderMap::new())
+            .await
+            .unwrap();
 
         // Case is, target service on the remote side is a tunnel.
         // If the path gets rewritten once remotely, it can throw off finding

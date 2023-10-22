@@ -33,13 +33,10 @@ async fn linkup_config_handler(
 
     match update_session_req_from_json(input_json_conf) {
         Ok((desired_name, server_conf)) => {
-            let session_name = store_session(
-                string_store.as_ref(),
-                server_conf,
-                NameKind::Animal,
-                desired_name,
-            )
-            .await;
+            let session_allocator = SessionAllocator::new(string_store.as_ref());
+            let session_name = session_allocator
+                .store_session(server_conf, NameKind::Animal, desired_name)
+                .await;
             match session_name {
                 Ok(session_name) => HttpResponse::Ok().body(session_name),
                 Err(e) => HttpResponse::InternalServerError()
@@ -64,7 +61,8 @@ async fn linkup_ws_request_handler(
     let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
     let mut headers = LinkupHeaderMap::from_actix_request(&req);
 
-    let session_result = get_request_session(string_store.as_ref(), &url, &headers).await;
+    let session_allocator = SessionAllocator::new(string_store.as_ref());
+    let session_result = session_allocator.get_request_session(&url, &headers).await;
 
     if session_result.is_err() {
         println!("Failed to get session: {:?}", session_result);
@@ -164,7 +162,8 @@ async fn linkup_request_handler(
     let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
     let mut headers = LinkupHeaderMap::from_actix_request(&req);
 
-    let session_result = get_request_session(string_store.as_ref(), &url, &headers).await;
+    let session_allocator = SessionAllocator::new(string_store.as_ref());
+    let session_result = session_allocator.get_request_session(&url, &headers).await;
 
     if session_result.is_err() {
         println!("Failed to get session: {:?}", session_result);

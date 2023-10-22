@@ -8,7 +8,10 @@ use futures::{
 
 use crate::http_util::plaintext_error;
 
-pub async fn linkup_ws_handler(req: Request, string_store: &impl StringStore) -> Result<Response> {
+pub async fn linkup_ws_handler<'a>(
+    req: Request,
+    allocator: &SessionAllocator<'a>,
+) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),
         Err(_) => return plaintext_error("Bad or missing request url", 400),
@@ -17,7 +20,7 @@ pub async fn linkup_ws_handler(req: Request, string_store: &impl StringStore) ->
     let mut headers = LinkupHeaderMap::from_worker_request(&req);
 
     let (session_name, config) =
-        match get_request_session(string_store, &url, &headers).await {
+        match allocator.get_request_session(&url, &headers).await {
             Ok(result) => result,
             Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
         };
