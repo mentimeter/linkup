@@ -57,23 +57,6 @@ impl<'a> SessionAllocator<'a> {
         Err(SessionError::NoSuchSession(url.to_string()))
     }
 
-    async fn get_session_config(&self, name: String) -> Result<Option<Session>, SessionError> {
-        let value = match self.store.get(name).await {
-            Ok(Some(v)) => v,
-            Ok(None) => return Ok(None),
-            Err(e) => return Err(e),
-        };
-
-        let config_value: serde_json::Value =
-            serde_json::from_str(&value).map_err(|e| SessionError::ConfigErr(e.to_string()))?;
-
-        let session_config = config_value
-            .try_into()
-            .map_err(|e: ConfigError| SessionError::ConfigErr(e.to_string()))?;
-
-        Ok(Some(session_config))
-    }
-
     pub async fn store_session(
         &self,
         config: Session,
@@ -108,6 +91,23 @@ impl<'a> SessionAllocator<'a> {
         }
 
         self.new_session_name(name_kind, desired_name).await
+    }
+
+    async fn get_session_config(&self, name: String) -> Result<Option<Session>, SessionError> {
+        let value = match self.store.get(name).await {
+            Ok(Some(v)) => v,
+            Ok(None) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+
+        let config_value: serde_json::Value =
+            serde_json::from_str(&value).map_err(|e| SessionError::ConfigErr(e.to_string()))?;
+
+        let session_config = config_value
+            .try_into()
+            .map_err(|e: ConfigError| SessionError::ConfigErr(e.to_string()))?;
+
+        Ok(Some(session_config))
     }
 
     async fn new_session_name(
