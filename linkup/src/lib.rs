@@ -107,7 +107,7 @@ pub fn additional_response_headers() -> HeaderMap {
     headers
 }
 
-#[cfg_attr(test, derive(Debug, PartialEq))]
+#[derive(Debug, PartialEq)]
 pub struct TargetService {
     pub name: String,
     pub url: String,
@@ -271,6 +271,8 @@ fn extrace_tracestate(tracestate: &str, linkup_key: String) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::format;
+
     use super::*;
 
     const CONF_STR: &str = r#"
@@ -286,6 +288,10 @@ mod tests {
                         "target": "/bar/$1"
                     }
                 ]
+            },
+            {
+                "name": "other-frontend",
+                "location": "http://localhost:5000"
             },
             {
                 "name": "backend",
@@ -316,6 +322,10 @@ mod tests {
             {
                 "domain": "api.example.com",
                 "default_service": "backend"
+            },
+            {
+                "domain": "other-example.com",
+                "default_service": "other-frontend"
             }
         ]
     }
@@ -591,5 +601,38 @@ mod tests {
         // The secret sauce should be in the extra headers that have been propogated
         assert_eq!(target.name, "backend");
         assert_eq!(target.url, "http://localhost:8001/user");
+    }
+
+    #[tokio::test]
+    async fn test_iframable() {
+        let string_store = MemoryStringStore::new();
+        let sessions = SessionAllocator::new(&string_store);
+
+        let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
+        let input_config: Session = input_config_value.try_into().unwrap();
+
+        let name = sessions
+            .store_session(input_config, NameKind::Animal, "".to_string())
+            .await
+            .unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(HeaderName::Referer, format!("{}.example.com", name));
+
+        let (name, config) = sessions
+            .get_request_session("other-example.com", &headers)
+            .await
+            .unwrap();
+
+        let target = get_target_service(
+            "http://other-example.com",
+            &headers,
+            &config,
+            &name,
+        )
+        .unwrap();
+
+        assert_eq!(target.name, "other-frontend");
+        assert_eq!(target.url, "http://localhost:5000/");
     }
 }

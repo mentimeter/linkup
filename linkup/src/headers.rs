@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use unicase::UniCase;
 
@@ -79,6 +79,10 @@ impl HeaderMap {
         self.0.extend(iter)
     }
 
+    pub fn remove(&mut self, key: impl Into<UniCase<String>>) -> Option<String> {
+        self.0.remove(&key.into())
+    }
+
     #[cfg(feature = "actix")]
     pub fn from_actix_request(req: &actix_web::HttpRequest) -> Self {
         req.headers().into()
@@ -87,6 +91,14 @@ impl HeaderMap {
     #[cfg(feature = "worker")]
     pub fn from_worker_request(req: &worker::Request) -> Self {
         req.headers().into()
+    }
+}
+
+impl fmt::Debug for HeaderMap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(self.0.iter().map(|(k, v)| (k.as_ref(), v.as_str())))
+            .finish()
     }
 }
 
