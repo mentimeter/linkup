@@ -8,7 +8,10 @@ use futures::{
 
 use crate::http_util::plaintext_error;
 
-pub async fn linkup_ws_handler(req: Request, sessions: SessionAllocator) -> Result<Response> {
+pub async fn linkup_ws_handler<'a>(
+    req: Request,
+    sessions: &'a SessionAllocator<'a>,
+) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),
         Err(_) => return plaintext_error("Bad or missing request url", 400),

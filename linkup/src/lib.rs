@@ -271,8 +271,6 @@ fn extrace_tracestate(tracestate: &str, linkup_key: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
 
     const CONF_STR: &str = r#"
@@ -325,7 +323,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_request_session_by_subdomain() {
-        let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
+        let string_store = MemoryStringStore::new();
+        let sessions = SessionAllocator::new(&string_store);
 
         let config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let config: Session = config_value.try_into().unwrap();
@@ -455,7 +454,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_target_url() {
-        let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
+        let string_store = MemoryStringStore::new();
+        let sessions = SessionAllocator::new(&string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
@@ -544,7 +544,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_repeatable_rewritten_routes() {
-        let sessions = SessionAllocator::new(Arc::new(MemoryStringStore::new()));
+        let string_store = MemoryStringStore::new();
+        let sessions = SessionAllocator::new(&string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();

@@ -1,17 +1,15 @@
-use std::sync::Arc;
-
 use crate::{
     extract_tracestate_session, first_subdomain, headers::HeaderName, random_animal,
     random_six_char, session_to_json, ConfigError, HeaderMap, NameKind, Session, SessionError,
     StringStore,
 };
 
-pub struct SessionAllocator {
-    store: Arc<dyn StringStore>,
+pub struct SessionAllocator<'a> {
+    store: &'a dyn StringStore,
 }
 
-impl SessionAllocator {
-    pub fn new(store: Arc<dyn StringStore>) -> Self {
+impl<'a> SessionAllocator<'a> {
+    pub fn new(store: &'a dyn StringStore) -> Self {
         Self { store }
     }
 
