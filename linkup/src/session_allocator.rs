@@ -33,21 +33,21 @@ impl<'a> SessionAllocator<'a> {
             }
         }
 
-        if let Some(referer) = headers.get("referer") {
+        if let Some(referer) = headers.get(HeaderName::Referer) {
             let referer_name = first_subdomain(referer);
             if let Some(config) = self.get_session_config(referer_name.to_string()).await? {
                 return Ok((referer_name, config));
             }
         }
 
-        if let Some(origin) = headers.get("origin") {
+        if let Some(origin) = headers.get(HeaderName::Origin) {
             let origin_name = first_subdomain(origin);
             if let Some(config) = self.get_session_config(origin_name.to_string()).await? {
                 return Ok((origin_name, config));
             }
         }
 
-        if let Some(tracestate) = headers.get("tracestate") {
+        if let Some(tracestate) = headers.get(HeaderName::TraceState) {
             let trace_name = extract_tracestate_session(tracestate);
             if let Some(config) = self.get_session_config(trace_name.to_string()).await? {
                 return Ok((trace_name, config));
