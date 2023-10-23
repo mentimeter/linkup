@@ -10,7 +10,7 @@ use thiserror::Error;
 
 pub use headers::{HeaderMap, HeaderName};
 pub use memory_session_store::*;
-pub use name_gen::{new_session_name, random_animal, random_six_char};
+pub use name_gen::{random_animal, random_six_char};
 pub use session::*;
 pub use session_allocator::*;
 

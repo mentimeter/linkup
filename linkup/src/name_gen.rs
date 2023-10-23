@@ -1,52 +1,6 @@
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 
-use crate::NameKind;
-
-pub fn new_session_name(
-    name_kind: NameKind,
-    desired_name: Option<String>,
-    exists: &dyn Fn(String) -> bool,
-) -> String {
-    let mut key = String::new();
-
-    if let Some(name) = desired_name {
-        if !exists(name.clone()) {
-            key = name;
-        }
-    }
-
-    if key.is_empty() {
-        let mut tried_animal_key = false;
-        loop {
-            let generated_key = if !tried_animal_key && name_kind == NameKind::Animal {
-                tried_animal_key = true;
-                generate_unique_animal_key(20, &exists)
-            } else {
-                random_six_char()
-            };
-
-            if !exists(generated_key.clone()) {
-                key = generated_key;
-                break;
-            }
-        }
-    }
-
-    key
-}
-
-fn generate_unique_animal_key(max_attempts: usize, exists: &dyn Fn(String) -> bool) -> String {
-    for _ in 0..max_attempts {
-        let generated_key = random_animal();
-        if !exists(generated_key.clone()) {
-            return generated_key;
-        }
-    }
-    // Fallback to SixChar logic
-    random_six_char()
-}
-
 pub fn random_animal() -> String {
     let adjective_index = rand::thread_rng().gen_range(0..SHORT_ADJECTIVES.len());
     let animal_index = rand::thread_rng().gen_range(0..ANIMALS.len());
