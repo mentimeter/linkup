@@ -8,7 +8,6 @@ use futures::stream::StreamExt;
 use thiserror::Error;
 
 use linkup::{HeaderMap as LinkupHeaderMap, HeaderName as LinkupHeaderName, *};
-use url::Url;
 
 use crate::LINKUP_LOCALSERVER_PORT;
 
@@ -189,7 +188,7 @@ async fn linkup_request_handler(
         }
     };
 
-    let mut extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
+    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();

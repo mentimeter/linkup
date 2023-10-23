@@ -271,8 +271,6 @@ fn extrace_tracestate(tracestate: &str, linkup_key: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::format;
-
     use super::*;
 
     const CONF_STR: &str = r#"
@@ -624,13 +622,8 @@ mod tests {
             .await
             .unwrap();
 
-        let target = get_target_service(
-            "http://other-example.com",
-            &headers,
-            &config,
-            &name,
-        )
-        .unwrap();
+        let target =
+            get_target_service("http://other-example.com", &headers, &config, &name).unwrap();
 
         assert_eq!(target.name, "other-frontend");
         assert_eq!(target.url, "http://localhost:5000/");
