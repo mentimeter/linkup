@@ -32,3 +32,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: rustup component add rustfmt
       - run: cargo fmt --all --check
+
+  worker-build:
+    name: Worker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install -q worker-build
+      - run: worker-build --release
