@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use unicase::UniCase;
 
+#[derive(Debug)]
 pub struct HeaderMap(HashMap<UniCase<String>, String>);
 
 pub enum HeaderName {
@@ -77,6 +78,10 @@ impl HeaderMap {
 
     pub fn extend(&mut self, iter: &HeaderMap) {
         self.0.extend(iter)
+    }
+
+    pub fn remove(&mut self, key: impl Into<UniCase<String>>) -> Option<String> {
+        self.0.remove(&key.into())
     }
 
     #[cfg(feature = "actix")]
