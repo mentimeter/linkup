@@ -95,7 +95,7 @@ async fn linkup_request_handler<'a>(
     let (session_name, config) =
         match sessions.get_request_session(&url, &headers).await {
             Ok(result) => result,
-            Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
+            Err(e) => return plaintext_error(format!("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate, {:?}",e), 422),
         };
 
     if let Some(cached_response) = get_cached_req(&req, &config.cache_routes).await? {
