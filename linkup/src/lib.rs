@@ -49,7 +49,7 @@ pub fn get_additional_headers(
 ) -> HeaderMap {
     let mut additional_headers = HeaderMap::new();
 
-    if !headers.contains_key(HeaderName::ForwardedHost) {
+    if !headers.contains_key(HeaderName::TraceParent) {
         let mut rng = rand::thread_rng();
         let trace: [u8; 16] = rng.gen();
         let parent: [u8; 8] = rng.gen();
@@ -244,7 +244,7 @@ fn first_subdomain(url: &str) -> String {
         .unwrap_or(url);
     let parts: Vec<&str> = without_schema.split('.').collect();
     if parts.len() <= 2 {
-        String::from("")
+        String::from("DOES-NOT-EXIST")
     } else {
         String::from(parts[0])
     }
@@ -350,7 +350,6 @@ mod tests {
 
         // Referer
         let mut referer_headers = HeaderMap::new();
-        // TODO check header capitalization
         referer_headers.insert("referer", format!("http://{}.example.com", name));
         sessions
             .get_request_session("example.com", &referer_headers)
@@ -447,6 +446,22 @@ mod tests {
             add_headers.get(HeaderName::TraceState).unwrap(),
             "other-service=32,linkup-session=tiny-cow"
         );
+
+        let mut already_headers_three = HeaderMap::new();
+        already_headers_three.insert(HeaderName::ForwardedHost, "example.com");
+        let add_headers = get_additional_headers(
+            "https://abc.some-tunnel.com/abc-xyz",
+            &already_headers_three,
+            &session_name,
+            &target_service,
+        );
+
+        assert_eq!(add_headers.get(HeaderName::TraceParent).unwrap().len(), 55);
+        assert_eq!(
+            add_headers.get(HeaderName::TraceState).unwrap(),
+            "linkup-session=tiny-cow"
+        );
+        assert!(add_headers.get(HeaderName::ForwardedHost).is_none());
     }
 
     #[test]
@@ -615,15 +630,20 @@ mod tests {
             .unwrap();
 
         let mut headers = HeaderMap::new();
-        headers.insert(HeaderName::Referer, format!("{}.example.com", name));
+        headers.insert(
+            HeaderName::Referer,
+            format!("https://{}.example.com/", name),
+        );
 
-        let (name, config) = sessions
-            .get_request_session("other-example.com", &headers)
+        let (session_name, config) = sessions
+            .get_request_session("http://other-example.com/", &headers)
             .await
             .unwrap();
 
+        assert_eq!(session_name, name);
+
         let target =
-            get_target_service("http://other-example.com", &headers, &config, &name).unwrap();
+            get_target_service("http://other-example.com/", &headers, &config, &name).unwrap();
 
         assert_eq!(target.name, "other-frontend");
         assert_eq!(target.url, "http://localhost:5000/");

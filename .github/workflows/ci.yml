@@ -41,3 +41,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo install -q worker-build
       - run: worker-build --release
+        working-directory: worker
