@@ -40,11 +40,11 @@ pub fn start(config_arg: &Option<String>) -> Result<(), CliError> {
         }
     }
 
-    boot_background_services()?;
-
     if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
         boot_local_dns(&input_config)?;
     }
+
+    boot_background_services()?;
 
     check_local_not_started()?;
 
