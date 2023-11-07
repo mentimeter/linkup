@@ -91,6 +91,8 @@ async fn linkup_ws_request_handler(
     // Proxy the request using the destination_url and the merged headers
     let client = reqwest::Client::new();
     headers.extend(&extra_headers);
+    headers.remove(LinkupHeaderName::Host);
+
     let response_result = client
         .request(req.method().clone(), &target_service.url)
         .headers(headers.into())
