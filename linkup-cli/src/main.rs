@@ -119,7 +119,8 @@ pub enum CliError {
 #[derive(Parser)]
 #[command(
     name = "linkup",
-    about = "Connect remote and local dev/preview environments"
+    about = "Connect remote and local dev/preview environments",
+    version = env!("CARGO_PKG_VERSION"),
 )]
 struct Cli {
     #[command(subcommand)]
