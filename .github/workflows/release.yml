@@ -1,11 +1,11 @@
 name: Create Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to use for the new release"
-        required: true
+  push:
+    branches:
+      - main
+    paths:
+      - "linkup-cli/Cargo.toml"
 
 jobs:
   publish-to-github:
@@ -58,6 +58,12 @@ jobs:
       - name: Build
         run: cargo build --release --manifest-path linkup-cli/Cargo.toml  --target ${{ matrix.target }}
 
+      - name: Get Version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version = ' linkup-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+
       - name: Package Artifacts
         run: |
           src=$(pwd)
@@ -74,7 +80,8 @@ jobs:
           cp target/${{ matrix.target }}/release/linkup $stage/
           cd $stage
 
-          RELEASE_VERSION=${{ github.event.inputs.tag }}
+          # Use the version from the environment variable
+          RELEASE_VERSION=${{ env.RELEASE_VERSION }}
           ASSET_NAME="linkup-$RELEASE_VERSION-${{ matrix.target }}.tar.gz"
           ASSET_PATH="$src/$ASSET_NAME"
           CHECKSUM_PATH="$ASSET_PATH.sha256"
