@@ -153,13 +153,13 @@ jobs:
 
           cd homebrew-mentimeter
 
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/mentimeter/homebrew-mentimeter.git
-          git config --global user.name "release-bot"
-          git config --global user.email "it-operations@mentimeter.com"
+          git remote set-url origin https://x-access-token:${COMMIT_TOKEN}@github.com/mentimeter/homebrew-mentimeter.git
+          git config --global user.name "mentibot"
+          git config --global user.email "122382604+mentibot@users.noreply.github.com"
 
           git add linkup.rb
           git commit -m "Update Linkup formula to $RELEASE_VERSION"
 
           git push origin HEAD:main
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_TOKEN: ${{ secrets.COMMIT_TOKEN }}
