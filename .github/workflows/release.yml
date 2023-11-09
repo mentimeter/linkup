@@ -8,8 +8,8 @@ on:
       - "linkup-cli/Cargo.toml"
 
 jobs:
-  publish-to-github:
-    name: Publish to Github
+  build:
+    name: Build
     runs-on: ${{matrix.os}}
     strategy:
       matrix:
@@ -35,6 +35,10 @@ jobs:
             rust: stable
             target: aarch64-apple-darwin
             cross: false
+    outputs:
+      mac_arm_sha: ${{ steps.package_artifacts.outputs.mac_arm_sha }}
+      mac_x86_sha: ${{ steps.package_artifacts.outputs.mac_x86_sha }}
+      release_version: ${{ steps.get_version.outputs.release_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -101,6 +105,14 @@ jobs:
                   shasum -a 256 $ASSET_NAME > $CHECKSUM_PATH
                   ;;
           esac
+      - name: Set SHA Outputs
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: |
+          echo "::set-output name=mac_x86_sha::$(cat $CHECKSUM_PATH)"
+          echo "::set-output name=release_version::${{ env.RELEASE_VERSION }}}}"
+      - name: Set SHA Outputs
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: echo "::set-output name=mac_arm_sha::$(cat $CHECKSUM_PATH)"
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -109,5 +121,36 @@ jobs:
           files: |
             ${{ env.ASSET_PATH }}
             ${{ env.CHECKSUM_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update_homebrew_formula:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Homebrew Tap Repository
+        run: git clone https://github.com/mentimeter/homebrew-mentimeter.git
+
+      - name: Update Homebrew Formula
+        run: |
+          ARM_SHA=$(echo "${{ needs.build.outputs.mac_arm_sha }}" | awk '{print $1}')
+          X86_SHA=$(echo "${{ needs.build.outputs.mac_x86_sha }}" | awk '{print $1}')
+          RELEASE_VERSION="${{ needs.build.outputs.release_version }}"
+          FORMULA_PATH="homebrew-mentimeter/linkup.rb"
+
+          # Update the SHA values
+          sed -i '' "s|ARM_SHA = \".*\"|ARM_SHA = \"$ARM_SHA\"|" "$FORMULA_PATH"
+          sed -i '' "s|X86_SHA = \".*\"|X86_SHA = \"$X86_SHA\"|" "$FORMULA_PATH"
+
+          # Update the URLs with the new release version
+          # sed -i '' "s|linkup/releases/download/[^/]*/linkup-[^-]*-|linkup/releases/download/$RELEASE_VERSION/linkup-$RELEASE_VERSION-|" "$FORMULA_PATH"
+
+          cd homebrew-mentimeter
+          git config user.name "release-bot"
+          git config user.email "it-operations@mentimeter.com"
+          git add linkup.rb
+          git commit -m "Update Linkup formula to $RELEASE_VERSION"
+          git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
