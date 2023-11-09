@@ -262,6 +262,7 @@ pub async fn local_linkup_main() -> io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(string_store.clone()) // Add shared state
+            .app_data(web::PayloadConfig::new(100 * 1024 * 1024)) // 100 MB payload limit
             .wrap(middleware::Logger::default()) // Enable logger
             .route("/linkup", web::post().to(linkup_config_handler))
             .route("/linkup-check", web::route().to(always_ok))
