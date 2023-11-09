@@ -36,9 +36,9 @@ jobs:
             target: aarch64-apple-darwin
             cross: false
     outputs:
-      mac_arm_sha: ${{ steps.package_artifacts.outputs.mac_arm_sha }}
-      mac_x86_sha: ${{ steps.package_artifacts.outputs.mac_x86_sha }}
-      release_version: ${{ steps.get_version.outputs.release_version }}
+      mac_x86_sha: ${{ steps.x86_sha.outputs.mac_x86_sha }}
+      release_version: ${{ steps.x86_sha.outputs.release_version }}
+      mac_arm_sha: ${{ steps.arm_sha.outputs.mac_arm_sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -105,29 +105,34 @@ jobs:
                   shasum -a 256 $ASSET_NAME > $CHECKSUM_PATH
                   ;;
           esac
-      - name: Set SHA Outputs
+      - name: Set SHA Output Mac x86
+        id: x86_sha
         if: matrix.target == 'x86_64-apple-darwin'
         run: |
-          echo "::set-output name=mac_x86_sha::$(cat $CHECKSUM_PATH)"
-          echo "::set-output name=release_version::${{ env.RELEASE_VERSION }}}}"
-      - name: Set SHA Outputs
+          echo "$(cat ${{ env.CHECKSUM_PATH }})"
+          echo ${{ env.RELEASE_VERSION }}
+          echo "mac_x86_sha=$(cat ${{ env.CHECKSUM_PATH }})" >> $GITHUB_OUTPUT
+          echo "release_version=${{ env.RELEASE_VERSION }}" >> $GITHUB_OUTPUT
+      - name: Set SHA Outputs Mac ARM
+        id: arm_sha
         if: matrix.target == 'aarch64-apple-darwin'
-        run: echo "::set-output name=mac_arm_sha::$(cat $CHECKSUM_PATH)"
+        run: |
+          echo "$(cat ${{ env.CHECKSUM_PATH }})"
+          echo "mac_arm_sha=$(cat ${{ env.CHECKSUM_PATH }})" >> $GITHUB_OUTPUT
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.RELEASE_VERSION }}
-          files: |
-            ${{ env.ASSET_PATH }}
-            ${{ env.CHECKSUM_PATH }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     tag_name: ${{ env.RELEASE_VERSION }}
+      #     files: |
+      #       ${{ env.ASSET_PATH }}
+      #       ${{ env.CHECKSUM_PATH }}
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   update_homebrew_formula:
     needs: [build]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout Homebrew Tap Repository
         run: git clone https://github.com/mentimeter/homebrew-mentimeter.git
