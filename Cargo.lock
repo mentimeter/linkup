@@ -1043,7 +1043,7 @@ dependencies = [
 
 [[package]]
 name = "linkup-cli"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "actix-web",
  "clap",

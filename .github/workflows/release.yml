@@ -145,11 +145,11 @@ jobs:
           FORMULA_PATH="homebrew-mentimeter/linkup.rb"
 
           # Update the SHA values
-          sed -i '' "s|ARM_SHA = \".*\"|ARM_SHA = \"$ARM_SHA\"|" "$FORMULA_PATH"
-          sed -i '' "s|X86_SHA = \".*\"|X86_SHA = \"$X86_SHA\"|" "$FORMULA_PATH"
+          sed -i "s|ARM_SHA = \".*\"|ARM_SHA = \"$ARM_SHA\"|" "$FORMULA_PATH"
+          sed -i "s|X86_SHA = \".*\"|X86_SHA = \"$X86_SHA\"|" "$FORMULA_PATH"
 
           # Update the URLs with the new release version
-          # sed -i '' "s|linkup/releases/download/[^/]*/linkup-[^-]*-|linkup/releases/download/$RELEASE_VERSION/linkup-$RELEASE_VERSION-|" "$FORMULA_PATH"
+          # sed -i "s|linkup/releases/download/[^/]*/linkup-[^-]*-|linkup/releases/download/$RELEASE_VERSION/linkup-$RELEASE_VERSION-|" "$FORMULA_PATH"
 
           cd homebrew-mentimeter
           git config user.name "release-bot"
