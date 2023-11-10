@@ -19,12 +19,12 @@ async fn linkup_session_handler<'a>(
         Err(_) => return plaintext_error("Bad or missing request body", 400),
     };
 
-    let input_yaml_conf = match String::from_utf8(body_bytes) {
-        Ok(input_yaml_conf) => input_yaml_conf,
+    let input_json_conf = match String::from_utf8(body_bytes) {
+        Ok(input_json_conf) => input_json_conf,
         Err(_) => return plaintext_error("Invalid request body encoding", 400),
     };
 
-    match update_session_req_from_json(input_yaml_conf) {
+    match update_session_req_from_json(input_json_conf) {
         Ok((desired_name, server_conf)) => {
             let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)
