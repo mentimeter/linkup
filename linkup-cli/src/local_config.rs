@@ -81,7 +81,7 @@ impl YamlLocalConfig {
             .iter()
             .map(|yaml_local_service: &YamlLocalService| {
                 let name = yaml_local_service.name.clone();
-                let mut location = yaml_local_service.local.clone();
+                let mut location = yaml_local_service.remote.clone();
 
                 for (param_service_name, param_service_url) in services {
                     if param_service_name == &name {
