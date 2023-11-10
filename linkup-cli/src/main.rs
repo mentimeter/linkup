@@ -19,6 +19,7 @@ mod signal;
 mod start;
 mod status;
 mod stop;
+mod preview;
 
 use completion::completion;
 use remote_local::{local, remote};
@@ -26,6 +27,7 @@ use reset::reset;
 use start::start;
 use status::status;
 use stop::stop;
+use crate::preview::preview;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
@@ -126,6 +128,7 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
+
 #[derive(Subcommand)]
 enum LocalDNSSubcommand {
     Install,
@@ -185,6 +188,18 @@ enum Commands {
         #[arg(long, value_enum)]
         shell: Option<Shell>,
     },
+    #[clap(about = "Create a \"permanent\" Linkup preview")]
+    Preview {
+        #[arg(
+            short,
+            long,
+            value_name = "CONFIG",
+            help = "Path to config file, overriding environment variable."
+        )]
+        config: Option<String>,
+        // TODO: Easy way to have validation and parsing of tuples.
+        services: Vec<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -204,5 +219,6 @@ fn main() -> Result<()> {
             LocalDNSSubcommand::Uninstall => local_dns::uninstall(config),
         },
         Commands::Completion { shell } => completion(shell),
+        Commands::Preview { config, services } => preview(config, services),
     }
 }

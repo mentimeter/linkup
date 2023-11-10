@@ -8,7 +8,7 @@ use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{StorableDomain, StorableRewrite};
+use linkup::{CreatePreviewRequest, StorableDomain, StorableRewrite, StorableService};
 
 use crate::{CliError, LINKUP_CONFIG_ENV};
 
@@ -56,7 +56,7 @@ impl Display for ServiceTarget {
 
 #[derive(Deserialize, Clone)]
 pub struct YamlLocalConfig {
-    linkup: LinkupConfig,
+    pub linkup: LinkupConfig,
     services: Vec<YamlLocalService>,
     domains: Vec<StorableDomain>,
 }
@@ -74,11 +74,37 @@ impl YamlLocalConfig {
             .map(|d| d.domain.clone())
             .collect::<Vec<String>>()
     }
+
+    pub fn create_preview_request(&self, services: &Vec<(String, String)>) -> CreatePreviewRequest {
+        let services = self.services
+            .iter()
+            .map(|yaml_local_service: &YamlLocalService| {
+                let name = yaml_local_service.name.clone();
+                let mut location = yaml_local_service.local.clone();
+
+                for (param_service_name, param_service_url) in services {
+                    if param_service_name == &name {
+                        location = Url::parse(param_service_url).unwrap();
+                    }
+                }
+
+                StorableService {
+                    name,
+                    location,
+                    rewrites: yaml_local_service.rewrites.clone(),
+                }
+            }).collect();
+
+        CreatePreviewRequest {
+            services,
+            domains: self.domains.clone(),
+        }
+    }
 }
 
 #[derive(Deserialize, Clone)]
-struct LinkupConfig {
-    remote: Url,
+pub struct LinkupConfig {
+    pub remote: Url,
     cache_routes: Option<Vec<String>>,
 }
 
