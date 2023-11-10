@@ -1,8 +1,8 @@
+use crate::local_config::{config_path, get_config};
+use crate::CliError;
+use linkup::CreatePreviewRequest;
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
-use linkup::CreatePreviewRequest;
-use crate::CliError;
-use crate::local_config::{config_path, get_config};
 
 pub fn preview(config: &Option<String>, services: &[String]) -> Result<(), CliError> {
     if services.is_empty() {
@@ -12,13 +12,14 @@ pub fn preview(config: &Option<String>, services: &[String]) -> Result<(), CliEr
 
     let services: Vec<(String, String)> = services
         .iter()
-        .filter_map(|item| item.split_once('=') )
+        .filter_map(|item| item.split_once('='))
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
     let config_path = config_path(config)?;
     let input_config = get_config(&config_path)?;
-    let create_preview_request: CreatePreviewRequest = input_config.create_preview_request(&services);
+    let create_preview_request: CreatePreviewRequest =
+        input_config.create_preview_request(&services);
 
     let client = Client::new();
     let url = input_config.linkup.remote.clone();

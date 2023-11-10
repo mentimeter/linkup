@@ -76,7 +76,8 @@ impl YamlLocalConfig {
     }
 
     pub fn create_preview_request(&self, services: &Vec<(String, String)>) -> CreatePreviewRequest {
-        let services = self.services
+        let services = self
+            .services
             .iter()
             .map(|yaml_local_service: &YamlLocalService| {
                 let name = yaml_local_service.name.clone();
@@ -93,7 +94,8 @@ impl YamlLocalConfig {
                     location,
                     rewrites: yaml_local_service.rewrites.clone(),
                 }
-            }).collect();
+            })
+            .collect();
 
         CreatePreviewRequest {
             services,

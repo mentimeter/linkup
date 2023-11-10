@@ -319,7 +319,8 @@ pub fn create_preview_req_from_json(input_json: String) -> Result<Session, Confi
                 services: c.services,
                 domains: c.domains,
                 cache_routes: Some(vec![String::from(".*")]),
-            }.try_into();
+            }
+            .try_into();
 
             match server_conf {
                 Err(e) => Err(e),

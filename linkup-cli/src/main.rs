@@ -12,6 +12,7 @@ mod env_files;
 mod local_config;
 mod local_dns;
 mod local_server;
+mod preview;
 mod remote_local;
 mod reset;
 mod services;
@@ -19,15 +20,14 @@ mod signal;
 mod start;
 mod status;
 mod stop;
-mod preview;
 
 use completion::completion;
+use preview::preview;
 use remote_local::{local, remote};
 use reset::reset;
 use start::start;
 use status::status;
 use stop::stop;
-use crate::preview::preview;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
