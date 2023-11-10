@@ -111,7 +111,7 @@ pub struct LinkupConfig {
 }
 
 #[derive(Deserialize, Clone)]
-struct YamlLocalService {
+pub struct YamlLocalService {
     name: String,
     remote: Url,
     local: Url,
