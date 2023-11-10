@@ -10,11 +10,6 @@ pub fn preview(
     services: &[(String, String)],
     print_request: bool,
 ) -> Result<(), CliError> {
-    if services.is_empty() {
-        // TODO: Oliver don't care about this error handling (type)
-        return Err(CliError::BadConfig("No services specified".to_string()));
-    }
-
     let config_path = config_path(config)?;
     let input_config = get_config(&config_path)?;
     let create_preview_request: CreatePreviewRequest =

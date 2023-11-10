@@ -200,7 +200,9 @@ enum Commands {
 
         #[arg(
             help = "<service>=<url> pairs to preview.",
-            value_parser = ValueParser::new(preview::parse_services_tuple)
+            value_parser = ValueParser::new(preview::parse_services_tuple),
+            required = true,
+            num_args = 1..,
         )]
         services: Vec<(String, String)>,
 
