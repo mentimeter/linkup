@@ -75,7 +75,7 @@ impl YamlLocalConfig {
             .collect::<Vec<String>>()
     }
 
-    pub fn create_preview_request(&self, services: &Vec<(String, String)>) -> CreatePreviewRequest {
+    pub fn create_preview_request(&self, services: &[(String, String)]) -> CreatePreviewRequest {
         let services = self
             .services
             .iter()

@@ -5,30 +5,9 @@ use linkup::CreatePreviewRequest;
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
 
-#[derive(Clone)]
-pub struct ArgServiceTuple(pub String, pub String);
-
-impl std::str::FromStr for ArgServiceTuple {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (k, v) = s
-            .split_once('=')
-            .ok_or_else(|| "Service tuple must be of the form <service>=<url>".to_string())?;
-
-        Ok(ArgServiceTuple(k.to_string(), v.to_string()))
-    }
-}
-
-impl From<&ArgServiceTuple> for (String, String) {
-    fn from(arg: &ArgServiceTuple) -> Self {
-        (arg.0.clone(), arg.1.clone())
-    }
-}
-
 pub fn preview(
     config: &Option<String>,
-    services: &[ArgServiceTuple],
+    services: &[(String, String)],
     print_request: bool,
 ) -> Result<(), CliError> {
     if services.is_empty() {
@@ -36,12 +15,10 @@ pub fn preview(
         return Err(CliError::BadConfig("No services specified".to_string()));
     }
 
-    let services = services.iter().map(|s| s.into()).collect();
-
     let config_path = config_path(config)?;
     let input_config = get_config(&config_path)?;
     let create_preview_request: CreatePreviewRequest =
-        input_config.create_preview_request(&services);
+        input_config.create_preview_request(services);
     let url = input_config.linkup.remote.clone();
     let create_req_json = serde_json::to_string(&create_preview_request)
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
@@ -81,4 +58,12 @@ pub fn preview(
     });
 
     Ok(())
+}
+
+pub fn parse_services_tuples(arg: &str) -> std::result::Result<(String, String), String> {
+    let (k, v) = arg
+        .split_once('=')
+        .ok_or_else(|| "Service tuple must be of the form <service>=<url>".to_string())?;
+
+    Ok((k.to_string(), v.to_string()))
 }

@@ -1,6 +1,6 @@
 use std::{env, fs, io::ErrorKind, path::PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{builder::ValueParser, Parser, Subcommand};
 use clap_complete::Shell;
 use thiserror::Error;
 
@@ -22,7 +22,7 @@ mod status;
 mod stop;
 
 use completion::completion;
-use preview::{preview, ArgServiceTuple};
+use preview::preview;
 use remote_local::{local, remote};
 use reset::reset;
 use start::start;
@@ -200,9 +200,9 @@ enum Commands {
 
         #[arg(
             help = "<service>=<url> pairs to preview.",
-            value_parser = clap::value_parser!(ArgServiceTuple)
+            value_parser = ValueParser::new(preview::parse_services_tuples)
         )]
-        services: Vec<ArgServiceTuple>,
+        services: Vec<(String, String)>,
 
         #[arg(long, help = "Print the request body instead of sending it.")]
         print_request: bool,
