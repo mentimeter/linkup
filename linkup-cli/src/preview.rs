@@ -5,7 +5,11 @@ use linkup::CreatePreviewRequest;
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
 
-pub fn preview(config: &Option<String>, services: &[String]) -> Result<(), CliError> {
+pub fn preview(
+    config: &Option<String>,
+    services: &[String],
+    print_request: bool,
+) -> Result<(), CliError> {
     if services.is_empty() {
         // TODO: Oliver don't care about this error handling (type)
         return Err(CliError::BadConfig("No services specified".to_string()));
@@ -21,14 +25,18 @@ pub fn preview(config: &Option<String>, services: &[String]) -> Result<(), CliEr
     let input_config = get_config(&config_path)?;
     let create_preview_request: CreatePreviewRequest =
         input_config.create_preview_request(&services);
-
-    let client = Client::new();
     let url = input_config.linkup.remote.clone();
-    let endpoint = url
-        .join("/preview")
+    let create_req_json = serde_json::to_string(&create_preview_request)
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
-    let create_req_json = serde_json::to_string(&create_preview_request)
+    if print_request {
+        println!("{}", create_req_json);
+        return Ok(());
+    }
+
+    let client = Client::new();
+    let endpoint = url
+        .join("/preview")
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
     let response = client

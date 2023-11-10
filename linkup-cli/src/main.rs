@@ -198,7 +198,10 @@ enum Commands {
         )]
         config: Option<String>,
         // TODO: Easy way to have validation and parsing of tuples.
+        #[arg(help = "service=url pairs to preview.")]
         services: Vec<String>,
+        #[arg(long, help = "Print the request body instead of sending it.")]
+        print_request: bool,
     },
 }
 
@@ -219,6 +222,10 @@ fn main() -> Result<()> {
             LocalDNSSubcommand::Uninstall => local_dns::uninstall(config),
         },
         Commands::Completion { shell } => completion(shell),
-        Commands::Preview { config, services } => preview(config, services),
+        Commands::Preview {
+            config,
+            services,
+            print_request,
+        } => preview(config, services, *print_request),
     }
 }
