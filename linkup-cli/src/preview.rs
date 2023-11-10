@@ -60,7 +60,7 @@ pub fn preview(
     Ok(())
 }
 
-pub fn parse_services_tuples(arg: &str) -> std::result::Result<(String, String), String> {
+pub fn parse_services_tuple(arg: &str) -> std::result::Result<(String, String), String> {
     let (k, v) = arg
         .split_once('=')
         .ok_or_else(|| "Service tuple must be of the form <service>=<url>".to_string())?;
