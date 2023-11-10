@@ -1,4 +1,5 @@
 use crate::local_config::{config_path, get_config};
+use crate::status::{format_state_domains, print_session_status, SessionStatus};
 use crate::CliError;
 use linkup::CreatePreviewRequest;
 use reqwest::blocking::Client;
@@ -49,7 +50,10 @@ pub fn preview(config: &Option<String>, services: &[String]) -> Result<(), CliEr
         )),
     }?;
 
-    println!("Preview name: {}", preview_name);
+    print_session_status(SessionStatus {
+        name: preview_name.clone(),
+        domains: format_state_domains(&preview_name, &input_config.domains),
+    });
 
     Ok(())
 }

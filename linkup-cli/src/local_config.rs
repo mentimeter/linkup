@@ -57,8 +57,8 @@ impl Display for ServiceTarget {
 #[derive(Deserialize, Clone)]
 pub struct YamlLocalConfig {
     pub linkup: LinkupConfig,
-    services: Vec<YamlLocalService>,
-    domains: Vec<StorableDomain>,
+    pub services: Vec<YamlLocalService>,
+    pub domains: Vec<StorableDomain>,
 }
 
 impl YamlLocalConfig {
