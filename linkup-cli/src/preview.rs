@@ -5,6 +5,11 @@ use crate::CliError;
 use crate::local_config::{config_path, get_config};
 
 pub fn preview(config: &Option<String>, services: &[String]) -> Result<(), CliError> {
+    if services.is_empty() {
+        // TODO: Oliver don't care about this error handling (type)
+        return Err(CliError::BadConfig("No services specified".to_string()));
+    }
+
     let services: Vec<(String, String)> = services
         .iter()
         .filter_map(|item| item.split_once('=') )

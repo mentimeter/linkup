@@ -12,11 +12,13 @@ pub fn random_animal() -> String {
 }
 
 pub fn random_six_char() -> String {
-    rand::thread_rng()
+    let string: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(6)
         .map(char::from)
-        .collect()
+        .collect();
+
+    string.to_lowercase()
 }
 
 const ANIMALS: [&str; 37] = [
