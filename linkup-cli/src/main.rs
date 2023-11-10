@@ -22,7 +22,7 @@ mod status;
 mod stop;
 
 use completion::completion;
-use preview::preview;
+use preview::{preview, ArgServiceTuple};
 use remote_local::{local, remote};
 use reset::reset;
 use start::start;
@@ -197,9 +197,13 @@ enum Commands {
             help = "Path to config file, overriding environment variable."
         )]
         config: Option<String>,
-        // TODO: Easy way to have validation and parsing of tuples.
-        #[arg(help = "service=url pairs to preview.")]
-        services: Vec<String>,
+
+        #[arg(
+            help = "<service>=<url> pairs to preview.",
+            value_parser = clap::value_parser!(ArgServiceTuple)
+        )]
+        services: Vec<ArgServiceTuple>,
+
         #[arg(long, help = "Print the request body instead of sending it.")]
         print_request: bool,
     },

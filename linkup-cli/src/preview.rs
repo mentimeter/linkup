@@ -5,9 +5,30 @@ use linkup::CreatePreviewRequest;
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
 
+#[derive(Clone)]
+pub struct ArgServiceTuple(pub String, pub String);
+
+impl std::str::FromStr for ArgServiceTuple {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (k, v) = s
+            .split_once('=')
+            .ok_or_else(|| "Service tuple must be of the form <service>=<url>".to_string())?;
+
+        Ok(ArgServiceTuple(k.to_string(), v.to_string()))
+    }
+}
+
+impl From<&ArgServiceTuple> for (String, String) {
+    fn from(arg: &ArgServiceTuple) -> Self {
+        (arg.0.clone(), arg.1.clone())
+    }
+}
+
 pub fn preview(
     config: &Option<String>,
-    services: &[String],
+    services: &[ArgServiceTuple],
     print_request: bool,
 ) -> Result<(), CliError> {
     if services.is_empty() {
@@ -15,11 +36,7 @@ pub fn preview(
         return Err(CliError::BadConfig("No services specified".to_string()));
     }
 
-    let services: Vec<(String, String)> = services
-        .iter()
-        .filter_map(|item| item.split_once('='))
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
+    let services = services.iter().map(|s| s.into()).collect();
 
     let config_path = config_path(config)?;
     let input_config = get_config(&config_path)?;
