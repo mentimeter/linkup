@@ -1,9 +1,8 @@
 use crate::local_config::{config_path, get_config};
 use crate::status::{format_state_domains, print_session_status, SessionStatus};
+use crate::worker_client::WorkerClient;
 use crate::CliError;
 use linkup::CreatePreviewRequest;
-use reqwest::blocking::Client;
-use reqwest::StatusCode;
 
 pub fn preview(
     config: &Option<String>,
@@ -23,29 +22,9 @@ pub fn preview(
         return Ok(());
     }
 
-    let client = Client::new();
-    let endpoint = url
-        .join("/preview")
+    let preview_name = WorkerClient::from(&input_config)
+        .preview(&create_preview_request)
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
-
-    let response = client
-        .post(endpoint.clone())
-        .body(create_req_json)
-        .send()
-        .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
-
-    let preview_name = match response.status() {
-        StatusCode::OK => {
-            let content = response
-                .text()
-                .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
-            Ok(content)
-        }
-        _ => Err(CliError::LoadConfig(
-            endpoint.to_string(),
-            format!("status code: {}", response.status()),
-        )),
-    }?;
 
     print_session_status(SessionStatus {
         name: preview_name.clone(),

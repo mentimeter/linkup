@@ -1,7 +1,6 @@
 use std::thread;
 use std::time::{Duration, Instant};
 
-use reqwest::blocking::Client;
 use reqwest::StatusCode;
 
 use linkup::{StorableService, StorableSession, UpdateSessionRequest};
@@ -14,6 +13,7 @@ use crate::background_tunnel::start_tunnel;
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::start::save_state;
 use crate::status::print_session_names;
+use crate::worker_client::WorkerClient;
 use crate::LINKUP_LOCALSERVER_PORT;
 use crate::{start::get_state, CliError};
 
@@ -78,11 +78,6 @@ pub fn load_config(
     desired_name: &str,
     config: StorableSession,
 ) -> Result<String, CliError> {
-    let client = Client::new();
-    let endpoint = url
-        .join("/linkup")
-        .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
-
     let session_update_req = UpdateSessionRequest {
         session_token: config.session_token,
         desired_name: desired_name.into(),
@@ -91,27 +86,11 @@ pub fn load_config(
         cache_routes: config.cache_routes,
     };
 
-    let update_req_json = serde_json::to_string(&session_update_req)
+    let content = WorkerClient::new(url)
+        .linkup(&session_update_req)
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
-    let response = client
-        .post(endpoint.clone())
-        .body(update_req_json)
-        .send()
-        .map_err(|e| CliError::LoadConfig(desired_name.into(), e.to_string()))?;
-
-    match response.status() {
-        StatusCode::OK => {
-            let content = response
-                .text()
-                .map_err(|e| CliError::LoadConfig(desired_name.into(), e.to_string()))?;
-            Ok(content)
-        }
-        _ => Err(CliError::LoadConfig(
-            endpoint.to_string(),
-            format!("status code: {}", response.status()),
-        )),
-    }
+    Ok(content)
 }
 
 pub fn server_config_from_state(state: &LocalState) -> (StorableSession, StorableSession) {
