@@ -19,15 +19,44 @@ async fn linkup_session_handler<'a>(
         Err(_) => return plaintext_error("Bad or missing request body", 400),
     };
 
-    let input_yaml_conf = match String::from_utf8(body_bytes) {
-        Ok(input_yaml_conf) => input_yaml_conf,
+    let input_json_conf = match String::from_utf8(body_bytes) {
+        Ok(input_json_conf) => input_json_conf,
         Err(_) => return plaintext_error("Invalid request body encoding", 400),
     };
 
-    match update_session_req_from_json(input_yaml_conf) {
+    match update_session_req_from_json(input_json_conf) {
         Ok((desired_name, server_conf)) => {
             let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)
+                .await;
+
+            match session_name {
+                Ok(session_name) => Response::ok(session_name),
+                Err(e) => plaintext_error(format!("Failed to store server config: {}", e), 500),
+            }
+        }
+        Err(e) => plaintext_error(format!("Failed to parse server config: {}", e), 400),
+    }
+}
+
+async fn linkup_preview_handler<'a>(
+    mut req: Request,
+    sessions: &'a SessionAllocator<'a>,
+) -> Result<Response> {
+    let body_bytes = match req.bytes().await {
+        Ok(bytes) => bytes,
+        Err(_) => return plaintext_error("Bad or missing request body", 400),
+    };
+
+    let input_json_conf = match String::from_utf8(body_bytes) {
+        Ok(input_json_conf) => input_json_conf,
+        Err(_) => return plaintext_error("Invalid request body encoding", 400),
+    };
+
+    match create_preview_req_from_json(input_json_conf) {
+        Ok(preview) => {
+            let session_name = sessions
+                .store_session(preview, NameKind::SixChar, String::from(""))
                 .await;
 
             match session_name {
@@ -164,6 +193,10 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
     if req.method() == Method::Post && req.path() == "/linkup" {
         return linkup_session_handler(req, &sessions).await;
+    }
+
+    if req.method() == Method::Post && req.path() == "/preview" {
+        return linkup_preview_handler(req, &sessions).await;
     }
 
     linkup_request_handler(req, &sessions).await

@@ -1,4 +1,5 @@
 use colored::{ColoredString, Colorize};
+use linkup::StorableDomain;
 use serde::{Deserialize, Serialize};
 use std::{thread, time::Duration};
 
@@ -15,9 +16,9 @@ struct Status {
 }
 
 #[derive(Deserialize, Serialize)]
-struct SessionStatus {
-    name: String,
-    domains: Vec<String>,
+pub struct SessionStatus {
+    pub name: String,
+    pub domains: Vec<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -74,7 +75,7 @@ pub fn status(json: bool, all: bool) -> Result<(), CliError> {
     let mut status = Status {
         session: SessionStatus {
             name: state.linkup.session_name.clone(),
-            domains: format_state_domains(&state),
+            domains: format_state_domains(&state.linkup.session_name, &state.domains),
         },
         services,
     };
@@ -126,18 +127,16 @@ pub fn status(json: bool, all: bool) -> Result<(), CliError> {
 pub fn print_session_names(state: &LocalState) {
     print_session_status(SessionStatus {
         name: state.linkup.session_name.clone(),
-        domains: format_state_domains(state),
+        domains: format_state_domains(&state.linkup.session_name, &state.domains),
     });
 }
 
-fn format_state_domains(state: &LocalState) -> Vec<String> {
+pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> Vec<String> {
     // Filter out domains that are subdomains of other domains
-    let filtered_domains = state
-        .domains
+    let filtered_domains = domains
         .iter()
         .filter(|&d| {
-            !state
-                .domains
+            !domains
                 .iter()
                 .any(|other| other.domain != d.domain && d.domain.ends_with(&other.domain))
         })
@@ -146,17 +145,11 @@ fn format_state_domains(state: &LocalState) -> Vec<String> {
 
     return filtered_domains
         .iter()
-        .map(|domain| {
-            format!(
-                "https://{}.{}",
-                state.linkup.session_name.clone(),
-                domain.clone()
-            )
-        })
+        .map(|domain| format!("https://{}.{}", session_name, domain.clone()))
         .collect();
 }
 
-fn print_session_status(session: SessionStatus) {
+pub fn print_session_status(session: SessionStatus) {
     // Display session information
     println!("Session Information:");
     println!("  Session Name: {}", session.name);

@@ -51,6 +51,12 @@ pub struct UpdateSessionRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct CreatePreviewRequest {
+    pub services: Vec<StorableService>,
+    pub domains: Vec<StorableDomain>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct StorableSession {
     pub session_token: String,
     pub services: Vec<StorableService>,
@@ -296,6 +302,29 @@ pub fn update_session_req_from_json(input_json: String) -> Result<(String, Sessi
             match server_conf {
                 Err(e) => Err(e),
                 Ok(sc) => Ok((c.desired_name, sc)),
+            }
+        }
+    }
+}
+
+pub fn create_preview_req_from_json(input_json: String) -> Result<Session, ConfigError> {
+    let update_session_req_res: Result<CreatePreviewRequest, serde_json::Error> =
+        serde_json::from_str(&input_json);
+
+    match update_session_req_res {
+        Err(e) => Err(ConfigError::JsonFormat(e)),
+        Ok(c) => {
+            let server_conf = StorableSession {
+                session_token: String::from("potato"),
+                services: c.services,
+                domains: c.domains,
+                cache_routes: Some(vec![String::from(".*")]),
+            }
+            .try_into();
+
+            match server_conf {
+                Err(e) => Err(e),
+                Ok(sc) => Ok(sc),
             }
         }
     }

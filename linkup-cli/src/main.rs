@@ -1,6 +1,6 @@
 use std::{env, fs, io::ErrorKind, path::PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{builder::ValueParser, Parser, Subcommand};
 use clap_complete::Shell;
 use thiserror::Error;
 
@@ -12,6 +12,7 @@ mod env_files;
 mod local_config;
 mod local_dns;
 mod local_server;
+mod preview;
 mod remote_local;
 mod reset;
 mod services;
@@ -19,8 +20,10 @@ mod signal;
 mod start;
 mod status;
 mod stop;
+mod worker_client;
 
 use completion::completion;
+use preview::preview;
 use remote_local::{local, remote};
 use reset::reset;
 use start::start;
@@ -126,6 +129,7 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
+
 #[derive(Subcommand)]
 enum LocalDNSSubcommand {
     Install,
@@ -185,6 +189,27 @@ enum Commands {
         #[arg(long, value_enum)]
         shell: Option<Shell>,
     },
+    #[clap(about = "Create a \"permanent\" Linkup preview")]
+    Preview {
+        #[arg(
+            short,
+            long,
+            value_name = "CONFIG",
+            help = "Path to config file, overriding environment variable."
+        )]
+        config: Option<String>,
+
+        #[arg(
+            help = "<service>=<url> pairs to preview.",
+            value_parser = ValueParser::new(preview::parse_services_tuple),
+            required = true,
+            num_args = 1..,
+        )]
+        services: Vec<(String, String)>,
+
+        #[arg(long, help = "Print the request body instead of sending it.")]
+        print_request: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -204,5 +229,10 @@ fn main() -> Result<()> {
             LocalDNSSubcommand::Uninstall => local_dns::uninstall(config),
         },
         Commands::Completion { shell } => completion(shell),
+        Commands::Preview {
+            config,
+            services,
+            print_request,
+        } => preview(config, services, *print_request),
     }
 }
