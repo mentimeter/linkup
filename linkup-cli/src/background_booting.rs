@@ -11,14 +11,13 @@ use crate::background_local_server::{
 };
 use crate::background_tunnel::start_tunnel;
 use crate::local_config::{LocalState, ServiceTarget};
-use crate::start::save_state;
 use crate::status::print_session_names;
 use crate::worker_client::WorkerClient;
+use crate::CliError;
 use crate::LINKUP_LOCALSERVER_PORT;
-use crate::{start::get_state, CliError};
 
 pub fn boot_background_services() -> Result<(), CliError> {
-    let mut state = get_state()?;
+    let mut state = LocalState::load()?;
 
     let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
         .expect("linkup url invalid");
@@ -58,7 +57,7 @@ pub fn boot_background_services() -> Result<(), CliError> {
     state.linkup.session_name = server_session_name.clone();
     let state_to_print = state.clone();
 
-    save_state(state)?;
+    state.save()?;
 
     println!("Waiting for tunnel to be ready at {}...", tunnel_url);
 

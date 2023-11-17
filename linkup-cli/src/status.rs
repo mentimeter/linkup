@@ -5,7 +5,6 @@ use std::{thread, time::Duration};
 
 use crate::{
     local_config::{LocalState, ServiceTarget},
-    start::get_state,
     CliError, LINKUP_LOCALSERVER_PORT,
 };
 
@@ -57,7 +56,7 @@ impl From<Result<reqwest::blocking::Response, reqwest::Error>> for ServerStatus 
 }
 
 pub fn status(json: bool, all: bool) -> Result<(), CliError> {
-    let state = get_state()?;
+    let state = LocalState::load()?;
 
     let (tx, rx) = std::sync::mpsc::channel();
     linkup_status(tx.clone(), &state);

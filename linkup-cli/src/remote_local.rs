@@ -3,7 +3,6 @@ use url::Url;
 use crate::{
     background_booting::{load_config, server_config_from_state},
     local_config::{LocalState, ServiceTarget},
-    start::{get_state, save_state},
     CliError, LINKUP_LOCALSERVER_PORT,
 };
 
@@ -13,7 +12,7 @@ pub fn remote(service_names: &[String]) -> Result<(), CliError> {
             "No service names provided".to_string(),
         ));
     }
-    let mut state = get_state()?;
+    let mut state = LocalState::load()?;
 
     for service_name in service_names {
         let service = state
@@ -24,7 +23,7 @@ pub fn remote(service_names: &[String]) -> Result<(), CliError> {
         service.current = ServiceTarget::Remote;
     }
 
-    save_state(state.clone())?;
+    state.save()?;
     load_server_states(state)?;
 
     println!(
@@ -42,7 +41,7 @@ pub fn local(service_names: &[String]) -> Result<(), CliError> {
         ));
     }
 
-    let mut state = get_state()?;
+    let mut state = LocalState::load()?;
 
     for service_name in service_names {
         let service = state
@@ -53,7 +52,7 @@ pub fn local(service_names: &[String]) -> Result<(), CliError> {
         service.current = ServiceTarget::Local;
     }
 
-    save_state(state.clone())?;
+    state.save()?;
     load_server_states(state)?;
 
     println!(

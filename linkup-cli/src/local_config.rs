@@ -10,13 +10,51 @@ use url::Url;
 
 use linkup::{CreatePreviewRequest, StorableDomain, StorableRewrite, StorableService};
 
-use crate::{CliError, LINKUP_CONFIG_ENV};
+use crate::{linkup_file_path, CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE};
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct LocalState {
     pub linkup: LinkupState,
     pub domains: Vec<StorableDomain>,
     pub services: Vec<LocalService>,
+}
+
+impl LocalState {
+    pub fn load() -> Result<Self, CliError> {
+        if let Err(e) = fs::File::open(linkup_file_path(LINKUP_STATE_FILE)) {
+            return Err(CliError::NoState(e.to_string()));
+        }
+
+        let content = match fs::read_to_string(linkup_file_path(LINKUP_STATE_FILE)) {
+            Ok(content) => content,
+            Err(e) => return Err(CliError::NoState(e.to_string())),
+        };
+
+        match serde_yaml::from_str(&content) {
+            Ok(config) => Ok(config),
+            Err(e) => Err(CliError::NoState(e.to_string())),
+        }
+    }
+
+    pub fn save(&self) -> Result<(), CliError> {
+        let yaml_string = match serde_yaml::to_string(self) {
+            Ok(yaml) => yaml,
+            Err(_) => {
+                return Err(CliError::SaveState(
+                    "Failed to serialize the state into YAML".to_string(),
+                ))
+            }
+        };
+
+        if fs::write(linkup_file_path(LINKUP_STATE_FILE), yaml_string).is_err() {
+            return Err(CliError::SaveState(format!(
+                "Failed to write the state file at {}",
+                linkup_file_path(LINKUP_STATE_FILE).display()
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone)]

@@ -1,8 +1,8 @@
 use crate::{
     background_booting::boot_background_services,
     linkup_file_path,
-    local_config::{config_path, get_config},
-    start::{boot_local_dns, get_state},
+    local_config::{config_path, get_config, LocalState},
+    start::boot_local_dns,
     stop::shutdown,
     CliError, LINKUP_LOCALDNS_INSTALL,
 };
@@ -10,7 +10,7 @@ use crate::{
 // TODO(ostenbom)[2023-09-26]: Config arg shouldn't be needed here, we could use config state for this
 pub fn reset(config_arg: &Option<String>) -> Result<(), CliError> {
     // Ensure there is some kind of state from before, otherwise reset doesn't make sense
-    get_state()?;
+    LocalState::load()?;
 
     shutdown()?;
     boot_background_services()?;
