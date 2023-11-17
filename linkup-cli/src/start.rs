@@ -3,16 +3,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::background_booting::boot_background_services;
+use crate::constants::LINKUP_LOCALDNS_INSTALL;
 use crate::env_files::write_to_env_file;
-use crate::local_config::{config_path, get_config};
-use crate::{
-    background_booting::boot_background_services,
-    linkup_file_path,
-    local_config::{config_to_state, LocalState, YamlLocalConfig},
-    status::{server_status, ServerStatus},
-    CliError,
-};
-use crate::{services, LINKUP_LOCALDNS_INSTALL};
+use crate::local_config::{config_path, config_to_state, get_config, LocalState, YamlLocalConfig};
+use crate::status::{server_status, ServerStatus};
+use crate::{linkup_file_path, services, CliError};
 
 pub fn start(config_arg: &Option<String>) -> Result<(), CliError> {
     let previous_state = LocalState::load();

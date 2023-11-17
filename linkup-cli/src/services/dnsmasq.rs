@@ -6,7 +6,8 @@ use std::{
 
 use nix::sys::signal::Signal;
 
-use crate::{linkup_dir_path, linkup_file_path, stop::stop_pid_file, CliError, Result};
+use crate::stop::stop_pid_file;
+use crate::{linkup_dir_path, linkup_file_path, CliError, Result};
 
 const PORT: u16 = 8053;
 const CONF_FILE: &str = "dnsmasq-conf";

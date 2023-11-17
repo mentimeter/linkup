@@ -1,13 +1,9 @@
-use std::{
-    fs,
-    process::{Command, Stdio},
-};
+use std::fs;
+use std::process::{Command, Stdio};
 
-use crate::{
-    linkup_file_path,
-    local_config::{config_path, get_config},
-    services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALDNS_INSTALL,
-};
+use crate::constants::{LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALDNS_INSTALL};
+use crate::local_config::{config_path, get_config};
+use crate::{linkup_file_path, services, CliError, Result};
 
 pub fn install(config_arg: &Option<String>) -> Result<()> {
     if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {

@@ -1,8 +1,9 @@
-use nix::sys::signal::{kill, Signal};
-use nix::unistd::Pid;
 use std::fs::{self, File};
 use std::path::Path;
 use std::str::FromStr;
+
+use nix::sys::signal::{kill, Signal};
+use nix::unistd::Pid;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
