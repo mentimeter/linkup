@@ -1,6 +1,8 @@
-use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::{
+    fs::{self, OpenOptions},
+    path::PathBuf,
+};
 
 use crate::{CliError, Result};
 

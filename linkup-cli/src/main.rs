@@ -8,7 +8,6 @@ mod background_booting;
 mod background_local_server;
 mod background_tunnel;
 mod completion;
-mod constants;
 mod env_files;
 mod local_config;
 mod local_dns;
@@ -31,6 +30,15 @@ use start::start;
 use status::status;
 use stop::stop;
 
+const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
+const LINKUP_LOCALSERVER_PORT: u16 = 9066;
+const LINKUP_DIR: &str = ".linkup";
+const LINKUP_STATE_FILE: &str = "state";
+const LINKUP_LOCALSERVER_PID_FILE: &str = "localserver-pid";
+const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
+const LINKUP_LOCALDNS_INSTALL: &str = "localdns-install";
+const LINKUP_CF_TLS_API_ENV_VAR: &str = "LINKUP_CF_API_TOKEN";
+
 pub fn linkup_dir_path() -> PathBuf {
     let storage_dir = match env::var("HOME") {
         Ok(val) => val,
@@ -39,7 +47,7 @@ pub fn linkup_dir_path() -> PathBuf {
 
     let mut path = PathBuf::new();
     path.push(storage_dir);
-    path.push(constants::LINKUP_DIR);
+    path.push(LINKUP_DIR);
     path
 }
 

@@ -1,5 +1,8 @@
-use std::fmt::{self, Display, Formatter};
-use std::{env, fs};
+use std::{
+    env,
+    fmt::{self, Display, Formatter},
+    fs,
+};
 
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
@@ -7,8 +10,7 @@ use url::Url;
 
 use linkup::{CreatePreviewRequest, StorableDomain, StorableRewrite, StorableService};
 
-use crate::constants::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE};
-use crate::{linkup_file_path, CliError};
+use crate::{linkup_file_path, CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE};
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct LocalState {

@@ -12,9 +12,9 @@ use url::Url;
 
 use crate::signal::send_signal;
 
-use crate::constants::{LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PORT};
 use crate::stop::stop_pid_file;
 use crate::{linkup_file_path, CliError};
+use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PORT};
 
 const LINKUP_CLOUDFLARED_STDOUT: &str = "cloudflared-stdout";
 const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";

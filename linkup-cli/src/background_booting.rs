@@ -1,19 +1,20 @@
 use std::thread;
 use std::time::{Duration, Instant};
 
-use linkup::{StorableService, StorableSession, UpdateSessionRequest};
 use reqwest::StatusCode;
+
+use linkup::{StorableService, StorableSession, UpdateSessionRequest};
 use url::Url;
 
 use crate::background_local_server::{
     is_local_server_started, is_tunnel_started, start_local_server,
 };
 use crate::background_tunnel::start_tunnel;
-use crate::constants::LINKUP_LOCALSERVER_PORT;
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::status::print_session_names;
 use crate::worker_client::WorkerClient;
 use crate::CliError;
+use crate::LINKUP_LOCALSERVER_PORT;
 
 pub fn boot_background_services() -> Result<(), CliError> {
     let mut state = LocalState::load()?;

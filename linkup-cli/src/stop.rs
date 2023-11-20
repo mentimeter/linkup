@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 
 use nix::sys::signal::Signal;
 
-use crate::constants::{
-    LINKUP_CLOUDFLARED_PID, LINKUP_LOCALDNS_INSTALL, LINKUP_LOCALSERVER_PID_FILE,
-};
 use crate::env_files::clear_env_file;
 use crate::local_config::LocalState;
 use crate::signal::{get_pid, send_signal, PidError};
-use crate::{linkup_file_path, services, CliError};
+use crate::{
+    linkup_file_path, services, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_LOCALDNS_INSTALL,
+    LINKUP_LOCALSERVER_PID_FILE,
+};
 
 pub fn stop() -> Result<(), CliError> {
     // Reset env vars back to what they were before

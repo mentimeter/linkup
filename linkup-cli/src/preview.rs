@@ -1,9 +1,8 @@
-use linkup::CreatePreviewRequest;
-
 use crate::local_config::{config_path, get_config};
 use crate::status::{format_state_domains, print_session_status, SessionStatus};
 use crate::worker_client::WorkerClient;
 use crate::CliError;
+use linkup::CreatePreviewRequest;
 
 pub fn preview(
     config: &Option<String>,

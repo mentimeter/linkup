@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use linkup::{HeaderMap as LinkupHeaderMap, HeaderName as LinkupHeaderName, *};
 
-use crate::constants::LINKUP_LOCALSERVER_PORT;
+use crate::LINKUP_LOCALSERVER_PORT;
 
 #[derive(Error, Debug)]
 pub enum ProxyError {

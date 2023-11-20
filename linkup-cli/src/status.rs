@@ -1,12 +1,12 @@
-use std::{thread, time::Duration};
-
 use colored::{ColoredString, Colorize};
 use linkup::StorableDomain;
 use serde::{Deserialize, Serialize};
+use std::{thread, time::Duration};
 
-use crate::constants::LINKUP_LOCALSERVER_PORT;
-use crate::local_config::{LocalState, ServiceTarget};
-use crate::CliError;
+use crate::{
+    local_config::{LocalState, ServiceTarget},
+    CliError, LINKUP_LOCALSERVER_PORT,
+};
 
 #[derive(Deserialize, Serialize)]
 struct Status {

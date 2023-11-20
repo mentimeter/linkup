@@ -1,9 +1,12 @@
-use std::fs;
-use std::process::{Command, Stdio};
+use std::{
+    fs,
+    process::{Command, Stdio},
+};
 
-use crate::constants::{LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALSERVER_PORT};
-use crate::local_config::YamlLocalConfig;
-use crate::{linkup_dir_path, linkup_file_path, CliError, Result};
+use crate::{
+    linkup_dir_path, linkup_file_path, local_config::YamlLocalConfig, CliError, Result,
+    LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALSERVER_PORT,
+};
 
 const CADDYFILE: &str = "Caddyfile";
 const PID_FILE: &str = "caddy-pid";

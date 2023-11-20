@@ -5,9 +5,9 @@ use std::sync::Once;
 use daemonize::{Daemonize, Outcome};
 use thiserror::Error;
 
-use crate::constants::{LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PID_FILE};
 use crate::local_server::local_linkup_main;
-use crate::{linkup_file_path, CliError};
+use crate::LINKUP_CLOUDFLARED_PID;
+use crate::{linkup_file_path, CliError, LINKUP_LOCALSERVER_PID_FILE};
 
 const LINKUP_LOCALSERVER_STDOUT: &str = "localserver-stdout";
 const LINKUP_LOCALSERVER_STDERR: &str = "localserver-stderr";

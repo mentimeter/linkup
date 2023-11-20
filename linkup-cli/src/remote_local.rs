@@ -1,9 +1,10 @@
 use url::Url;
 
-use crate::background_booting::{load_config, ServerConfig};
-use crate::constants::LINKUP_LOCALSERVER_PORT;
-use crate::local_config::{LocalState, ServiceTarget};
-use crate::CliError;
+use crate::{
+    background_booting::{load_config, ServerConfig},
+    local_config::{LocalState, ServiceTarget},
+    CliError, LINKUP_LOCALSERVER_PORT,
+};
 
 pub fn remote(service_names: &[String]) -> Result<(), CliError> {
     if service_names.is_empty() {
