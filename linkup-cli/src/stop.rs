@@ -88,7 +88,7 @@ fn remove_service_env(directory: String, config_path: String) -> Result<(), CliE
 
     let service_path = PathBuf::from(config_dir).join(&directory);
 
-    let env_files_result = fs::read_dir(&service_path);
+    let env_files_result = fs::read_dir(service_path);
     let env_files: Vec<_> = match env_files_result {
         Ok(entries) => entries
             .filter_map(Result::ok)
