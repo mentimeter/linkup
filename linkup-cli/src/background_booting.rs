@@ -52,22 +52,21 @@ pub fn boot_background_services() -> Result<(), CliError> {
         return Err(CliError::InconsistentState);
     }
 
-    let tunnel_url = state.linkup.tunnel.clone();
-
-    state.linkup.session_name = server_session_name.clone();
-    let state_to_print = state.clone();
-
+    state.linkup.session_name = server_session_name;
     state.save()?;
 
-    println!("Waiting for tunnel to be ready at {}...", tunnel_url);
+    println!(
+        "Waiting for tunnel to be ready at {}...",
+        &state.linkup.tunnel
+    );
 
     // If the tunnel is checked too quickly, it dies ¯\_(ツ)_/¯
     thread::sleep(Duration::from_millis(1000));
-    wait_till_ok(format!("{}linkup-check", tunnel_url))?;
+    wait_till_ok(format!("{}linkup-check", &state.linkup.tunnel))?;
 
     println!();
 
-    print_session_names(&state_to_print);
+    print_session_names(&state);
 
     Ok(())
 }
