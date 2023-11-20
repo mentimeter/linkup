@@ -64,7 +64,7 @@ pub struct StorableSession {
     pub cache_routes: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorableService {
     pub name: String,
     pub location: Url,

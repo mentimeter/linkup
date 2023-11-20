@@ -1,6 +1,6 @@
 use url::Url;
 
-use crate::background_booting::{load_config, server_config_from_state};
+use crate::background_booting::{load_config, ServerConfig};
 use crate::constants::LINKUP_LOCALSERVER_PORT;
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::CliError;
@@ -66,13 +66,14 @@ fn load_server_states(state: LocalState) -> Result<(), CliError> {
     let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
         .expect("linkup url invalid");
 
-    let (local_server_conf, remote_server_conf) = server_config_from_state(&state);
+    let server_config = ServerConfig::from(&state);
+
     let _ = load_config(
         &state.linkup.remote,
         &state.linkup.session_name.clone(),
-        remote_server_conf,
+        server_config.remote,
     )?;
-    let _ = load_config(&local_url, &state.linkup.session_name, local_server_conf)?;
+    let _ = load_config(&local_url, &state.linkup.session_name, server_config.local)?;
 
     Ok(())
 }

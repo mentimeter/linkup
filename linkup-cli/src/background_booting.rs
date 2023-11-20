@@ -38,14 +38,14 @@ pub fn boot_background_services() -> Result<(), CliError> {
         println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
     }
 
-    let (local_server_conf, remote_server_conf) = server_config_from_state(&state);
+    let server_config = ServerConfig::from(&state);
 
     let server_session_name = load_config(
         &state.linkup.remote,
         &state.linkup.session_name,
-        remote_server_conf,
+        server_config.remote,
     )?;
-    let local_session_name = load_config(&local_url, &server_session_name, local_server_conf)?;
+    let local_session_name = load_config(&local_url, &server_session_name, server_config.local)?;
 
     if server_session_name != local_session_name {
         return Err(CliError::InconsistentState);
@@ -78,7 +78,7 @@ pub fn load_config(
 ) -> Result<String, CliError> {
     let session_update_req = UpdateSessionRequest {
         session_token: config.session_token,
-        desired_name: desired_name.into(),
+        desired_name: desired_name.to_string(),
         services: config.services,
         domains: config.domains,
         cache_routes: config.cache_routes,
@@ -91,49 +91,66 @@ pub fn load_config(
     Ok(content)
 }
 
-pub fn server_config_from_state(state: &LocalState) -> (StorableSession, StorableSession) {
-    let local_server_services = state
-        .services
-        .iter()
-        .map(|local_service| StorableService {
-            name: local_service.name.clone(),
-            location: if local_service.current == ServiceTarget::Remote {
-                local_service.remote.clone()
-            } else {
-                local_service.local.clone()
-            },
-            rewrites: Some(local_service.rewrites.clone()),
-        })
-        .collect::<Vec<StorableService>>();
+pub struct ServerConfig {
+    pub local: StorableSession,
+    pub remote: StorableSession,
+}
 
-    let remote_server_services = state
-        .services
-        .iter()
-        .map(|local_service| StorableService {
-            name: local_service.name.clone(),
-            location: if local_service.current == ServiceTarget::Remote {
-                local_service.remote.clone()
-            } else {
-                state.linkup.tunnel.clone()
-            },
-            rewrites: Some(local_service.rewrites.clone()),
-        })
-        .collect::<Vec<StorableService>>();
+impl From<&LocalState> for ServerConfig {
+    fn from(state: &LocalState) -> Self {
+        let local_server_services = state
+            .services
+            .iter()
+            .map(|local_service| StorableService {
+                name: local_service.name.clone(),
+                location: if local_service.current == ServiceTarget::Remote {
+                    local_service.remote.clone()
+                } else {
+                    local_service.local.clone()
+                },
+                rewrites: Some(local_service.rewrites.clone()),
+            })
+            .collect::<Vec<StorableService>>();
 
-    (
-        StorableSession {
+        let remote_server_services = state
+            .services
+            .iter()
+            .map(|local_service| StorableService {
+                name: local_service.name.clone(),
+                location: if local_service.current == ServiceTarget::Remote {
+                    local_service.remote.clone()
+                } else {
+                    state.linkup.tunnel.clone()
+                },
+                rewrites: Some(local_service.rewrites.clone()),
+            })
+            .collect::<Vec<StorableService>>();
+
+        let local_storable_session = StorableSession {
             session_token: state.linkup.session_token.clone(),
             services: local_server_services,
             domains: state.domains.clone(),
             cache_routes: state.linkup.cache_routes.clone(),
-        },
-        StorableSession {
+        };
+
+        let remote_storable_session = StorableSession {
             session_token: state.linkup.session_token.clone(),
             services: remote_server_services,
             domains: state.domains.clone(),
             cache_routes: state.linkup.cache_routes.clone(),
-        },
-    )
+        };
+
+        ServerConfig {
+            local: local_storable_session,
+            remote: remote_storable_session,
+        }
+    }
+}
+
+impl<'a> From<&'a ServerConfig> for (&'a StorableSession, &'a StorableSession) {
+    fn from(config: &'a ServerConfig) -> Self {
+        (&config.local, &config.remote)
+    }
 }
 
 pub fn wait_till_ok(url: String) -> Result<(), CliError> {
