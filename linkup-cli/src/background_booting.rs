@@ -101,28 +101,28 @@ impl From<&LocalState> for ServerConfig {
         let local_server_services = state
             .services
             .iter()
-            .map(|local_service| StorableService {
-                name: local_service.name.clone(),
-                location: if local_service.current == ServiceTarget::Remote {
-                    local_service.remote.clone()
+            .map(|service| StorableService {
+                name: service.name.clone(),
+                location: if service.current == ServiceTarget::Remote {
+                    service.remote.clone()
                 } else {
-                    local_service.local.clone()
+                    service.local.clone()
                 },
-                rewrites: Some(local_service.rewrites.clone()),
+                rewrites: Some(service.rewrites.clone()),
             })
             .collect::<Vec<StorableService>>();
 
         let remote_server_services = state
             .services
             .iter()
-            .map(|local_service| StorableService {
-                name: local_service.name.clone(),
-                location: if local_service.current == ServiceTarget::Remote {
-                    local_service.remote.clone()
+            .map(|service| StorableService {
+                name: service.name.clone(),
+                location: if service.current == ServiceTarget::Remote {
+                    service.remote.clone()
                 } else {
                     state.linkup.tunnel.clone()
                 },
-                rewrites: Some(local_service.rewrites.clone()),
+                rewrites: Some(service.rewrites.clone()),
             })
             .collect::<Vec<StorableService>>();
 
