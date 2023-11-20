@@ -126,6 +126,14 @@ pub enum CliError {
     version = env!("CARGO_PKG_VERSION"),
 )]
 struct Cli {
+    #[arg(
+        short,
+        long,
+        value_name = "CONFIG",
+        help = "Path to config file, overriding environment variable."
+    )]
+    config: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -139,31 +147,20 @@ enum LocalDNSSubcommand {
 #[derive(Subcommand)]
 enum Commands {
     #[clap(about = "Start a new linkup session")]
-    Start {
-        #[arg(
-            short,
-            long,
-            value_name = "CONFIG",
-            help = "Path to config file, overriding environment variable."
-        )]
-        config: Option<String>,
-    },
+    Start,
+
     #[clap(about = "Stop a running linkup session")]
-    Stop {},
+    Stop,
+
     #[clap(about = "Reset a linkup session")]
-    Reset {
-        #[arg(
-            short,
-            long,
-            value_name = "CONFIG",
-            help = "Path to config file, overriding environment variable."
-        )]
-        config: Option<String>,
-    },
+    Reset,
+
     #[clap(about = "Route session traffic to a local service")]
     Local { service_names: Vec<String> },
+
     #[clap(about = "Route session traffic to a remote service")]
     Remote { service_names: Vec<String> },
+
     #[clap(about = "View linkup component and service status")]
     Status {
         // Output status in JSON format
@@ -172,33 +169,20 @@ enum Commands {
         #[arg(short, long)]
         all: bool,
     },
-    LocalDNS {
-        #[arg(
-            short,
-            long,
-            value_name = "CONFIG",
-            help = "Path to config file, overriding environment variable."
-        )]
-        config: Option<String>,
 
+    LocalDNS {
         #[clap(subcommand)]
         subcommand: LocalDNSSubcommand,
     },
+
     #[clap(about = "Generate completions for your shell")]
     Completion {
         #[arg(long, value_enum)]
         shell: Option<Shell>,
     },
+
     #[clap(about = "Create a \"permanent\" Linkup preview")]
     Preview {
-        #[arg(
-            short,
-            long,
-            value_name = "CONFIG",
-            help = "Path to config file, overriding environment variable."
-        )]
-        config: Option<String>,
-
         #[arg(
             help = "<service>=<url> pairs to preview.",
             value_parser = ValueParser::new(preview::parse_services_tuple),
@@ -218,21 +202,20 @@ fn main() -> Result<()> {
     ensure_linkup_dir()?;
 
     match &cli.command {
-        Commands::Start { config } => start(config),
-        Commands::Stop {} => stop(),
-        Commands::Reset { config } => reset(config),
+        Commands::Start => start(&cli.config),
+        Commands::Stop => stop(),
+        Commands::Reset => reset(&cli.config),
         Commands::Local { service_names } => local(service_names),
         Commands::Remote { service_names } => remote(service_names),
         Commands::Status { json, all } => status(*json, *all),
-        Commands::LocalDNS { config, subcommand } => match subcommand {
-            LocalDNSSubcommand::Install => local_dns::install(config),
-            LocalDNSSubcommand::Uninstall => local_dns::uninstall(config),
+        Commands::LocalDNS { subcommand } => match subcommand {
+            LocalDNSSubcommand::Install => local_dns::install(&cli.config),
+            LocalDNSSubcommand::Uninstall => local_dns::uninstall(&cli.config),
         },
         Commands::Completion { shell } => completion(shell),
         Commands::Preview {
-            config,
             services,
             print_request,
-        } => preview(config, services, *print_request),
+        } => preview(&cli.config, services, *print_request),
     }
 }
