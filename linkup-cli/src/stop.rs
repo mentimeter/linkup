@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use nix::sys::signal::Signal;
 
 use crate::env_files::clear_env_file;
+use crate::local_config::LocalState;
 use crate::signal::{get_pid, send_signal, PidError};
-use crate::start::get_state;
 use crate::{
     linkup_file_path, services, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_LOCALDNS_INSTALL,
     LINKUP_LOCALSERVER_PID_FILE,
@@ -13,7 +13,7 @@ use crate::{
 
 pub fn stop() -> Result<(), CliError> {
     // Reset env vars back to what they were before
-    let state = get_state()?;
+    let state = LocalState::load()?;
     for service in &state.services {
         let remove_res = match &service.directory {
             Some(d) => remove_service_env(d.clone(), state.linkup.config_path.clone()),

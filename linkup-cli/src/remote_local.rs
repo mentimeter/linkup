@@ -1,9 +1,8 @@
 use url::Url;
 
 use crate::{
-    background_booting::{load_config, server_config_from_state},
+    background_booting::{load_config, ServerConfig},
     local_config::{LocalState, ServiceTarget},
-    start::{get_state, save_state},
     CliError, LINKUP_LOCALSERVER_PORT,
 };
 
@@ -13,7 +12,7 @@ pub fn remote(service_names: &[String]) -> Result<(), CliError> {
             "No service names provided".to_string(),
         ));
     }
-    let mut state = get_state()?;
+    let mut state = LocalState::load()?;
 
     for service_name in service_names {
         let service = state
@@ -24,7 +23,7 @@ pub fn remote(service_names: &[String]) -> Result<(), CliError> {
         service.current = ServiceTarget::Remote;
     }
 
-    save_state(state.clone())?;
+    state.save()?;
     load_server_states(state)?;
 
     println!(
@@ -42,7 +41,7 @@ pub fn local(service_names: &[String]) -> Result<(), CliError> {
         ));
     }
 
-    let mut state = get_state()?;
+    let mut state = LocalState::load()?;
 
     for service_name in service_names {
         let service = state
@@ -53,7 +52,7 @@ pub fn local(service_names: &[String]) -> Result<(), CliError> {
         service.current = ServiceTarget::Local;
     }
 
-    save_state(state.clone())?;
+    state.save()?;
     load_server_states(state)?;
 
     println!(
@@ -68,13 +67,14 @@ fn load_server_states(state: LocalState) -> Result<(), CliError> {
     let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
         .expect("linkup url invalid");
 
-    let (local_server_conf, remote_server_conf) = server_config_from_state(&state);
+    let server_config = ServerConfig::from(&state);
+
     let _ = load_config(
         &state.linkup.remote,
         &state.linkup.session_name.clone(),
-        remote_server_conf,
+        server_config.remote,
     )?;
-    let _ = load_config(&local_url, &state.linkup.session_name, local_server_conf)?;
+    let _ = load_config(&local_url, &state.linkup.session_name, server_config.local)?;
 
     Ok(())
 }
