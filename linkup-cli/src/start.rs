@@ -61,7 +61,7 @@ fn set_service_env(directory: String, config_path: String) -> Result<(), CliErro
 
     let service_path = PathBuf::from(config_dir).join(&directory);
 
-    let dev_env_files_result = fs::read_dir(&service_path);
+    let dev_env_files_result = fs::read_dir(service_path);
     let dev_env_files: Vec<_> = match dev_env_files_result {
         Ok(entries) => entries
             .filter_map(Result::ok)
