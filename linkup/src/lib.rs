@@ -86,7 +86,7 @@ pub fn get_additional_headers(
     if !headers.contains_key(HeaderName::ForwardedHost) {
         additional_headers.insert(
             HeaderName::ForwardedHost,
-            get_target_domain(url, session_name),
+            format!("{}.{}", session_name, get_target_domain(url, session_name)),
         );
     }
 
@@ -405,7 +405,7 @@ mod tests {
         );
         assert_eq!(
             add_headers.get(HeaderName::ForwardedHost).unwrap(),
-            "example.com"
+            "tiny-cow.example.com"
         );
         assert_eq!(
             add_headers.get(HeaderName::LinkupDestination).unwrap(),
@@ -415,7 +415,7 @@ mod tests {
         let mut already_headers = HeaderMap::new();
         already_headers.insert(HeaderName::TraceParent, "anything");
         already_headers.insert(HeaderName::TraceState, "linkup-session=tiny-cow");
-        already_headers.insert(HeaderName::ForwardedHost, "example.com");
+        already_headers.insert(HeaderName::ForwardedHost, "tiny-cow.example.com");
         already_headers.insert(HeaderName::LinkupDestination, "frontend");
         let add_headers = get_additional_headers(
             "https://abc.some-tunnel.com/abc-xyz",
@@ -432,7 +432,7 @@ mod tests {
         let mut already_headers_two = HeaderMap::new();
         already_headers_two.insert(HeaderName::TraceParent, "anything");
         already_headers_two.insert(HeaderName::TraceState, "other-service=32");
-        already_headers_two.insert(HeaderName::ForwardedHost, "example.com");
+        already_headers_two.insert(HeaderName::ForwardedHost, "tiny-cow.example.com");
         let add_headers = get_additional_headers(
             "https://abc.some-tunnel.com/abc-xyz",
             &already_headers_two,
@@ -448,7 +448,7 @@ mod tests {
         );
 
         let mut already_headers_three = HeaderMap::new();
-        already_headers_three.insert(HeaderName::ForwardedHost, "example.com");
+        already_headers_three.insert(HeaderName::ForwardedHost, "tiny-cow.example.com");
         let add_headers = get_additional_headers(
             "https://abc.some-tunnel.com/abc-xyz",
             &already_headers_three,
