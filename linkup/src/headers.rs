@@ -13,6 +13,7 @@ pub enum HeaderName {
     Referer,
     Origin,
     Host,
+    SetCookie,
 }
 
 impl From<HeaderName> for UniCase<String> {
@@ -25,6 +26,7 @@ impl From<HeaderName> for UniCase<String> {
             HeaderName::Referer => "referer".into(),
             HeaderName::Origin => "origin".into(),
             HeaderName::Host => "host".into(),
+            HeaderName::SetCookie => "set-cookie".into(),
         }
     }
 }
@@ -73,7 +75,14 @@ impl HeaderMap {
         key: impl Into<UniCase<String>>,
         value: impl ToString,
     ) -> Option<String> {
-        self.0.insert(key.into(), value.to_string())
+        let unicase_key = key.into();
+        if unicase_key == HeaderName::SetCookie.into() && self.0.contains_key(&unicase_key) {
+            let cookies = self.0.get(&unicase_key).unwrap();
+            let append_cookie = format!("{}, {}", cookies, value.to_string());
+            return self.0.insert(unicase_key, append_cookie);
+        }
+
+        self.0.insert(unicase_key, value.to_string())
     }
 
     pub fn extend(&mut self, iter: &HeaderMap) {
@@ -102,6 +111,16 @@ impl From<HeaderMap> for reqwest::header::HeaderMap {
 
         for (key, value) in value.into_iter() {
             if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
+                if UniCase::new(&header_name) == HeaderName::SetCookie.into() {
+                    let cookies = value.split(", ").collect::<Vec<&str>>();
+                    for cookie in cookies {
+                        if let Ok(header_value) = reqwest::header::HeaderValue::from_str(cookie) {
+                            header_map.append(header_name.clone(), header_value);
+                        }
+                    }
+                    continue;
+                }
+
                 if let Ok(header_value) = reqwest::header::HeaderValue::from_str(&value) {
                     header_map.insert(header_name, header_value);
                 }
@@ -165,8 +184,10 @@ impl<'a>
 }
 
 #[cfg(test)]
+#[cfg(feature = "reqwest")]
 mod test {
-    use crate::HeaderMap;
+    use super::*;
+    use reqwest::header::{HeaderMap as ReqwestHeaderMap, HeaderValue, SET_COOKIE};
 
     #[test]
     fn get_case_insensitive() {
@@ -179,5 +200,35 @@ mod test {
         header_map.insert("KEY", "value_2");
         assert_eq!(header_map.get("key"), Some("value_2"));
         assert_eq!(header_map.get("KEY"), Some("value_2"));
+    }
+
+    #[test]
+    fn add_folded_cookie_headers() {
+        let mut header_map = HeaderMap::new();
+
+        // Cloudflare Workers-rs folds set-cookie headers into a single header
+        header_map.insert("set-cookie".to_string(), "cookie1=value1, cookie2=value2");
+
+        let reqwest_header_map: ReqwestHeaderMap = header_map.into();
+        let cookies: Vec<&HeaderValue> = reqwest_header_map.get_all(SET_COOKIE).iter().collect();
+
+        assert_eq!(reqwest_header_map.len(), 2);
+        assert!(cookies.contains(&&HeaderValue::from_static("cookie1=value1")));
+        assert!(cookies.contains(&&HeaderValue::from_static("cookie2=value2")));
+    }
+
+    #[test]
+    fn add_multi_cookie_headers() {
+        let mut header_map = HeaderMap::new();
+
+        header_map.insert("set-cookie".to_string(), "cookie1=value1");
+        header_map.insert("set-cookie".to_string(), "cookie2=value2");
+
+        let reqwest_header_map: ReqwestHeaderMap = header_map.into();
+
+        assert_eq!(reqwest_header_map.len(), 2);
+        let cookies: Vec<&HeaderValue> = reqwest_header_map.get_all(SET_COOKIE).iter().collect();
+        assert!(cookies.contains(&&HeaderValue::from_static("cookie1=value1")));
+        assert!(cookies.contains(&&HeaderValue::from_static("cookie2=value2")));
     }
 }
