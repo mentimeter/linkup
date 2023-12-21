@@ -89,7 +89,7 @@ async fn linkup_ws_request_handler(
     let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     // Proxy the request using the destination_url and the merged headers
-    let client = reqwest::Client::new();
+    let client = no_redirect_client();
     headers.extend(&extra_headers);
     headers.remove(LinkupHeaderName::Host);
 
@@ -193,7 +193,8 @@ async fn linkup_request_handler(
     let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     // Proxy the request using the destination_url and the merged headers
-    let client = reqwest::Client::new();
+    let client = no_redirect_client();
+
     headers.extend(&extra_headers);
     headers.remove(LinkupHeaderName::Host);
 
@@ -248,6 +249,13 @@ async fn convert_reqwest_response(
 
 async fn always_ok() -> impl Responder {
     HttpResponse::Ok().finish()
+}
+
+fn no_redirect_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap()
 }
 
 #[actix_web::main]
