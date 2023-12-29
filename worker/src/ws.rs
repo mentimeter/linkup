@@ -8,9 +8,9 @@ use futures::{
 
 use crate::http_util::plaintext_error;
 
-pub async fn linkup_ws_handler<'a>(
+pub async fn linkup_ws_handler<'a, S: StringStore>(
     req: Request,
-    sessions: &'a SessionAllocator<'a>,
+    sessions: &'a SessionAllocator<'a, S>,
 ) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),

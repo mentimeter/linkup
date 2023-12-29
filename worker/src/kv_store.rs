@@ -1,5 +1,5 @@
 use linkup::{SessionError, StringStore};
-use worker::{async_trait::async_trait, kv::KvStore};
+use worker::kv::KvStore;
 
 pub struct CfWorkerStringStore {
     kv: KvStore,
@@ -11,7 +11,6 @@ impl CfWorkerStringStore {
     }
 }
 
-#[async_trait(?Send)]
 impl StringStore for CfWorkerStringStore {
     async fn get(&self, key: String) -> Result<Option<String>, SessionError> {
         match self.kv.get(key.as_str()).text().await {
