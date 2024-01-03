@@ -4,7 +4,8 @@ mod name_gen;
 mod session;
 mod session_allocator;
 
-use async_trait::async_trait;
+use std::future::Future;
+
 use rand::Rng;
 use thiserror::Error;
 
@@ -28,11 +29,13 @@ pub enum SessionError {
     ConfigErr(String),
 }
 
-#[async_trait(?Send)]
+// Since this trait is theoretically public (even though, the idea is for it to be used by the other modules within
+// this workspace), we should return `impl Future` instead of having `async fn` so that we can add and ensure
+// any desired bounds.
 pub trait StringStore {
-    async fn get(&self, key: String) -> Result<Option<String>, SessionError>;
-    async fn exists(&self, key: String) -> Result<bool, SessionError>;
-    async fn put(&self, key: String, value: String) -> Result<(), SessionError>;
+    fn get(&self, key: String) -> impl Future<Output = Result<Option<String>, SessionError>>;
+    fn exists(&self, key: String) -> impl Future<Output = Result<bool, SessionError>>;
+    fn put(&self, key: String, value: String) -> impl Future<Output = Result<(), SessionError>>;
 }
 
 #[derive(PartialEq)]

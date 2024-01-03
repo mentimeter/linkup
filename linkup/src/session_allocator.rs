@@ -4,12 +4,12 @@ use crate::{
     StringStore,
 };
 
-pub struct SessionAllocator<'a> {
-    store: &'a dyn StringStore,
+pub struct SessionAllocator<'a, S: StringStore> {
+    store: &'a S,
 }
 
-impl<'a> SessionAllocator<'a> {
-    pub fn new(store: &'a dyn StringStore) -> Self {
+impl<'a, S: StringStore> SessionAllocator<'a, S> {
+    pub fn new(store: &'a S) -> Self {
         Self { store }
     }
 

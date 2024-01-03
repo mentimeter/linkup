@@ -1,7 +1,5 @@
 use std::{collections::HashMap, sync::RwLock};
 
-use async_trait::async_trait;
-
 use crate::{SessionError, StringStore};
 
 pub struct MemoryStringStore {
@@ -22,7 +20,6 @@ impl Default for MemoryStringStore {
     }
 }
 
-#[async_trait(?Send)]
 impl StringStore for MemoryStringStore {
     async fn get(&self, key: String) -> Result<Option<String>, SessionError> {
         match self.store.read() {

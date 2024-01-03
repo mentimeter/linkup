@@ -10,9 +10,9 @@ mod kv_store;
 mod utils;
 mod ws;
 
-async fn linkup_session_handler<'a>(
+async fn linkup_session_handler<'a, S: StringStore>(
     mut req: Request,
-    sessions: &'a SessionAllocator<'a>,
+    sessions: &'a SessionAllocator<'a, S>,
 ) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
@@ -39,9 +39,9 @@ async fn linkup_session_handler<'a>(
     }
 }
 
-async fn linkup_preview_handler<'a>(
+async fn linkup_preview_handler<'a, S: StringStore>(
     mut req: Request,
-    sessions: &'a SessionAllocator<'a>,
+    sessions: &'a SessionAllocator<'a, S>,
 ) -> Result<Response> {
     let body_bytes = match req.bytes().await {
         Ok(bytes) => bytes,
@@ -110,9 +110,9 @@ async fn set_cached_req(
     Ok(resp)
 }
 
-async fn linkup_request_handler<'a>(
+async fn linkup_request_handler<'a, S: StringStore>(
     mut req: Request,
-    sessions: &'a SessionAllocator<'a>,
+    sessions: &'a SessionAllocator<'a, S>,
 ) -> Result<Response> {
     let url = match req.url() {
         Ok(url) => url.to_string(),
