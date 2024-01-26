@@ -113,6 +113,12 @@ impl YamlLocalConfig {
             .collect::<Vec<String>>()
     }
 
+    pub fn domains(&self) -> Vec<String> {
+        self.domains
+            .iter()
+            .collect::<Vec<String>>()
+    }
+
     pub fn create_preview_request(&self, services: &[(String, String)]) -> CreatePreviewRequest {
         let services = self
             .services

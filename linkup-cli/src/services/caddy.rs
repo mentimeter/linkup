@@ -21,7 +21,7 @@ pub fn start(local_config: &YamlLocalConfig) -> Result<()> {
     }
 
     let domains: Vec<String> = local_config
-        .top_level_domains()
+        .domains()
         .iter()
         .map(|domain| format!("{domain}, *.{domain}"))
         .collect();
