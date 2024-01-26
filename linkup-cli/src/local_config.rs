@@ -116,6 +116,7 @@ impl YamlLocalConfig {
     pub fn domains(&self) -> Vec<String> {
         self.domains
             .iter()
+            .map(|storable_domain| storable_domain.domain.clone())
             .collect::<Vec<String>>()
     }
 
