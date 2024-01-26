@@ -113,6 +113,13 @@ impl YamlLocalConfig {
             .collect::<Vec<String>>()
     }
 
+    pub fn domains(&self) -> Vec<String> {
+        self.domains
+            .iter()
+            .map(|storable_domain| storable_domain.domain.clone())
+            .collect::<Vec<String>>()
+    }
+
     pub fn create_preview_request(&self, services: &[(String, String)]) -> CreatePreviewRequest {
         let services = self
             .services
