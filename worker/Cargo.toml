@@ -12,7 +12,9 @@ default = ["console_error_panic_hook"]
 [dependencies]
 linkup = { path = "../linkup", features = ["worker", "reqwest"]}
 worker = "0.0.18"
-reqwest = "0.11.22"
+reqwest = { git = "https://github.com/ostenbom/reqwest.git", branch = "add-wasm-redirect" }
+# reqwest = { path = "../../reqwest" }
+# reqwest = "0.11.22"
 http = "0.2.9"
 regex = "1.8.1"
 cfg-if = "1.0.0"

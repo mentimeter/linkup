@@ -149,7 +149,11 @@ async fn linkup_request_handler<'a, S: StringStore>(
     };
 
     // // Proxy the request using the destination_url and the merged headers
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+
     headers.extend(&extra_headers);
     let response_result = client
         .request(method, &target_service.url)

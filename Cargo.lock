@@ -552,7 +552,7 @@ dependencies = [
  "anyhow",
  "linkup",
  "nix",
- "reqwest",
+ "reqwest 0.11.22",
 ]
 
 [[package]]
@@ -1030,7 +1030,7 @@ dependencies = [
  "hex",
  "rand",
  "regex",
- "reqwest",
+ "reqwest 0.11.22",
  "serde",
  "serde_json",
  "thiserror",
@@ -1057,7 +1057,7 @@ dependencies = [
  "nix",
  "rand",
  "regex",
- "reqwest",
+ "reqwest 0.11.22",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1077,7 +1077,7 @@ dependencies = [
  "http",
  "linkup",
  "regex",
- "reqwest",
+ "reqwest 0.11.23",
  "worker",
 ]
 
@@ -1563,6 +1563,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "reqwest"
+version = "0.11.23"
+source = "git+https://github.com/ostenbom/reqwest.git?branch=add-wasm-redirect#2e067320dd9091581998b3fe1c2c72bb9738be35"
+dependencies = [
+ "base64",
+ "bytes",
+ "encoding_rs",
+ "futures-core",
+ "futures-util",
+ "h2",
+ "http",
+ "http-body",
+ "hyper",
+ "hyper-tls",
+ "ipnet",
+ "js-sys",
+ "log",
+ "mime",
+ "native-tls",
+ "once_cell",
+ "percent-encoding",
+ "pin-project-lite",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sync_wrapper",
+ "system-configuration",
+ "tokio",
+ "tokio-native-tls",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "winreg",
+]
+
+[[package]]
 name = "ring"
 version = "0.16.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1872,6 +1911,12 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "sync_wrapper"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
 
 [[package]]
 name = "system-configuration"
