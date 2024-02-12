@@ -1,10 +1,12 @@
-use linkup::HeaderMap as LinkupHeaderMap;
+use linkup::{unpack_cookie_header, HeaderMap as LinkupHeaderMap};
 use reqwest::{Method as ReqwestMethod, Response as ReqwestResponse};
 use std::convert::TryFrom;
 use worker::{
     console_log, Headers as CfHeaders, Method as CfMethod, Response as CfResponse,
     Result as CfResult,
 };
+
+const SET_COOKIE: &str = "set-cookie";
 
 pub fn plaintext_error(msg: impl Into<String>, status: u16) -> CfResult<CfResponse> {
     let mut resp = CfResponse::error(msg, status)?;
@@ -55,6 +57,18 @@ pub async fn convert_reqwest_response_to_cf(
         let header_res = cf_headers.set(&key, &value);
         if header_res.is_err() {
             console_log!("failed to set response header: {}", header_res.unwrap_err());
+        }
+    }
+
+    // WASM / web_sys does not support getSetCookie, so we unwrap cookies ourselves
+    if let Ok(Some(folded_cookies)) = cf_headers.get(SET_COOKIE) {
+        let cookies = unpack_cookie_header(folded_cookies);
+        cf_headers.delete(SET_COOKIE).expect("set-cookie-valid");
+
+        for cookie in cookies {
+            cf_headers
+                .append(SET_COOKIE, &cookie.to_string())
+                .expect("set-cookie-valid");
         }
     }
 

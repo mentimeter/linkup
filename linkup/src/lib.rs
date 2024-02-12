@@ -15,6 +15,9 @@ pub use name_gen::{random_animal, random_six_char};
 pub use session::*;
 pub use session_allocator::*;
 
+#[cfg(feature = "worker")]
+pub use headers::unpack_cookie_header;
+
 use url::Url;
 
 #[derive(Error, Debug)]
