@@ -183,6 +183,42 @@ impl<'a>
     }
 }
 
+#[cfg(feature = "worker")]
+pub fn unpack_cookie_header(header: String) -> Vec<String> {
+    if header.is_empty() {
+        return Vec::new();
+    }
+
+    let parts: Vec<&str> = header.split(',').collect();
+    let mut cookies = Vec::new();
+    let mut i = 0;
+
+    while i < parts.len() {
+        // Check if the current part ends with the start of an Expires attribute
+        if parts[i].trim().ends_with("Expires=Mon")
+            || parts[i].trim().ends_with("Expires=Tue")
+            || parts[i].trim().ends_with("Expires=Wed")
+            || parts[i].trim().ends_with("Expires=Thu")
+            || parts[i].trim().ends_with("Expires=Fri")
+            || parts[i].trim().ends_with("Expires=Sat")
+            || parts[i].trim().ends_with("Expires=Sun")
+        {
+            // If it does, and there's a next part, concatenate the current and next parts
+            if i + 1 < parts.len() {
+                cookies.push(format!("{}, {}", parts[i].trim(), parts[i + 1].trim()));
+                i += 2; // Skip the next part since it's been concatenated
+                continue;
+            }
+        }
+
+        // If not handling an Expires attribute, or it's the last part, add the current part as a cookie
+        cookies.push(parts[i].trim().to_string());
+        i += 1;
+    }
+
+    cookies
+}
+
 #[cfg(test)]
 #[cfg(feature = "reqwest")]
 mod test {
@@ -230,5 +266,85 @@ mod test {
         let cookies: Vec<&HeaderValue> = reqwest_header_map.get_all(SET_COOKIE).iter().collect();
         assert!(cookies.contains(&&HeaderValue::from_static("cookie1=value1")));
         assert!(cookies.contains(&&HeaderValue::from_static("cookie2=value2")));
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "worker")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handle_response_without_set_cookie_headers() {
+        let header = String::new(); // Simulates a response without Set-Cookie headers
+        let cookies = unpack_cookie_header(header);
+        assert!(cookies.is_empty());
+    }
+
+    #[test]
+    fn handle_response_with_single_set_cookie_header_without_expires() {
+        let header = "sessionId=abc123; Path=/; HttpOnly".to_string();
+        let cookies = unpack_cookie_header(header);
+        assert_eq!(cookies, vec!["sessionId=abc123; Path=/; HttpOnly"]);
+    }
+
+    #[test]
+    fn handle_multiple_set_cookie_headers_without_merging_them_unnecessarily() {
+        let header = "sessionId=abc123; Path=/; HttpOnly, theme=dark; Path=/".to_string();
+        let cookies = unpack_cookie_header(header);
+        assert_eq!(
+            cookies,
+            vec!["sessionId=abc123; Path=/; HttpOnly", "theme=dark; Path=/"]
+        );
+    }
+
+    #[test]
+    fn correctly_merge_set_cookie_headers_when_expires_attribute_is_present() {
+        let header = "sessionId=abc123; Path=/; Expires=Fri, 31 Dec 9999 23:59:59 GMT, theme=dark; Path=/; Expires=Fri, 31 Dec 9999 23:59:59 GMT".to_string();
+        let cookies = unpack_cookie_header(header);
+        assert_eq!(
+            cookies,
+            vec![
+                "sessionId=abc123; Path=/; Expires=Fri, 31 Dec 9999 23:59:59 GMT",
+                "theme=dark; Path=/; Expires=Fri, 31 Dec 9999 23:59:59 GMT"
+            ]
+        );
+    }
+
+    #[test]
+    fn handle_when_cookies_have_empty_values() {
+        let header = "sessionId=; Path=/; Expires=Mon, 1 Jan 1970 00:00:00 GMT, theme=; Path=/; Expires=Mon, 1 Jan 1970 00:00:00 GMT".to_string();
+        let cookies = unpack_cookie_header(header);
+        assert_eq!(
+            cookies,
+            vec![
+                "sessionId=; Path=/; Expires=Mon, 1 Jan 1970 00:00:00 GMT",
+                "theme=; Path=/; Expires=Mon, 1 Jan 1970 00:00:00 GMT"
+            ]
+        );
+    }
+
+    #[test]
+    fn handle_cookies_with_quoted_values() {
+        let header = "name=\"an example value\"; Path=/; HttpOnly".to_string();
+        let cookies = unpack_cookie_header(header);
+        assert_eq!(cookies, vec!["name=\"an example value\"; Path=/; HttpOnly"]);
+    }
+
+    #[test]
+    fn handle_cookies_with_multiple_attributes() {
+        let header = "id=123; Path=/; Secure; HttpOnly; SameSite=Strict".to_string();
+        let cookies = unpack_cookie_header(header);
+        assert_eq!(
+            cookies,
+            vec!["id=123; Path=/; Secure; HttpOnly; SameSite=Strict"]
+        );
+    }
+
+    #[test]
+    fn handle_cookies_with_the_max_age_attribute() {
+        let header = "id=123; Path=/; Max-Age=3600; HttpOnly".to_string();
+        let cookies = unpack_cookie_header(header);
+        assert_eq!(cookies, vec!["id=123; Path=/; Max-Age=3600; HttpOnly"]);
     }
 }
