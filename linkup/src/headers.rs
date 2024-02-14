@@ -183,6 +183,7 @@ impl<'a>
     }
 }
 
+#[cfg(feature = "worker")]
 pub fn unpack_cookie_header(header: String) -> Vec<String> {
     if header.is_empty() {
         return Vec::new();
@@ -269,6 +270,7 @@ mod test {
 }
 
 #[cfg(test)]
+#[cfg(feature = "worker")]
 mod tests {
     use super::*;
 

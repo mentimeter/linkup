@@ -5,7 +5,6 @@ use actix_web::{
     HttpServer, Responder,
 };
 use futures::stream::StreamExt;
-use reqwest::header::SET_COOKIE;
 use thiserror::Error;
 
 use linkup::{HeaderMap as LinkupHeaderMap, HeaderName as LinkupHeaderName, *};
@@ -230,23 +229,13 @@ async fn convert_reqwest_response(
     extra_headers: &LinkupHeaderMap,
 ) -> Result<HttpResponse, ProxyError> {
     let status_code = response.status();
-    let mut headers = response.headers().clone();
+    let headers = response.headers().clone();
     let body = response
         .bytes()
         .await
         .map_err(|e| ProxyError::ReqwestProxyError(e.to_string()))?;
 
     let mut response_builder = HttpResponse::build(status_code);
-
-    if let Some(folded_cookies) = headers.get(SET_COOKIE) {
-        let cookies = unpack_cookie_header(folded_cookies.to_str().unwrap().to_string());
-        headers.remove(SET_COOKIE);
-
-        for cookie in cookies {
-            response_builder.append_header((SET_COOKIE, cookie.to_string()));
-        }
-    }
-
     for (key, value) in headers.iter() {
         response_builder.append_header((key, value));
     }

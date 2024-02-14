@@ -9,12 +9,14 @@ use std::future::Future;
 use rand::Rng;
 use thiserror::Error;
 
-pub use headers::unpack_cookie_header;
 pub use headers::{HeaderMap, HeaderName};
 pub use memory_session_store::*;
 pub use name_gen::{random_animal, random_six_char};
 pub use session::*;
 pub use session_allocator::*;
+
+#[cfg(feature = "worker")]
+pub use headers::unpack_cookie_header;
 
 use url::Url;
 
