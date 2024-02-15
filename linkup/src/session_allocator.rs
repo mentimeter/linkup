@@ -54,6 +54,13 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
             }
         }
 
+        if let Some(baggage) = headers.get(HeaderName::Baggage) {
+            let baggage_name = extract_tracestate_session(baggage);
+            if let Some(config) = self.get_session_config(baggage_name.to_string()).await? {
+                return Ok((baggage_name, config));
+            }
+        }
+
         Err(SessionError::NoSuchSession(url.to_string()))
     }
 

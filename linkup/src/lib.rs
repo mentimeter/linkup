@@ -85,6 +85,20 @@ pub fn get_additional_headers(
         _ => {}
     }
 
+    let baggage = headers.get(HeaderName::Baggage);
+    let linkup_session = format!("linkup-session={}", session_name,);
+    match baggage {
+        Some(ts) if !ts.contains(&linkup_session) => {
+            let new_baggage = format!("{},{}", ts, linkup_session);
+            additional_headers.insert(HeaderName::Baggage, new_baggage);
+        }
+        None => {
+            let new_baggage = linkup_session;
+            additional_headers.insert(HeaderName::Baggage, new_baggage);
+        }
+        _ => {}
+    }
+
     if !headers.contains_key(HeaderName::LinkupDestination) {
         additional_headers.insert(HeaderName::LinkupDestination, &target_service.name);
     }
@@ -257,10 +271,10 @@ fn first_subdomain(url: &str) -> String {
 }
 
 fn extract_tracestate_session(tracestate: &str) -> String {
-    extrace_tracestate(tracestate, String::from("linkup-session"))
+    extract_tracestate(tracestate, String::from("linkup-session"))
 }
 
-fn extrace_tracestate(tracestate: &str, linkup_key: String) -> String {
+fn extract_tracestate(tracestate: &str, linkup_key: String) -> String {
     tracestate
         .split(',')
         .filter_map(|kv| {
@@ -387,6 +401,24 @@ mod tests {
             .get_request_session("example.com", &trace_headers_two)
             .await
             .unwrap();
+
+        // Test with a single baggage header
+        let mut baggage_headers = HeaderMap::new();
+        baggage_headers.insert(
+            HeaderName::Baggage,
+            format!("other-context=12345,linkup-session={}", name),
+        );
+        sessions
+            .get_request_session("example.com", &baggage_headers)
+            .await
+            .unwrap();
+
+        let mut baggage_headers_two = HeaderMap::new();
+        baggage_headers_two.insert(HeaderName::Baggage, format!("linkup-session={}", name));
+        sessions
+            .get_request_session("example.com", &baggage_headers_two)
+            .await
+            .unwrap();
     }
 
     #[test]
@@ -410,6 +442,10 @@ mod tests {
             "linkup-session=tiny-cow"
         );
         assert_eq!(
+            add_headers.get(HeaderName::Baggage).unwrap(),
+            "linkup-session=tiny-cow"
+        );
+        assert_eq!(
             add_headers.get(HeaderName::ForwardedHost).unwrap(),
             "tiny-cow.example.com"
         );
@@ -421,6 +457,7 @@ mod tests {
         let mut already_headers = HeaderMap::new();
         already_headers.insert(HeaderName::TraceParent, "anything");
         already_headers.insert(HeaderName::TraceState, "linkup-session=tiny-cow");
+        already_headers.insert(HeaderName::Baggage, "linkup-session=tiny-cow");
         already_headers.insert(HeaderName::ForwardedHost, "tiny-cow.example.com");
         already_headers.insert(HeaderName::LinkupDestination, "frontend");
         let add_headers = get_additional_headers(
@@ -432,12 +469,14 @@ mod tests {
 
         assert!(add_headers.get(HeaderName::TraceParent).is_none());
         assert!(add_headers.get(HeaderName::TraceState).is_none());
+        assert!(add_headers.get(HeaderName::Baggage).is_none());
         assert!(add_headers.get(HeaderName::ForwardedHost).is_none());
         assert!(add_headers.get(HeaderName::LinkupDestination).is_none());
 
         let mut already_headers_two = HeaderMap::new();
         already_headers_two.insert(HeaderName::TraceParent, "anything");
         already_headers_two.insert(HeaderName::TraceState, "other-service=32");
+        already_headers_two.insert(HeaderName::Baggage, "other-service=32");
         already_headers_two.insert(HeaderName::ForwardedHost, "tiny-cow.example.com");
         let add_headers = get_additional_headers(
             "https://abc.some-tunnel.com/abc-xyz",
@@ -450,6 +489,10 @@ mod tests {
         assert!(add_headers.get(HeaderName::ForwardedHost).is_none());
         assert_eq!(
             add_headers.get(HeaderName::TraceState).unwrap(),
+            "other-service=32,linkup-session=tiny-cow"
+        );
+        assert_eq!(
+            add_headers.get(HeaderName::Baggage).unwrap(),
             "other-service=32,linkup-session=tiny-cow"
         );
 
@@ -465,6 +508,10 @@ mod tests {
         assert_eq!(add_headers.get(HeaderName::TraceParent).unwrap().len(), 55);
         assert_eq!(
             add_headers.get(HeaderName::TraceState).unwrap(),
+            "linkup-session=tiny-cow"
+        );
+        assert_eq!(
+            add_headers.get(HeaderName::Baggage).unwrap(),
             "linkup-session=tiny-cow"
         );
         assert!(add_headers.get(HeaderName::ForwardedHost).is_none());
