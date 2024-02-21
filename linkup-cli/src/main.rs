@@ -117,6 +117,8 @@ pub enum CliError {
     LocalDNSUninstall(String),
     #[error("failed to write file: {0}")]
     WriteFile(String),
+    #[error("failed to reboot dnsmasq: {0}")]
+    RebootDNSMasq(String),
 }
 
 #[derive(Parser)]

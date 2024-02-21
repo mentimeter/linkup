@@ -9,12 +9,44 @@ use thiserror::Error;
 
 use linkup::{HeaderMap as LinkupHeaderMap, HeaderName as LinkupHeaderName, *};
 
-use crate::LINKUP_LOCALSERVER_PORT;
+use crate::{
+    linkup_file_path,
+    services::dnsmasq::{reload_dnsmasq_conf, write_dnsmaq_conf},
+    LINKUP_LOCALDNS_INSTALL, LINKUP_LOCALSERVER_PORT,
+};
 
 #[derive(Error, Debug)]
 pub enum ProxyError {
     #[error("reqwest proxy error {0}")]
     ReqwestProxyError(String),
+}
+
+#[actix_web::main]
+pub async fn local_linkup_main() -> io::Result<()> {
+    env_logger::Builder::new()
+        .filter(None, log::LevelFilter::Info)
+        .init();
+
+    let string_store = web::Data::new(MemoryStringStore::new());
+
+    println!("Starting local server on port {}", LINKUP_LOCALSERVER_PORT);
+    HttpServer::new(move || {
+        App::new()
+            .app_data(string_store.clone()) // Add shared state
+            .app_data(web::PayloadConfig::new(100 * 1024 * 1024)) // 100 MB payload limit
+            .wrap(middleware::Logger::default()) // Enable logger
+            .route("/linkup", web::post().to(linkup_config_handler))
+            .route("/linkup-check", web::route().to(always_ok))
+            .service(
+                web::resource("{path:.*}")
+                    .guard(guard::Header("upgrade", "websocket"))
+                    .to(linkup_ws_request_handler),
+            )
+            .default_service(web::route().to(linkup_request_handler))
+    })
+    .bind(("127.0.0.1", LINKUP_LOCALSERVER_PORT))?
+    .run()
+    .await
 }
 
 async fn linkup_config_handler(
@@ -33,11 +65,18 @@ async fn linkup_config_handler(
     match update_session_req_from_json(input_json_conf) {
         Ok((desired_name, server_conf)) => {
             let sessions = SessionAllocator::new(string_store.as_ref());
+            let server_domains = server_conf.domain_selection_order.clone();
             let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)
                 .await;
             match session_name {
-                Ok(session_name) => HttpResponse::Ok().body(session_name),
+                Ok(session_name) => {
+                    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
+                        return add_local_dns_domain(server_domains, session_name);
+                    }
+
+                    HttpResponse::Ok().body(session_name)
+                }
                 Err(e) => HttpResponse::InternalServerError()
                     .append_header(ContentType::plaintext())
                     .body(format!("Failed to store server config: {}", e)),
@@ -258,30 +297,22 @@ fn no_redirect_client() -> reqwest::Client {
         .unwrap()
 }
 
-#[actix_web::main]
-pub async fn local_linkup_main() -> io::Result<()> {
-    env_logger::Builder::new()
-        .filter(None, log::LevelFilter::Info)
-        .init();
+fn add_local_dns_domain(session_domains: Vec<String>, session_name: String) -> HttpResponse {
+    let dnsmasq_conf_domains = session_domains
+        .iter()
+        .map(|d| format!("{}.{}", session_name, d.to_string()))
+        .collect();
 
-    let string_store = web::Data::new(MemoryStringStore::new());
+    if let Err(e) = write_dnsmaq_conf(Some(dnsmasq_conf_domains)) {
+        return HttpResponse::InternalServerError()
+            .append_header(ContentType::plaintext())
+            .body(format!("Failed to write dnsmasq config: {}", e));
+    };
+    if let Err(e) = reload_dnsmasq_conf() {
+        return HttpResponse::InternalServerError()
+            .append_header(ContentType::plaintext())
+            .body(format!("Failed to restart dnsmasq: {}", e));
+    };
 
-    println!("Starting local server on port {}", LINKUP_LOCALSERVER_PORT);
-    HttpServer::new(move || {
-        App::new()
-            .app_data(string_store.clone()) // Add shared state
-            .app_data(web::PayloadConfig::new(100 * 1024 * 1024)) // 100 MB payload limit
-            .wrap(middleware::Logger::default()) // Enable logger
-            .route("/linkup", web::post().to(linkup_config_handler))
-            .route("/linkup-check", web::route().to(always_ok))
-            .service(
-                web::resource("{path:.*}")
-                    .guard(guard::Header("upgrade", "websocket"))
-                    .to(linkup_ws_request_handler),
-            )
-            .default_service(web::route().to(linkup_request_handler))
-    })
-    .bind(("127.0.0.1", LINKUP_LOCALSERVER_PORT))?
-    .run()
-    .await
+    HttpResponse::Ok().body(session_name)
 }
