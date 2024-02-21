@@ -300,7 +300,7 @@ fn no_redirect_client() -> reqwest::Client {
 fn add_local_dns_domain(session_domains: Vec<String>, session_name: String) -> HttpResponse {
     let dnsmasq_conf_domains = session_domains
         .iter()
-        .map(|d| format!("{}.{}", session_name, d.to_string()))
+        .map(|d| format!("{}.{}", session_name, d))
         .collect();
 
     if let Err(e) = write_dnsmaq_conf(Some(dnsmasq_conf_domains)) {

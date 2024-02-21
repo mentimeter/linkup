@@ -5,6 +5,7 @@ use std::{
 
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
+use std::fmt::Write;
 
 use crate::{linkup_dir_path, linkup_file_path, stop::stop_pid_file, CliError, Result};
 
@@ -40,10 +41,10 @@ pub fn write_dnsmaq_conf(local_domains: Option<Vec<String>>) -> Result<String> {
     let pidfile_path = linkup_file_path(PID_FILE);
     let mut local_domains_template = String::new();
     if let Some(local_domains) = local_domains {
-        local_domains_template = local_domains
-            .iter()
-            .map(|d| format!("address=/{}/127.0.0.1\naddress=/{}/::1\n", d, d))
-            .collect()
+        local_domains_template = local_domains.iter().fold(String::new(), |mut acc, d| {
+            let _ = write!(acc, "address=/{}/127.0.0.1\naddress=/{}/::1\n", d, d);
+            acc
+        });
     }
 
     let dnsmasq_template = format!(
