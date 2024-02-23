@@ -61,24 +61,22 @@ pub fn clear_env_file(service: &str, env_path: &PathBuf) -> Result<()> {
         )
     })?;
 
-    let start_idx = file_content.find(LINKUP_ENV_SEPARATOR);
-    let end_idx = file_content.rfind(LINKUP_ENV_SEPARATOR);
+    if let (Some(mut linkup_block_start), Some(mut linkup_block_end)) = (
+        file_content.find(LINKUP_ENV_SEPARATOR),
+        file_content.rfind(LINKUP_ENV_SEPARATOR),
+    ) {
+        if linkup_block_start > 0 && file_content.chars().nth(linkup_block_start - 1) == Some('\n')
+        {
+            linkup_block_start -= 1;
+        }
 
-    if let (Some(mut start), Some(mut end)) = (start_idx, end_idx) {
-        if start < end {
-            let new_line_above_start =
-                start > 0 && file_content.chars().nth(start - 1) == Some('\n');
-            let new_line_bellow_end = file_content.chars().nth(end + 1) == Some('\n');
+        linkup_block_end += LINKUP_ENV_SEPARATOR.len() - 1;
+        if file_content.chars().nth(linkup_block_end + 1) == Some('\n') {
+            linkup_block_end += 1;
+        }
 
-            if new_line_above_start {
-                start -= 1;
-            }
-
-            if new_line_bellow_end {
-                end += 1;
-            }
-
-            file_content.drain(start..=end + LINKUP_ENV_SEPARATOR.len());
+        if linkup_block_start < linkup_block_end {
+            file_content.drain(linkup_block_start..=linkup_block_end);
         }
 
         if file_content.ends_with('\n') {
@@ -213,6 +211,25 @@ mod test {
             "{}\n{}\n{}\n{}",
             "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2", "EXISTING_3=VALUE_3", "EXISTING_4=VALUE_4",
         );
+        assert_eq!(expected_content, file_content);
+    }
+
+    #[test]
+    fn clear_env_file_no_new_line_after_linkup() {
+        let content = format!(
+            "{}\n{}\n{}\n\n{}\n{}",
+            "EXISTING_1=VALUE_1",
+            "EXISTING_2=VALUE_2",
+            "##### Linkup environment - DO NOT EDIT #####",
+            "SOURCE_1=VALUE_1",
+            "##### Linkup environment - DO NOT EDIT #####",
+        );
+        let env_file = TestFile::create(&content);
+
+        clear_env_file("service_1", &env_file.path).unwrap();
+
+        let file_content = fs::read_to_string(&env_file.path).unwrap();
+        let expected_content = format!("{}\n{}", "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2",);
         assert_eq!(expected_content, file_content);
     }
 
