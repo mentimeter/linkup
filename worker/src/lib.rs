@@ -33,7 +33,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         (Method::Post, "/linkup") => linkup_session_handler(req, &sessions).await,
         (Method::Post, "/preview") => linkup_preview_handler(req, &sessions).await,
         _ => linkup_request_handler(req, &sessions).await,
-    }
+    };
 }
 
 async fn linkup_session_handler<'a, S: StringStore>(
@@ -112,7 +112,7 @@ async fn linkup_request_handler<'a, S: StringStore>(
         };
 
     if is_cacheable_request(&req, &config) {
-        if let Some(cached_response) = get_cached_req(&req, &session_name).await? {
+        if let Some(cached_response) = get_cached_req(&req, &session_name).await {
             return Ok(cached_response);
         }
     }
@@ -182,17 +182,33 @@ fn is_cacheable_request(req: &Request, config: &Session) -> bool {
     false
 }
 
-fn get_cache_key(req: &Request, session_name: &String) -> Result<String> {
-    let mut cache_url = req.url()?.clone();
-    let curr_domain = cache_url.domain().ok_or("example.com")?;
-    cache_url.set_host(Some(&format!("{}.{}", session_name, curr_domain)))?;
+fn get_cache_key(req: &Request, session_name: &String) -> Option<String> {
+    let mut cache_url = match req.url() {
+        Ok(url) => url,
+        Err(_) => return None,
+    };
 
-    Ok(cache_url.to_string())
+    let curr_domain = cache_url.domain().unwrap_or("example.com");
+    if cache_url
+        .set_host(Some(&format!("{}.{}", session_name, curr_domain)))
+        .is_err()
+    {
+        return None;
+    }
+
+    Some(cache_url.to_string())
 }
 
-async fn get_cached_req(req: &Request, session_name: &String) -> Result<Option<Response>> {
-    let cache_key = get_cache_key(req, session_name)?;
-    Cache::default().get(cache_key, false).await
+async fn get_cached_req(req: &Request, session_name: &String) -> Option<Response> {
+    let cache_key = match get_cache_key(req, session_name) {
+        Some(cache_key) => cache_key,
+        None => return None,
+    };
+
+    match Cache::default().get(cache_key, false).await {
+        Ok(Some(resp)) => Some(resp),
+        _ => None,
+    }
 }
 
 async fn set_cached_req(
@@ -205,10 +221,10 @@ async fn set_cached_req(
         return Ok(resp);
     }
 
-    let cache_key = get_cache_key(req, &session_name)?;
-
-    let cache_resp = resp.cloned()?;
-    Cache::default().put(cache_key, cache_resp).await?;
+    if let Some(cache_key) = get_cache_key(req, &session_name) {
+        let cache_resp = resp.cloned()?;
+        Cache::default().put(cache_key, cache_resp).await?;
+    }
 
     Ok(resp)
 }
