@@ -29,15 +29,11 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         }
     }
 
-    if req.method() == Method::Post && req.path() == "/linkup" {
-        return linkup_session_handler(req, &sessions).await;
+    return match (req.method(), req.path().as_str()) {
+        (Method::Post, "/linkup") => linkup_session_handler(req, &sessions).await,
+        (Method::Post, "/preview") => linkup_preview_handler(req, &sessions).await,
+        _ => linkup_request_handler(req, &sessions).await,
     }
-
-    if req.method() == Method::Post && req.path() == "/preview" {
-        return linkup_preview_handler(req, &sessions).await;
-    }
-
-    linkup_request_handler(req, &sessions).await
 }
 
 async fn linkup_session_handler<'a, S: StringStore>(
