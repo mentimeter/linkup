@@ -8,6 +8,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
+
 #[derive(Clone, Debug)]
 pub struct Session {
     pub session_token: String,
@@ -315,7 +317,7 @@ pub fn create_preview_req_from_json(input_json: String) -> Result<Session, Confi
         Err(e) => Err(ConfigError::JsonFormat(e)),
         Ok(c) => {
             let server_conf = StorableSession {
-                session_token: String::from("potato"),
+                session_token: String::from(PREVIEW_SESSION_TOKEN),
                 services: c.services,
                 domains: c.domains,
                 cache_routes: Some(vec![String::from(".*")]),
