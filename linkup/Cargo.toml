@@ -15,14 +15,14 @@ unicase = "2.7"
 url = { version = "2.5", features = ["serde"] }
 
 # features dependencies
-reqwest = { version = "0.11.24", default-features = false, optional = true }
-actix-web = { version = "4.5.1", default-features = false, optional = true }
+actix-web = { version = "4.3.1", default-features = false, optional = true }
+reqwest = { version = "0.11.14", default-features = false, optional = true }
 worker = { version = "0.0.18", default-features = false, optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros"] }
 
 [features]
-reqwest = ["dep:reqwest"]
 actix = ["dep:actix-web"]
+reqwest = ["dep:reqwest"]
 worker = ["dep:worker"]
