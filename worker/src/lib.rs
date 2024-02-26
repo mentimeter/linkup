@@ -1,7 +1,6 @@
 use http_util::*;
 use kv_store::CfWorkerStringStore;
 use linkup::{HeaderMap as LinkupHeaderMap, *};
-use regex::Regex;
 use worker::*;
 use ws::linkup_ws_handler;
 
@@ -9,6 +8,33 @@ mod http_util;
 mod kv_store;
 mod utils;
 mod ws;
+
+#[event(fetch)]
+pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
+    // Optionally, get more helpful error messages written to the console in the case of a panic.
+    utils::set_panic_hook();
+
+    let kv = match env.kv("LINKUP_SESSIONS") {
+        Ok(kv) => kv,
+        Err(e) => return plaintext_error(format!("Failed to get KV store: {}", e), 500),
+    };
+
+    let string_store = CfWorkerStringStore::new(kv);
+
+    let sessions = SessionAllocator::new(&string_store);
+
+    if let Ok(Some(upgrade)) = req.headers().get("upgrade") {
+        if upgrade == "websocket" {
+            return linkup_ws_handler(req, &sessions).await;
+        }
+    }
+
+    return match (req.method(), req.path().as_str()) {
+        (Method::Post, "/linkup") => linkup_session_handler(req, &sessions).await,
+        (Method::Post, "/preview") => linkup_preview_handler(req, &sessions).await,
+        _ => linkup_request_handler(req, &sessions).await,
+    };
+}
 
 async fn linkup_session_handler<'a, S: StringStore>(
     mut req: Request,
@@ -68,48 +94,6 @@ async fn linkup_preview_handler<'a, S: StringStore>(
     }
 }
 
-async fn get_cached_req(
-    req: &Request,
-    cache_routes: &Option<Vec<Regex>>,
-) -> Result<Option<Response>> {
-    let path = req.path();
-
-    if let Some(routes) = cache_routes {
-        if routes.iter().any(|route| route.is_match(&path)) {
-            let url = req.url()?;
-            Cache::default().get(url.to_string(), false).await
-        } else {
-            Ok(None)
-        }
-    } else {
-        Ok(None)
-    }
-}
-
-async fn set_cached_req(
-    req: &Request,
-    mut resp: Response,
-    cache_routes: Option<Vec<Regex>>,
-) -> Result<Response> {
-    if resp.status_code() != 200 {
-        return Ok(resp);
-    }
-
-    let path = req.path();
-
-    if let Some(routes) = cache_routes {
-        if routes.iter().any(|route| route.is_match(&path)) {
-            let url = req.url()?;
-            let cache_resp = resp.cloned()?;
-            Cache::default().put(url.to_string(), cache_resp).await?;
-
-            return Ok(resp);
-        }
-    }
-
-    Ok(resp)
-}
-
 async fn linkup_request_handler<'a, S: StringStore>(
     mut req: Request,
     sessions: &'a SessionAllocator<'a, S>,
@@ -127,8 +111,10 @@ async fn linkup_request_handler<'a, S: StringStore>(
             Err(e) => return plaintext_error(format!("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate, {:?}",e), 422),
         };
 
-    if let Some(cached_response) = get_cached_req(&req, &config.cache_routes).await? {
-        return Ok(cached_response);
+    if is_cacheable_request(&req, &config) {
+        if let Some(cached_response) = get_cached_req(&req, &session_name).await {
+            return Ok(cached_response);
+        }
     }
 
     let body_bytes = match req.bytes().await {
@@ -170,38 +156,75 @@ async fn linkup_request_handler<'a, S: StringStore>(
     let mut cf_resp =
         convert_reqwest_response_to_cf(response, &additional_response_headers()).await?;
 
-    cf_resp = set_cached_req(&req, cf_resp, config.cache_routes).await?;
+    if is_cacheable_request(&req, &config) {
+        cf_resp = set_cached_req(&req, cf_resp, session_name).await?;
+    }
 
     Ok(cf_resp)
 }
 
-#[event(fetch)]
-pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
-    // Optionally, get more helpful error messages written to the console in the case of a panic.
-    utils::set_panic_hook();
+fn is_cacheable_request(req: &Request, config: &Session) -> bool {
+    if req.method() != Method::Get {
+        return false;
+    }
 
-    let kv = match env.kv("LINKUP_SESSIONS") {
-        Ok(kv) => kv,
-        Err(e) => return plaintext_error(format!("Failed to get KV store: {}", e), 500),
-    };
+    if config.session_token == PREVIEW_SESSION_TOKEN {
+        return true;
+    }
 
-    let string_store = CfWorkerStringStore::new(kv);
-
-    let sessions = SessionAllocator::new(&string_store);
-
-    if let Ok(Some(upgrade)) = req.headers().get("upgrade") {
-        if upgrade == "websocket" {
-            return linkup_ws_handler(req, &sessions).await;
+    if let Some(routes) = &config.cache_routes {
+        let path = req.path();
+        if routes.iter().any(|route| route.is_match(&path)) {
+            return true;
         }
     }
 
-    if req.method() == Method::Post && req.path() == "/linkup" {
-        return linkup_session_handler(req, &sessions).await;
+    false
+}
+
+fn get_cache_key(req: &Request, session_name: &String) -> Option<String> {
+    let mut cache_url = match req.url() {
+        Ok(url) => url,
+        Err(_) => return None,
+    };
+
+    let curr_domain = cache_url.domain().unwrap_or("example.com");
+    if cache_url
+        .set_host(Some(&format!("{}.{}", session_name, curr_domain)))
+        .is_err()
+    {
+        return None;
     }
 
-    if req.method() == Method::Post && req.path() == "/preview" {
-        return linkup_preview_handler(req, &sessions).await;
+    Some(cache_url.to_string())
+}
+
+async fn get_cached_req(req: &Request, session_name: &String) -> Option<Response> {
+    let cache_key = match get_cache_key(req, session_name) {
+        Some(cache_key) => cache_key,
+        None => return None,
+    };
+
+    match Cache::default().get(cache_key, false).await {
+        Ok(Some(resp)) => Some(resp),
+        _ => None,
+    }
+}
+
+async fn set_cached_req(
+    req: &Request,
+    mut resp: Response,
+    session_name: String,
+) -> Result<Response> {
+    // Cache API throws error on 206 partial content
+    if resp.status_code() > 499 || resp.status_code() == 206 {
+        return Ok(resp);
     }
 
-    linkup_request_handler(req, &sessions).await
+    if let Some(cache_key) = get_cache_key(req, &session_name) {
+        let cache_resp = resp.cloned()?;
+        Cache::default().put(cache_key, cache_resp).await?;
+    }
+
+    Ok(resp)
 }
