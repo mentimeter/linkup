@@ -80,7 +80,7 @@ pub fn clear_env_file(service: &str, env_path: &PathBuf) -> Result<()> {
         }
 
         file_content = file_content.trim_end_matches('\n').to_string();
-        file_content.push('\n');        
+        file_content.push('\n');
 
         // Write the updated content back to the file
         let mut file = OpenOptions::new()
