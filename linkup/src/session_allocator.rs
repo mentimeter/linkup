@@ -1,7 +1,7 @@
 use crate::{
-    extract_tracestate_session, first_subdomain, headers::HeaderName, random_animal,
-    random_six_char, session_to_json, ConfigError, HeaderMap, NameKind, Session, SessionError,
-    StringStore,
+    extract_tracestate_session, first_subdomain, headers::HeaderName,
+    name_gen::deterministic_six_char_hash, random_animal, random_six_char, session_to_json,
+    ConfigError, HeaderMap, NameKind, Session, SessionError, StringStore,
 };
 
 pub struct SessionAllocator<'a, S: StringStore> {
@@ -70,11 +70,11 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         name_kind: NameKind,
         desired_name: String,
     ) -> Result<String, SessionError> {
-        let name = self
-            .choose_name(desired_name, config.session_token.clone(), name_kind)
-            .await?;
+        let config_str = session_to_json(config.clone());
 
-        let config_str = session_to_json(config);
+        let name = self
+            .choose_name(desired_name, config.session_token, name_kind, &config_str)
+            .await?;
 
         self.store.put(name.clone(), config_str).await?;
 
@@ -86,9 +86,12 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         desired_name: String,
         session_token: String,
         name_kind: NameKind,
+        config_json: &str,
     ) -> Result<String, SessionError> {
         if desired_name.is_empty() {
-            return self.new_session_name(name_kind, desired_name).await;
+            return self
+                .new_session_name(name_kind, desired_name, config_json)
+                .await;
         }
 
         if let Some(session) = self.get_session_config(desired_name.clone()).await? {
@@ -97,7 +100,8 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
             }
         }
 
-        self.new_session_name(name_kind, desired_name).await
+        self.new_session_name(name_kind, desired_name, config_json)
+            .await
     }
 
     async fn get_session_config(&self, name: String) -> Result<Option<Session>, SessionError> {
@@ -121,7 +125,12 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         &self,
         name_kind: NameKind,
         desired_name: String,
+        config_json: &str,
     ) -> Result<String, SessionError> {
+        if name_kind == NameKind::SixChar {
+            return Ok(deterministic_six_char_hash(config_json));
+        }
+
         let mut key = String::new();
 
         if !desired_name.is_empty() && !self.store.exists(desired_name.clone()).await? {
@@ -131,7 +140,7 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         if key.is_empty() {
             let mut tried_animal_key = false;
             loop {
-                let generated_key = if !tried_animal_key && name_kind == NameKind::Animal {
+                let generated_key = if !tried_animal_key {
                     tried_animal_key = true;
                     self.generate_unique_animal_key(20).await?
                 } else {

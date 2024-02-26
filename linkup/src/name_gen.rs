@@ -1,5 +1,6 @@
 use rand::distributions::Alphanumeric;
 use rand::Rng;
+use sha2::{Digest, Sha256};
 
 pub fn random_animal() -> String {
     let adjective_index = rand::thread_rng().gen_range(0..SHORT_ADJECTIVES.len());
@@ -9,6 +10,18 @@ pub fn random_animal() -> String {
         "{}-{}",
         SHORT_ADJECTIVES[adjective_index], ANIMALS[animal_index]
     )
+}
+
+pub fn deterministic_six_char_hash(input: &str) -> String {
+    let mut hasher = Sha256::new();
+
+    hasher.update(input);
+
+    let result = hasher.finalize();
+    let hex_string = hex::encode(result);
+
+    // Truncate the hexadecimal string to 6 characters
+    hex_string[..6].to_string()
 }
 
 pub fn random_six_char() -> String {
