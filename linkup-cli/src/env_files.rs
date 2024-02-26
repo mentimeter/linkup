@@ -79,9 +79,8 @@ pub fn clear_env_file(service: &str, env_path: &PathBuf) -> Result<()> {
             file_content.drain(linkup_block_start..=linkup_block_end);
         }
 
-        if file_content.ends_with('\n') {
-            file_content.pop();
-        }
+        file_content = file_content.trim_end_matches('\n').to_string();
+        file_content.push('\n');        
 
         // Write the updated content back to the file
         let mut file = OpenOptions::new()
@@ -168,7 +167,7 @@ mod test {
         clear_env_file("service_1", &env_file.path).unwrap();
 
         let file_content = fs::read_to_string(&env_file.path).unwrap();
-        assert_eq!("", file_content);
+        assert_eq!("\n", file_content);
     }
 
     #[test]
@@ -186,7 +185,7 @@ mod test {
         clear_env_file("service_1", &env_file.path).unwrap();
 
         let file_content = fs::read_to_string(&env_file.path).unwrap();
-        let expected_content = format!("{}\n{}", "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2",);
+        let expected_content = format!("{}\n{}\n", "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2",);
         assert_eq!(expected_content, file_content);
     }
 
@@ -208,7 +207,7 @@ mod test {
 
         let file_content = fs::read_to_string(&env_file.path).unwrap();
         let expected_content = format!(
-            "{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n",
             "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2", "EXISTING_3=VALUE_3", "EXISTING_4=VALUE_4",
         );
         assert_eq!(expected_content, file_content);
@@ -229,7 +228,26 @@ mod test {
         clear_env_file("service_1", &env_file.path).unwrap();
 
         let file_content = fs::read_to_string(&env_file.path).unwrap();
-        let expected_content = format!("{}\n{}", "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2",);
+        let expected_content = format!("{}\n{}\n", "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2",);
+        assert_eq!(expected_content, file_content);
+    }
+
+    #[test]
+    fn clear_env_file_multiple_new_lines_after_linkup() {
+        let content = format!(
+            "{}\n{}\n{}\n\n{}\n{}\n\n\n\n",
+            "EXISTING_1=VALUE_1",
+            "EXISTING_2=VALUE_2",
+            "##### Linkup environment - DO NOT EDIT #####",
+            "SOURCE_1=VALUE_1",
+            "##### Linkup environment - DO NOT EDIT #####",
+        );
+        let env_file = TestFile::create(&content);
+
+        clear_env_file("service_1", &env_file.path).unwrap();
+
+        let file_content = fs::read_to_string(&env_file.path).unwrap();
+        let expected_content = format!("{}\n{}\n", "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2",);
         assert_eq!(expected_content, file_content);
     }
 
@@ -257,7 +275,7 @@ mod test {
 
         // Check post clear content
         let file_content = fs::read_to_string(&target.path).unwrap();
-        let expected_content = format!("{}\n{}", "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2",);
+        let expected_content = format!("{}\n{}\n", "EXISTING_1=VALUE_1", "EXISTING_2=VALUE_2",);
         assert_eq!(file_content, expected_content);
     }
 
