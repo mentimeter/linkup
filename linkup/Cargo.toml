@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-getrandom = { version = "0.2.8", features = ["js"] }
 hex = "0.4"
 rand = "0.8"
 regex = "1.7.1"
