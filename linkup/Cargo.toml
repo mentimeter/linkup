@@ -10,6 +10,7 @@ rand = "0.8"
 regex = "1.7.1"
 serde = "1.0.156"
 serde_json = "1.0.96"
+sha2 = "0.10.8"
 thiserror = "1.0.39"
 unicase = "2.7"
 url = { version = "2.3.1", features = ["serde"] }
