@@ -320,7 +320,7 @@ pub fn create_preview_req_from_json(input_json: String) -> Result<Session, Confi
                 session_token: String::from(PREVIEW_SESSION_TOKEN),
                 services: c.services,
                 domains: c.domains,
-                cache_routes: Some(vec![String::from(".*")]),
+                cache_routes: None,
             }
             .try_into();
 

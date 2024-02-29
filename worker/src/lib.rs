@@ -169,7 +169,8 @@ fn is_cacheable_request(req: &Request, config: &Session) -> bool {
     }
 
     if config.session_token == PREVIEW_SESSION_TOKEN {
-        return true;
+        return false;
+        // return true;
     }
 
     if let Some(routes) = &config.cache_routes {
@@ -222,7 +223,10 @@ async fn set_cached_req(
     }
 
     if let Some(cache_key) = get_cache_key(req, &session_name) {
-        let cache_resp = resp.cloned()?;
+        let mut cache_resp = resp.cloned()?;
+        let _ = cache_resp
+            .headers_mut()
+            .append("linkup-cache-status", "HIT");
         Cache::default().put(cache_key, cache_resp).await?;
     }
 
