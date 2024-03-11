@@ -20,6 +20,8 @@ Mary's pull request can deploy a preview of their backend that can be accessed t
 
 ## Using Linkup
 
+**There is more detailed information about running and debugging linkup sessions in [docs/using-linkup](./docs/using-linkup.md)**
+
 To use link up locally the easiest way to get started is to use the linkup cli:
 
 ```sh
@@ -31,7 +33,7 @@ Once you have the cli installed you can start a linkup session by running:
 
 ```zsh
 linkup start      <--- Gives you your unique session name
-linkup status     <--- Shows your session is configured
+linkup status     <--- Shows how your session is configured
 linkup local web  <--- Routes traffic of the `web` service to your local machine
 linkup stop       <-- Stops your session
 ```

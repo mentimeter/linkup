@@ -172,6 +172,7 @@ enum Commands {
         all: bool,
     },
 
+    #[clap(about = "Speed up your local environment by routing traffic locally when possible")]
     LocalDNS {
         #[clap(subcommand)]
         subcommand: LocalDNSSubcommand,
