@@ -3,30 +3,14 @@ use std::process::{self};
 use std::sync::Once;
 
 use daemonize::{Daemonize, Outcome};
-use thiserror::Error;
 
-use crate::local_server::local_linkup_main;
-use crate::LINKUP_CLOUDFLARED_PID;
+use crate::CheckErr;
 use crate::{linkup_file_path, CliError, LINKUP_LOCALSERVER_PID_FILE};
+
+use super::server::local_linkup_main;
 
 const LINKUP_LOCALSERVER_STDOUT: &str = "localserver-stdout";
 const LINKUP_LOCALSERVER_STDERR: &str = "localserver-stderr";
-
-#[derive(Error, Debug)]
-pub enum CheckErr {
-    #[error("local server not started")]
-    LocalNotStarted,
-    #[error("cloudflared tunnel not started")]
-    TunnelNotStarted,
-}
-
-pub fn is_tunnel_started() -> Result<(), CheckErr> {
-    if !linkup_file_path(LINKUP_CLOUDFLARED_PID).exists() {
-        Err(CheckErr::TunnelNotStarted)
-    } else {
-        Ok(())
-    }
-}
 
 pub fn is_local_server_started() -> Result<(), CheckErr> {
     if !linkup_file_path(LINKUP_LOCALSERVER_PID_FILE).exists() {

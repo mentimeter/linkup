@@ -5,13 +5,10 @@ use clap_complete::Shell;
 use thiserror::Error;
 
 mod background_booting;
-mod background_local_server;
-mod background_tunnel;
 mod completion;
 mod env_files;
 mod local_config;
 mod local_dns;
-mod local_server;
 mod preview;
 mod remote_local;
 mod reset;
@@ -119,6 +116,16 @@ pub enum CliError {
     WriteFile(String),
     #[error("failed to reboot dnsmasq: {0}")]
     RebootDNSMasq(String),
+    #[error("--no-tunnel does not work without `local-dns`")]
+    NoTunnelWithoutLocalDns,
+}
+
+#[derive(Error, Debug)]
+pub enum CheckErr {
+    #[error("local server not started")]
+    LocalNotStarted,
+    #[error("cloudflared tunnel not started")]
+    TunnelNotStarted,
 }
 
 #[derive(Parser)]
@@ -149,7 +156,13 @@ enum LocalDNSSubcommand {
 #[derive(Subcommand)]
 enum Commands {
     #[clap(about = "Start a new linkup session")]
-    Start,
+    Start {
+        #[clap(
+            long = "no-tunnel",
+            help = "Start linkup in partial mode without a tunnel. Not all requests will succeed."
+        )]
+        no_tunnel: bool,
+    },
 
     #[clap(about = "Stop a running linkup session")]
     Stop,
@@ -205,9 +218,9 @@ fn main() -> Result<()> {
     ensure_linkup_dir()?;
 
     match &cli.command {
-        Commands::Start => start(&cli.config),
+        Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel),
         Commands::Stop => stop(),
-        Commands::Reset => reset(&cli.config),
+        Commands::Reset => reset(),
         Commands::Local { service_names } => local(service_names),
         Commands::Remote { service_names } => remote(service_names),
         Commands::Status { json, all } => status(*json, *all),

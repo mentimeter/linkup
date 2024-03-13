@@ -1,6 +1,6 @@
 [package]
 name = "linkup-cli"
-version = "0.2.8"
+version = "0.2.9"
 edition = "2021"
 
 [[bin]]
@@ -18,7 +18,7 @@ env_logger = "0.11"
 futures = "0.3"
 linkup = { path = "../linkup", features = ["actix", "reqwest"] }
 log = "0.4"
-nix = "0.28"
+nix = { version = "0.28", features = ["signal"] }
 rand = "0.8"
 regex = "1"
 reqwest = { version = "0.11", default-features = false, features = [

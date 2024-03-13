@@ -32,6 +32,10 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     return match (req.method(), req.path().as_str()) {
         (Method::Post, "/linkup") => linkup_session_handler(req, &sessions).await,
         (Method::Post, "/preview") => linkup_preview_handler(req, &sessions).await,
+        (Method::Get, "/linkup-no-tunnel") => plaintext_error(
+            "This linkup session has no associated tunnel / was started with --no-tunnel",
+            422,
+        ),
         _ => linkup_request_handler(req, &sessions).await,
     };
 }

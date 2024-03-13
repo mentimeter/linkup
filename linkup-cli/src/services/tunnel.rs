@@ -13,13 +13,21 @@ use url::Url;
 use crate::signal::send_signal;
 
 use crate::stop::stop_pid_file;
-use crate::{linkup_file_path, CliError};
+use crate::{linkup_file_path, CheckErr, CliError};
 use crate::{LINKUP_CLOUDFLARED_PID, LINKUP_LOCALSERVER_PORT};
 
 const LINKUP_CLOUDFLARED_STDOUT: &str = "cloudflared-stdout";
 const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";
 
 const TUNNEL_START_WAIT: u64 = 20;
+
+pub fn is_tunnel_started() -> Result<(), CheckErr> {
+    if !linkup_file_path(LINKUP_CLOUDFLARED_PID).exists() {
+        Err(CheckErr::TunnelNotStarted)
+    } else {
+        Ok(())
+    }
+}
 
 pub fn start_tunnel() -> Result<Url, CliError> {
     let mut attempt = 0;

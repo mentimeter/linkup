@@ -55,6 +55,28 @@ impl LocalState {
 
         Ok(())
     }
+
+    pub fn should_use_tunnel(&self) -> bool {
+        self.linkup.tunnel.is_some()
+    }
+
+    pub fn get_tunnel_url(&self) -> Url {
+        match &self.linkup.tunnel {
+            Some(url) => url.clone(),
+            None => {
+                let mut remote = self.linkup.remote.clone();
+                remote.set_path("/linkup-no-tunnel");
+                remote
+            }
+        }
+    }
+
+    pub fn domain_strings(&self) -> Vec<String> {
+        self.domains
+            .iter()
+            .map(|storable_domain| storable_domain.domain.clone())
+            .collect::<Vec<String>>()
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -63,7 +85,7 @@ pub struct LinkupState {
     pub session_token: String,
     pub config_path: String,
     pub remote: Url,
-    pub tunnel: Url,
+    pub tunnel: Option<Url>,
     pub cache_routes: Option<Vec<String>>,
 }
 
@@ -113,13 +135,6 @@ impl YamlLocalConfig {
             .collect::<Vec<String>>()
     }
 
-    pub fn domains(&self) -> Vec<String> {
-        self.domains
-            .iter()
-            .map(|storable_domain| storable_domain.domain.clone())
-            .collect::<Vec<String>>()
-    }
-
     pub fn create_preview_request(&self, services: &[(String, String)]) -> CreatePreviewRequest {
         let services = self
             .services
@@ -164,19 +179,28 @@ pub struct YamlLocalService {
     rewrites: Option<Vec<StorableRewrite>>,
 }
 
-pub fn config_to_state(yaml_config: YamlLocalConfig, config_path: String) -> LocalState {
+pub fn config_to_state(
+    yaml_config: YamlLocalConfig,
+    config_path: String,
+    no_tunnel: bool,
+) -> LocalState {
     let random_token: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(16)
         .map(char::from)
         .collect();
 
+    let tunnel = match no_tunnel {
+        true => None,
+        false => Some(Url::parse("http://tunnel-not-yet-set").expect("default url parses")),
+    };
+
     let linkup = LinkupState {
         session_name: String::new(),
         session_token: random_token,
         config_path,
         remote: yaml_config.linkup.remote,
-        tunnel: Url::parse("http://tunnel-not-yet-set").expect("default url parses"),
+        tunnel,
         cache_routes: yaml_config.linkup.cache_routes,
     };
 
@@ -288,7 +312,7 @@ domains:
     fn test_config_to_state() {
         let input_str = String::from(CONF_STR);
         let yaml_config = serde_yaml::from_str(&input_str).unwrap();
-        let local_state = config_to_state(yaml_config, "./path/to/config.yaml".to_string());
+        let local_state = config_to_state(yaml_config, "./path/to/config.yaml".to_string(), false);
 
         assert_eq!(local_state.linkup.config_path, "./path/to/config.yaml");
 

@@ -40,12 +40,14 @@ Error: StartLinkupTimeout("https://xxx.trycloudflare.com/linkup-check took too l
 #### Diagnosis
 
 `cat ~/.linkup/cloudflared-stderr` will give you more logs from the cloudflared process that might point you in the right direction.
+Linkup runs `cloudflared tunnel --url http://localhost:9066` to start the tunnel. You can run this command manually to see if it gives you more information.
 
 #### Solution
 
 - Sometimes, it can be as simple as a network problem. Check your connection and run `linkup reset` to try again.
 - If the problem persists, cloudflare may be having problems. Check their [status page](https://www.cloudflarestatus.com/).
 - To mitigate the impact of your tunnel being down, you can use `local-dns` to resolve your linkup domains to your local machine.
+- With `local-dns` installed, you can run linkup without a tunnel by running `linkup start --no-tunnel`. This will allow you to use your linkup session without a tunnel, but not all use cases will work.
 
 ### Configuration problems
 
