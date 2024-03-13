@@ -29,12 +29,14 @@ pub fn boot_background_services() -> Result<(), CliError> {
 
     wait_till_ok(format!("{}linkup-check", local_url))?;
 
-    if state.should_use_tunnel() && is_tunnel_started().is_err() {
-        println!("Starting tunnel...");
-        let tunnel = start_tunnel()?;
-        state.linkup.tunnel = Some(tunnel);
-    } else if state.should_use_tunnel() {
-        println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
+    if state.should_use_tunnel() {
+        if is_tunnel_started().is_err() {
+            println!("Starting tunnel...");
+            let tunnel = start_tunnel()?;
+            state.linkup.tunnel = Some(tunnel);
+        } else {
+            println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
+        }
     } else {
         println!(
             "Skipping tunnel start... WARNING: not all kinds of requests will work in this mode."

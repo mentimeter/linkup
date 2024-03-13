@@ -1,4 +1,7 @@
-use std::{fs, process::Command};
+use std::{
+    fs,
+    process::{Command, Stdio},
+};
 
 use nix::sys::signal::Signal;
 use std::fmt::Write;
@@ -18,8 +21,8 @@ pub fn start(domains: Vec<String>, session_name: String) -> Result<()> {
         .arg("--log-queries")
         .arg("-C")
         .arg(conf_file_path)
-        // .stdout(Stdio::null())
-        // .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .map_err(|err| CliError::StartDNSMasq(err.to_string()))?;
 

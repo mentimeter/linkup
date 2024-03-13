@@ -158,7 +158,8 @@ enum Commands {
     #[clap(about = "Start a new linkup session")]
     Start {
         #[clap(
-            long = "no-tunnel",
+            short,
+            long,
             help = "Start linkup in partial mode without a tunnel. Not all requests will succeed."
         )]
         no_tunnel: bool,
