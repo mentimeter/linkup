@@ -4,15 +4,15 @@ use std::{
 };
 
 use crate::{
-    linkup_dir_path, linkup_file_path, local_config::YamlLocalConfig, CliError, Result,
-    LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALSERVER_PORT,
+    linkup_dir_path, linkup_file_path, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
+    LINKUP_LOCALSERVER_PORT,
 };
 
 const CADDYFILE: &str = "Caddyfile";
 const PID_FILE: &str = "caddy-pid";
 const LOG_FILE: &str = "caddy-log";
 
-pub fn start(local_config: &YamlLocalConfig) -> Result<()> {
+pub fn start(domains: Vec<String>) -> Result<()> {
     if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
         return Err(CliError::StartCaddy(format!(
             "{} env var is not set",
@@ -20,13 +20,12 @@ pub fn start(local_config: &YamlLocalConfig) -> Result<()> {
         )));
     }
 
-    let domains: Vec<String> = local_config
-        .domains()
+    let domains_and_subdomains: Vec<String> = domains
         .iter()
         .map(|domain| format!("{domain}, *.{domain}"))
         .collect();
 
-    write_caddyfile(&domains)?;
+    write_caddyfile(&domains_and_subdomains)?;
 
     Command::new("caddy")
         .current_dir(linkup_dir_path())

@@ -9,11 +9,7 @@ use thiserror::Error;
 
 use linkup::{HeaderMap as LinkupHeaderMap, HeaderName as LinkupHeaderName, *};
 
-use crate::{
-    linkup_file_path,
-    services::dnsmasq::{reload_dnsmasq_conf, write_dnsmaq_conf},
-    LINKUP_LOCALDNS_INSTALL, LINKUP_LOCALSERVER_PORT,
-};
+use crate::LINKUP_LOCALSERVER_PORT;
 
 #[derive(Error, Debug)]
 pub enum ProxyError {
@@ -65,18 +61,11 @@ async fn linkup_config_handler(
     match update_session_req_from_json(input_json_conf) {
         Ok((desired_name, server_conf)) => {
             let sessions = SessionAllocator::new(string_store.as_ref());
-            let server_domains = server_conf.domain_selection_order.clone();
             let session_name = sessions
                 .store_session(server_conf, NameKind::Animal, desired_name)
                 .await;
             match session_name {
-                Ok(session_name) => {
-                    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
-                        return add_local_dns_domain(server_domains, session_name);
-                    }
-
-                    HttpResponse::Ok().body(session_name)
-                }
+                Ok(session_name) => HttpResponse::Ok().body(session_name),
                 Err(e) => HttpResponse::InternalServerError()
                     .append_header(ContentType::plaintext())
                     .body(format!("Failed to store server config: {}", e)),
@@ -295,24 +284,4 @@ fn no_redirect_client() -> reqwest::Client {
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .unwrap()
-}
-
-fn add_local_dns_domain(session_domains: Vec<String>, session_name: String) -> HttpResponse {
-    let dnsmasq_conf_domains = session_domains
-        .iter()
-        .map(|d| format!("{}.{}", session_name, d))
-        .collect();
-
-    if let Err(e) = write_dnsmaq_conf(Some(dnsmasq_conf_domains)) {
-        return HttpResponse::InternalServerError()
-            .append_header(ContentType::plaintext())
-            .body(format!("Failed to write dnsmasq config: {}", e));
-    };
-    if let Err(e) = reload_dnsmasq_conf() {
-        return HttpResponse::InternalServerError()
-            .append_header(ContentType::plaintext())
-            .body(format!("Failed to restart dnsmasq: {}", e));
-    };
-
-    HttpResponse::Ok().body(session_name)
 }

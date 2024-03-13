@@ -196,7 +196,7 @@ fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState)
 
     // NOTE(augustoccesar): last usage of tx on this context, no need to clone it
     let tunnel_tx = tx;
-    let tunnel = state.linkup.tunnel.to_string();
+    let tunnel = state.get_tunnel_url().to_string();
     thread::spawn(move || {
         let service_status = ServiceStatus {
             name: "tunnel".to_string(),
