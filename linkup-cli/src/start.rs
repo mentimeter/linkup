@@ -27,7 +27,7 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
         state.linkup.session_token = ps.linkup.session_token;
 
         // Maintain tunnel state until it is rewritten
-        if !no_tunnel {
+        if !no_tunnel && ps.linkup.tunnel.is_some() {
             state.linkup.tunnel = ps.linkup.tunnel;
         }
     }
