@@ -37,7 +37,7 @@ pub fn write_to_env_file(service: &str, dev_env_path: &PathBuf, env_path: &PathB
             )
         })?;
 
-    let content = vec![
+    let content = [
         format!("\n{}", LINKUP_ENV_SEPARATOR),
         format!("\n{}", dev_env_content),
         format!("\n{}", LINKUP_ENV_SEPARATOR),
