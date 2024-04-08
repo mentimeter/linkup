@@ -1,6 +1,6 @@
 [package]
 name = "linkup-cli"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2021"
 
 [[bin]]
@@ -16,6 +16,7 @@ ctrlc = { version = "3.4", features = ["termination"] }
 daemonize = "0.5"
 env_logger = "0.11"
 futures = "0.3"
+hostname = "0.4.0"
 linkup = { path = "../linkup", features = ["actix", "reqwest"] }
 log = "0.4"
 nix = { version = "0.28", features = ["signal"] }

@@ -20,10 +20,19 @@ pub fn start(domains: Vec<String>) -> Result<()> {
         )));
     }
 
-    let domains_and_subdomains: Vec<String> = domains
+    let mut domains_and_subdomains: Vec<String> = domains
         .iter()
         .map(|domain| format!("{domain}, *.{domain}"))
         .collect();
+
+    // Add a unique domain to the domains set to bypass letsencrypt rate limits
+    // https://letsencrypt.org/docs/duplicate-certificate-limit/
+    let host = hostname::get()
+        .map_err(|err| CliError::StartCaddy(err.to_string()))?
+        .to_string_lossy()
+        .to_string();
+
+    domains_and_subdomains.push(format!("{}.{}", host, domains[0]));
 
     write_caddyfile(&domains_and_subdomains)?;
 
