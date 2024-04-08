@@ -67,7 +67,7 @@ pub fn boot_background_services() -> Result<(), CliError> {
         println!("Waiting for tunnel to be ready at {}...", tunnel);
 
         // If the tunnel is checked too quickly, it dies ¯\_(ツ)_/¯
-        thread::sleep(Duration::from_millis(1000));
+        thread::sleep(Duration::from_millis(5000));
         wait_till_ok(format!("{}linkup-check", tunnel))?;
 
         println!();
