@@ -35,6 +35,7 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
     ensure_resolver_dir()?;
     install_resolvers(&input_config.top_level_domains())?;
     services::caddy::install_cloudflare_package()?;
+    services::caddy::install_redis_package()?;
 
     if fs::write(linkup_file_path(LINKUP_LOCALDNS_INSTALL), "").is_err() {
         return Err(CliError::LocalDNSInstall(format!(
