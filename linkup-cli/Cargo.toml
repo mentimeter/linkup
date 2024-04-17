@@ -16,6 +16,7 @@ ctrlc = { version = "3.4", features = ["termination"] }
 daemonize = "0.5"
 env_logger = "0.11"
 futures = "0.3"
+hickory-resolver = "0.24.0"
 linkup = { path = "../linkup", features = ["actix", "reqwest"] }
 log = "0.4"
 nix = { version = "0.28", features = ["signal"] }
