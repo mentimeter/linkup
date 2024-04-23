@@ -1,6 +1,10 @@
 use std::thread;
 use std::time::{Duration, Instant};
 
+use hickory_resolver::config::*;
+use hickory_resolver::proto::rr::RecordType;
+use hickory_resolver::Resolver;
+
 use reqwest::StatusCode;
 
 use linkup::{StorableService, StorableSession, UpdateSessionRequest};
@@ -64,11 +68,9 @@ pub fn boot_background_services() -> Result<(), CliError> {
     }
 
     if let Some(tunnel) = &state.linkup.tunnel {
-        println!("Waiting for tunnel to be ready at {}...", tunnel);
+        println!("Waiting for tunnel DNS to propogate at {}...", tunnel);
 
-        // If the tunnel is checked too quickly, it dies ¯\_(ツ)_/¯
-        thread::sleep(Duration::from_millis(5000));
-        wait_till_ok(format!("{}linkup-check", tunnel))?;
+        wait_for_dns_ok(tunnel.clone())?;
 
         println!();
     }
@@ -164,6 +166,41 @@ impl From<&LocalState> for ServerConfig {
 impl<'a> From<&'a ServerConfig> for (&'a StorableSession, &'a StorableSession) {
     fn from(config: &'a ServerConfig) -> Self {
         (&config.local, &config.remote)
+    }
+}
+
+pub fn wait_for_dns_ok(url: Url) -> Result<(), CliError> {
+    let mut opts = ResolverOpts::default();
+    opts.cache_size = 0; // Disable caching
+
+    let resolver = Resolver::new(ResolverConfig::default(), opts)
+        .map_err(|err| CliError::StartLinkupTimeout(err.to_string()))?;
+
+    let start = Instant::now();
+
+    let domain = url.host_str().unwrap();
+
+    loop {
+        if start.elapsed() > Duration::from_secs(40) {
+            return Err(CliError::StartLinkupTimeout(format!(
+                "{} took too long to resolve",
+                domain
+            )));
+        }
+
+        let response = resolver.lookup(domain, RecordType::A);
+
+        if let Ok(lookup) = response {
+            let addresses = lookup.iter().collect::<Vec<_>>();
+
+            if !addresses.is_empty() {
+                print!("DNS has propogated for {}.", domain);
+                thread::sleep(Duration::from_millis(1000));
+                return Ok(());
+            }
+        }
+
+        thread::sleep(Duration::from_millis(2000));
     }
 }
 
