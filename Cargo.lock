@@ -1168,16 +1168,14 @@ dependencies = [
 name = "linkup-cli"
 version = "0.2.15"
 dependencies = [
- "actix-web",
  "clap",
  "clap_complete",
  "colored",
  "ctrlc",
  "daemonize",
- "env_logger",
- "futures",
  "hickory-resolver",
  "linkup",
+ "linkup-local-server",
  "log",
  "nix 0.28.0",
  "rand",
@@ -1187,9 +1185,22 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "thiserror",
+ "url",
+]
+
+[[package]]
+name = "linkup-local-server"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "env_logger",
+ "futures",
+ "linkup",
+ "log",
+ "reqwest 0.11.24",
+ "thiserror",
  "tokio",
  "tokio-util",
- "url",
 ]
 
 [[package]]
