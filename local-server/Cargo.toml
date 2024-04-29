@@ -1,24 +1,17 @@
 [package]
-name = "linkup-cli"
-version = "0.2.15"
+name = "linkup-local-server"
+version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "linkup"
-path = "src/main.rs"
+[lib]
+name = "linkup_local_server"
+path = "src/lib.rs"
 
 [dependencies]
 actix-web = "4.5"
-clap = { version = "4.5", features = ["derive"] }
-clap_complete = "4.5"
-colored = "2"
-ctrlc = { version = "3.4", features = ["termination"] }
-daemonize = "0.5"
 env_logger = "0.11"
 futures = "0.3"
-hickory-resolver = "0.24.0"
 linkup = { path = "../linkup", features = ["actix", "reqwest"] }
-linkup-local-server = { path = "../local-server" }
 log = "0.4"
 nix = { version = "0.28", features = ["signal"] }
 rand = "0.8"
