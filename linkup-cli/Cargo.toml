@@ -8,14 +8,11 @@ name = "linkup"
 path = "src/main.rs"
 
 [dependencies]
-actix-web = "4.5"
 clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.5"
 colored = "2"
 ctrlc = { version = "3.4", features = ["termination"] }
 daemonize = "0.5"
-env_logger = "0.11"
-futures = "0.3"
 hickory-resolver = "0.24.0"
 linkup = { path = "../linkup", features = ["actix", "reqwest"] }
 linkup-local-server = { path = "../local-server" }
@@ -31,6 +28,4 @@ serde = "1"
 serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "1"
-tokio = "1"
-tokio-util = "0.7"
 url = { version = "2.5", features = ["serde"] }
