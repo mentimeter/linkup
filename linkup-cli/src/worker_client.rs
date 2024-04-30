@@ -41,7 +41,12 @@ impl WorkerClient {
     fn post<T: Serialize>(&self, path: &str, params: &T) -> Result<String, Error> {
         let params = serde_json::to_string(params)?;
         let endpoint = self.url.join(path)?;
-        let response = self.inner.post(endpoint).body(params).send()?;
+        let response = self
+            .inner
+            .post(endpoint)
+            .header("Content-Type", "application/json")
+            .body(params)
+            .send()?;
 
         match response.status() {
             StatusCode::OK => {

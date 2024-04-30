@@ -108,6 +108,26 @@ pub enum ConfigError {
     Empty,
 }
 
+impl From<UpdateSessionRequest> for StorableSession {
+    fn from(req: UpdateSessionRequest) -> Self {
+        StorableSession {
+            session_token: req.session_token,
+            services: req.services,
+            domains: req.domains,
+            cache_routes: req.cache_routes,
+        }
+    }
+}
+
+impl TryFrom<UpdateSessionRequest> for Session {
+    type Error = ConfigError;
+
+    fn try_from(value: UpdateSessionRequest) -> Result<Self, Self::Error> {
+        let storable: StorableSession = value.into();
+        storable.try_into()
+    }
+}
+
 impl TryFrom<StorableRewrite> for Rewrite {
     type Error = ConfigError;
 
