@@ -14,15 +14,13 @@ thiserror = "1"
 unicase = "2.7"
 url = { version = "2.5", features = ["serde"] }
 
-# features dependencies
-actix-web = { version = "4.3.1", default-features = false, optional = true }
 reqwest = { version = "0.11.14", default-features = false, optional = true }
 worker = { version = "0.0.18", default-features = false, optional = true }
+http = "1.1.0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros"] }
 
 [features]
-actix = ["dep:actix-web"]
 reqwest = ["dep:reqwest"]
 worker = ["dep:worker"]

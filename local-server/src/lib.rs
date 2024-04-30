@@ -1,287 +1,332 @@
-use std::io;
-
-use actix_web::{
-    guard, http::header::ContentType, middleware, rt, web, App, HttpRequest, HttpResponse,
-    HttpServer, Responder,
+use axum::{
+    body::Body,
+    extract::{Json, Request},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::{any, get, post},
+    Extension, Router,
 };
-use futures::stream::StreamExt;
-use thiserror::Error;
+use http::{header::HeaderMap, Uri};
+use hyper_rustls::HttpsConnector;
+use hyper_util::{
+    client::legacy::{connect::HttpConnector, Client},
+    rt::{TokioExecutor, TokioIo},
+};
 
-use linkup::{HeaderMap as LinkupHeaderMap, HeaderName as LinkupHeaderName, *};
+use linkup::{
+    allow_all_cors, get_additional_headers, get_target_service, MemoryStringStore, NameKind,
+    Session, SessionAllocator, TargetService, UpdateSessionRequest,
+};
+use tokio::signal;
+use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
+
+type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 
-#[derive(Error, Debug)]
-pub enum ProxyError {
-    #[error("reqwest proxy error {0}")]
-    ReqwestProxyError(String),
+#[derive(Debug)]
+struct ApiError {
+    message: String,
+    status_code: StatusCode,
 }
 
-#[actix_web::main]
-pub async fn local_linkup_main() -> io::Result<()> {
-    env_logger::Builder::new()
-        .filter(None, log::LevelFilter::Info)
-        .init();
-
-    let string_store = web::Data::new(MemoryStringStore::new());
-
-    println!("Starting local server on port {}", LINKUP_LOCALSERVER_PORT);
-    HttpServer::new(move || {
-        App::new()
-            .app_data(string_store.clone()) // Add shared state
-            .app_data(web::PayloadConfig::new(100 * 1024 * 1024)) // 100 MB payload limit
-            .wrap(middleware::Logger::default()) // Enable logger
-            .route("/linkup", web::post().to(linkup_config_handler))
-            .route("/linkup-check", web::route().to(always_ok))
-            .service(
-                web::resource("{path:.*}")
-                    .guard(guard::Header("upgrade", "websocket"))
-                    .to(linkup_ws_request_handler),
-            )
-            .default_service(web::route().to(linkup_request_handler))
-    })
-    .bind(("127.0.0.1", LINKUP_LOCALSERVER_PORT))?
-    .run()
-    .await
-}
-
-async fn linkup_config_handler(
-    string_store: web::Data<MemoryStringStore>,
-    req_body: web::Bytes,
-) -> impl Responder {
-    let input_json_conf = match String::from_utf8(req_body.to_vec()) {
-        Ok(input_json_conf) => input_json_conf,
-        Err(_) => {
-            return HttpResponse::BadRequest()
-                .append_header(ContentType::plaintext())
-                .body("Invalid request body encoding - local server")
+impl ApiError {
+    fn new(message: String, status_code: StatusCode) -> Self {
+        ApiError {
+            message,
+            status_code,
         }
-    };
-
-    match update_session_req_from_json(input_json_conf) {
-        Ok((desired_name, server_conf)) => {
-            let sessions = SessionAllocator::new(string_store.as_ref());
-            let session_name = sessions
-                .store_session(server_conf, NameKind::Animal, desired_name)
-                .await;
-            match session_name {
-                Ok(session_name) => HttpResponse::Ok().body(session_name),
-                Err(e) => HttpResponse::InternalServerError()
-                    .append_header(ContentType::plaintext())
-                    .body(format!("Failed to store server config: {}", e)),
-            }
-        }
-        Err(e) => HttpResponse::BadRequest()
-            .append_header(ContentType::plaintext())
-            .body(format!(
-                "Failed to parse server config: {} - local server",
-                e
-            )),
     }
 }
 
-async fn linkup_ws_request_handler(
-    string_store: web::Data<MemoryStringStore>,
-    req: HttpRequest,
-    req_stream: web::Payload,
-) -> impl Responder {
-    let sessions = SessionAllocator::new(string_store.as_ref());
-
-    let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
-    let mut headers = LinkupHeaderMap::from_actix_request(&req);
-
-    let session_result = sessions.get_request_session(&url, &headers).await;
-
-    if session_result.is_err() {
-        println!("Failed to get session: {:?}", session_result);
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        Response::builder()
+            .status(self.status_code)
+            .header("Content-Type", "text/plain")
+            .body(Body::from(self.message))
+            .unwrap()
     }
+}
 
-    let (session_name, config) = match session_result {
-        Ok(result) => result,
-        Err(_) => {
-            return HttpResponse::UnprocessableEntity()
-                .append_header(ContentType::plaintext())
-                .body("Unprocessable Content - local server")
-        }
-    };
+pub fn linkup_router() -> Router {
+    let config_store = MemoryStringStore::default();
+    let client = https_client();
 
-    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
-        Some(result) => result,
-        None => {
-            return HttpResponse::NotFound()
-                .append_header(ContentType::plaintext())
-                .body("Not target url for request - local server")
-        }
-    };
+    Router::new()
+        .route("/linkup", post(linkup_config_handler))
+        .route("/linkup-check", get(always_ok))
+        .fallback(any(linkup_request_handler))
+        .layer(Extension(config_store))
+        .layer(Extension(client))
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(DefaultOnRequest::new()) // Log all incoming requests at INFO level
+                .on_response(DefaultOnResponse::new()), // Log all responses at INFO level
+        )
+}
 
-    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
+#[tokio::main]
+pub async fn local_linkup_main() -> std::io::Result<()> {
+    let app = linkup_router();
 
-    // Proxy the request using the destination_url and the merged headers
-    let client = no_redirect_client();
-    headers.extend(&extra_headers);
-    headers.remove(LinkupHeaderName::Host);
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", LINKUP_LOCALSERVER_PORT))
+        .await
+        .unwrap();
+    println!("listening on {}", listener.local_addr().unwrap());
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
-    let response_result = client
-        .request(req.method().clone(), &target_service.url)
-        .headers(headers.into())
-        .send()
-        .await;
-
-    let response =
-        match response_result {
-            Ok(response) => response,
-            Err(_) => return HttpResponse::BadGateway()
-                .append_header(ContentType::plaintext())
-                .body(
-                    "Bad Gateway from local server, could you have forgotten to start the server?",
-                ),
-        };
-
-    // Make sure the server is willing to accept the websocket.
-    let status = response.status().as_u16();
-    if status != 101 {
-        return HttpResponse::BadGateway()
-            .append_header(ContentType::plaintext())
-            .body("The underlying server did not accept the websocket connection.");
-    }
-
-    // Copy headers from the target back to the client.
-    let mut client_response = HttpResponse::SwitchingProtocols();
-    client_response.upgrade("websocket");
-    for (header, value) in response.headers() {
-        client_response.insert_header((header.to_owned(), value.to_owned()));
-    }
-    for (header, value) in &additional_response_headers() {
-        client_response.insert_header((header.to_string(), value.to_string()));
-    }
-
-    let upgrade_result = response.upgrade().await;
-    let upgrade = match upgrade_result {
-        Ok(response) => response,
-        Err(_) => {
-            return HttpResponse::BadGateway()
-                .append_header(ContentType::plaintext())
-                .body("could not upgrade to websocket connection.")
-        }
-    };
-
-    let (target_rx, mut target_tx) = tokio::io::split(upgrade);
-
-    // Copy byte stream from the client to the target.
-    rt::spawn(async move {
-        let mut req_stream = req_stream.map(|result| {
-            result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-        });
-        let mut client_read = tokio_util::io::StreamReader::new(&mut req_stream);
-        let result = tokio::io::copy(&mut client_read, &mut target_tx).await;
-        if let Err(err) = result {
-            println!("Error proxying websocket client bytes to target: {err}")
-        }
-    });
-
-    // // Copy byte stream from the target back to the client.
-    let target_stream = tokio_util::io::ReaderStream::new(target_rx);
-    client_response.streaming(target_stream)
+    Ok(())
 }
 
 async fn linkup_request_handler(
-    string_store: web::Data<MemoryStringStore>,
-    req: HttpRequest,
-    req_body: web::Bytes,
-) -> impl Responder {
-    let sessions = SessionAllocator::new(string_store.as_ref());
+    Extension(store): Extension<MemoryStringStore>,
+    Extension(client): Extension<HttpsClient>,
+    req: Request,
+) -> Response {
+    let sessions = SessionAllocator::new(&store);
 
+    let headers: linkup::HeaderMap = req.headers().into();
     let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
-    let mut headers = LinkupHeaderMap::from_actix_request(&req);
-
-    let session_result = sessions.get_request_session(&url, &headers).await;
-
-    if session_result.is_err() {
-        println!("Failed to get session: {:?}", session_result);
-    }
-
-    let (session_name, config) = match session_result {
-        Ok(result) => result,
+    let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
+        Ok(session) => session,
         Err(_) => {
-            return HttpResponse::UnprocessableEntity()
-                .append_header(ContentType::plaintext())
-                .body("Unprocessable Content - local server")
+            return ApiError::new(
+                "Linkup was unable to determine the session origin of the request. Ensure that your request includes a valid session identifier in the referer or tracestate headers. - Local Server".to_string(),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            )
+            .into_response()
         }
     };
 
     let target_service = match get_target_service(&url, &headers, &config, &session_name) {
         Some(result) => result,
         None => {
-            return HttpResponse::NotFound()
-                .append_header(ContentType::plaintext())
-                .body("Not target url for request - local server")
+            return ApiError::new(
+                "The request belonged to a session, but there was no target for the request. Check that the routing rules in your linkup config have a match for this request. - Local Server".to_string(),
+                StatusCode::NOT_FOUND,
+            )
+            .into_response()
         }
     };
 
     let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
-    // Proxy the request using the destination_url and the merged headers
-    let client = no_redirect_client();
+    if req
+        .headers()
+        .get("upgrade")
+        .map(|v| v == "websocket")
+        .unwrap_or(false)
+    {
+        handle_ws_req(req, target_service, extra_headers, client).await
+    } else {
+        handle_http_req(req, target_service, extra_headers, client).await
+    }
+}
 
-    headers.extend(&extra_headers);
-    headers.remove(LinkupHeaderName::Host);
+async fn handle_http_req(
+    mut req: Request,
+    target_service: TargetService,
+    extra_headers: linkup::HeaderMap,
+    client: HttpsClient,
+) -> Response {
+    *req.uri_mut() = Uri::try_from(target_service.url).unwrap();
+    let extra_http_headers: HeaderMap = extra_headers.into();
+    req.headers_mut().extend(extra_http_headers);
+    // Request uri and host headers should not conflict
+    req.headers_mut().remove(http::header::HOST);
 
-    let response_result = client
-        .request(req.method().clone(), &target_service.url)
-        .headers(headers.into())
-        .body(req_body)
-        .send()
-        .await;
+    // Send the modified request to the target service.
+    let mut resp = match client.request(req).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to proxy request: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
+        }
+    };
 
-    let response =
-        match response_result {
-            Ok(response) => response,
-            Err(_) => return HttpResponse::BadGateway()
-                .append_header(ContentType::plaintext())
-                .body(
-                    "Bad Gateway from local server, could you have forgotten to start the server?",
-                ),
+    resp.headers_mut().extend(allow_all_cors());
+
+    resp.into_response()
+}
+
+async fn handle_ws_req(
+    req: Request,
+    target_service: TargetService,
+    extra_headers: linkup::HeaderMap,
+    client: HttpsClient,
+) -> Response {
+    let extra_http_headers: HeaderMap = extra_headers.into();
+
+    let target_ws_req_result = Request::builder()
+        .uri(target_service.url)
+        .method(req.method().clone())
+        .body(Body::empty());
+
+    let mut target_ws_req = match target_ws_req_result {
+        Ok(request) => request,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to build request: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response();
+        }
+    };
+
+    target_ws_req.headers_mut().extend(req.headers().clone());
+    target_ws_req.headers_mut().extend(extra_http_headers);
+    target_ws_req.headers_mut().remove(http::header::HOST);
+
+    // Send the modified request to the target service.
+    let target_ws_resp = match client.request(target_ws_req).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to proxy request: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
+        }
+    };
+
+    let status = target_ws_resp.status();
+    if status != 101 {
+        return ApiError::new(
+            format!(
+                "Failed to proxy request: expected 101 Switching Protocols, got {}",
+                status
+            ),
+            StatusCode::BAD_GATEWAY,
+        )
+        .into_response();
+    }
+
+    let target_ws_resp_headers = target_ws_resp.headers().clone();
+
+    let upgraded_target = match hyper::upgrade::on(target_ws_resp).await {
+        Ok(upgraded) => upgraded,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to upgrade connection: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
+        }
+    };
+
+    tokio::spawn(async move {
+        // We won't get passed this until the 101 response returns to the client
+        let upgraded_incoming = match hyper::upgrade::on(req).await {
+            Ok(upgraded) => upgraded,
+            Err(e) => {
+                println!("Failed to upgrade incoming connection: {}", e);
+                return;
+            }
         };
 
-    convert_reqwest_response(response, &additional_response_headers())
-        .await
-        .unwrap_or_else(|_| {
-            HttpResponse::InternalServerError()
-                .append_header(ContentType::plaintext())
-                .body("Could not convert response from reqwest - local server")
-        })
-}
+        let mut incoming_stream = TokioIo::new(upgraded_incoming);
+        let mut target_stream = TokioIo::new(upgraded_target);
 
-async fn convert_reqwest_response(
-    response: reqwest::Response,
-    extra_headers: &LinkupHeaderMap,
-) -> Result<HttpResponse, ProxyError> {
-    let status_code = response.status();
-    let headers = response.headers().clone();
-    let body = response
-        .bytes()
-        .await
-        .map_err(|e| ProxyError::ReqwestProxyError(e.to_string()))?;
+        let res = tokio::io::copy_bidirectional(&mut incoming_stream, &mut target_stream).await;
 
-    let mut response_builder = HttpResponse::build(status_code);
-    for (key, value) in headers.iter() {
-        response_builder.append_header((key, value));
+        match res {
+            Ok((incoming_to_target, target_to_incoming)) => {
+                println!(
+                    "Copied {} bytes from incoming to target and {} bytes from target to incoming",
+                    incoming_to_target, target_to_incoming
+                );
+            }
+            Err(e) => {
+                eprintln!("Error copying between incoming and target: {}", e);
+            }
+        }
+    });
+
+    let mut resp_builder = Response::builder().status(101);
+    let resp_headers_result = resp_builder.headers_mut();
+    if let Some(resp_headers) = resp_headers_result {
+        for (header, value) in target_ws_resp_headers {
+            if let Some(header_name) = header {
+                resp_headers.append(header_name, value);
+            }
+        }
     }
 
-    for (key, value) in extra_headers.into_iter() {
-        response_builder.insert_header((key.to_string(), value.to_string()));
+    match resp_builder.body(Body::empty()) {
+        Ok(response) => response,
+        Err(e) => ApiError::new(
+            format!("Failed to build response: {}", e),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )
+        .into_response(),
+    }
+}
+
+async fn linkup_config_handler(
+    Extension(store): Extension<MemoryStringStore>,
+    Json(update_req): Json<UpdateSessionRequest>,
+) -> impl IntoResponse {
+    let desired_name = update_req.desired_name.clone();
+    let server_conf: Session = match update_req.try_into() {
+        Ok(conf) => conf,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to parse server config: {} - local server", e),
+                StatusCode::BAD_REQUEST,
+            )
+            .into_response()
+        }
+    };
+
+    let sessions = SessionAllocator::new(&store);
+    let session_name = sessions
+        .store_session(server_conf, NameKind::Animal, desired_name)
+        .await;
+
+    let name = match session_name {
+        Ok(session_name) => session_name,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to store server config: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response()
+        }
+    };
+
+    (StatusCode::OK, name).into_response()
+}
+
+async fn always_ok() -> &'static str {
+    "OK"
+}
+
+async fn shutdown_signal() {
+    let _ = signal::ctrl_c().await;
+    println!("signal received, starting graceful shutdown");
+}
+
+fn https_client() -> HttpsClient {
+    let mut roots = rustls::RootCertStore::empty();
+    for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
+        roots.add(cert).unwrap();
     }
 
-    Ok(response_builder.body(body))
-}
+    let tls = rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
 
-async fn always_ok() -> impl Responder {
-    HttpResponse::Ok().finish()
-}
+    let https = hyper_rustls::HttpsConnectorBuilder::new()
+        .with_tls_config(tls)
+        .https_or_http()
+        .enable_http1()
+        .build();
 
-fn no_redirect_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .unwrap()
+    Client::builder(TokioExecutor::new()).build(https)
 }
