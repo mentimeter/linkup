@@ -18,18 +18,38 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ApiResponse {
-    result: Vec<ResultItem>,
+struct GetTunnelApiResponse {
+    result: Vec<TunnelResultItem>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ResultItem {
+struct TunnelResultItem {
     id: String,
     name: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct TokenApiResponse {
+    result: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CreateTunnelRequest {
+    name: String,
+    tunnel_secret: String,
+}
+
 pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
-    list_tunnels();
+    let tunnel_id = get_tunnel_id("jumpy-snake")?;
+    let tunnel_token = match tunnel_id {
+        Some(id) => get_tunnel_token(&id)?,
+        None => {
+            println!("Creating a new tunnel");
+            "".to_string()
+            create_tunnel("jumpy-snake")?
+        }
+    };
+    println!("Tunnel token: {}", tunnel_token);
     Ok(())
     // let previous_state = LocalState::load();
     // let config_path = config_path(config_arg)?;
@@ -126,11 +146,58 @@ fn check_local_not_started() -> Result<(), CliError> {
     Ok(())
 }
 
-fn list_tunnels() -> Result<(), CliError> {
-    let account_id = "account_id";
+fn get_tunnel_id(tunnel_name: &str) -> Result<Option<String>, CliError> {
+    let account_id = "set-me";
     let url = format!(
         "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
         account_id
+    );
+    let bearer_token =
+        env::var("LINKUP_CF_API_TOKEN").map_err(|err| CliError::BadConfig(err.to_string()))?;
+
+    // Create a client.
+    let client = reqwest::blocking::Client::new();
+
+    // Prepare the headers.
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {}", bearer_token))
+            .map_err(|err| CliError::StatusErr(err.to_string()))?,
+    );
+
+    // Send the GET request.
+    let response = client
+        .get(&url)
+        .headers(headers)
+        .query(&[("name", format!("tunnel-{}", tunnel_name))])
+        .send()
+        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+
+    // Check if the response status is success and print the response body.
+    if response.status().is_success() {
+        let response_body = response
+            .text()
+            .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        let parsed: GetTunnelApiResponse = serde_json::from_str(&response_body)
+            .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        if parsed.result.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(parsed.result[0].id.clone()))
+    } else {
+        println!("Failed to get a successful response: {}", response.status());
+        Ok(None)
+    }
+}
+
+fn get_tunnel_token(tunnel_id: &str) -> Result<String, CliError> {
+    let account_id = "set-me";
+    let url = format!(
+        "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel/{}/token",
+        account_id,
+        tunnel_id
     );
     let bearer_token =
         env::var("LINKUP_CF_API_TOKEN").map_err(|err| CliError::BadConfig(err.to_string()))?;
@@ -159,12 +226,68 @@ fn list_tunnels() -> Result<(), CliError> {
         let response_body = response
             .text()
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
-        println!("Response: {}", response_body);
-        let parsed: ApiResponse = serde_json::from_str(&response_body)
+        let parsed: TokenApiResponse = serde_json::from_str(&response_body)
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
-        println!("{:?}", parsed);
+        Ok(parsed.result)
     } else {
         println!("Failed to get a successful response: {}", response.status());
+        Err(CliError::StatusErr("Failed to get a successful response".to_string()))
     }
-    Ok(())
+}
+
+fn create_tunnel(tunnel_name: &str) -> Result<String, CliError> {
+    let account_id = "set-me";
+    let url = format!(
+        "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
+        account_id,
+    );
+    let bearer_token =
+        env::var("LINKUP_CF_API_TOKEN").map_err(|err| CliError::BadConfig(err.to_string()))?;
+
+    // Create a client.
+    let client = reqwest::blocking::Client::new();
+
+    // Prepare the headers.
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {}", bearer_token))
+            .map_err(|err| CliError::StatusErr(err.to_string()))?,
+    );
+
+    // create a 32 byte random string and base64 encode it
+    // let mut rng = rand::thread_rng();
+    // let tunnel_secret: String = (0..32)
+    //     .map(|_| rng.gen_range(0..255))
+    //     .collect::<Vec<u8>>()
+    //     .iter()
+    //     .map(|b| *b as char)
+    //     .collect();
+
+    let body = serde_json::to_string(&CreateTunnelRequest {
+        name: format!("tunnel-{}", tunnel_name),
+        tunnel_secret: "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=".to_string(),
+    }).map_err(|err| CliError::StatusErr(err.to_string()))?;
+
+    // Send the POST request.
+    let response = client
+        .post(&url)
+        .headers(headers)
+        .body(body)
+        .send()
+        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+
+    // Check if the response status is success and print the response body.
+    if response.status().is_success() {
+        let response_body = response
+            .text()
+            .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        let parsed: TunnelResultItem = serde_json::from_str(&response_body)
+            .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        Ok(parsed.id)
+    } else {
+        println!("Failed to get a successful response: {}", response.status());
+        Err(CliError::StatusErr("Failed to get a successful response".to_string()))
+    }
 }
