@@ -10,7 +10,6 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use crate::CliError;
 use mockall::{automock, predicate::*};
 use serde::{Deserialize, Serialize};
-use serde_yaml;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GetTunnelApiResponse {
@@ -172,7 +171,7 @@ fn save_tunnel_credentials(tunnel_id: &str, tunnel_secret: &str) -> Result<(), C
 
     // Create and write to the file
     let mut file = File::create(file_path).map_err(|err| CliError::StatusErr(err.to_string()))?;
-    write!(file, "{}", data.to_string()).map_err(|err| CliError::StatusErr(err.to_string()))?;
+    write!(file, "{}", data).map_err(|err| CliError::StatusErr(err.to_string()))?;
 
     Ok(())
 }
