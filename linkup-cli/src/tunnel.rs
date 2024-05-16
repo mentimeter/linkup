@@ -142,7 +142,7 @@ pub fn create_tunnel(tunnel_name: &str) -> Result<String, CliError> {
     let parsed: CreateTunnelResponse = send_request(&client, &url, headers, Some(body), "POST")?;
     save_tunnel_credentials(&parsed.result.id, &tunnel_secret)
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
-    create_config_yml(&RealFileCreator,&RealFileWriter, &parsed.result.id).map_err(|err| CliError::StatusErr(err.to_string()))?;
+    create_config_yml(&RealFileSystem, &parsed.result.id).map_err(|err| CliError::StatusErr(err.to_string()))?;
 
     Ok(parsed.result.id)
 }
@@ -175,7 +175,7 @@ fn save_tunnel_credentials(tunnel_id: &str, tunnel_secret: &str) -> Result<(), C
     Ok(())
 }
 
-fn create_config_yml(creator: &dyn FileCreator, writer: &dyn FileWriter, tunnel_id: &str) -> Result<(), CliError> {
+fn create_config_yml(fs: &dyn FileSystem, tunnel_id: &str) -> Result<(), CliError> {
     // Determine the directory path
     let home_dir = env::var("HOME").map_err(|err| CliError::BadConfig(err.to_string()))?;
     let dir_path = Path::new(&home_dir).join(".cloudflared");
@@ -197,9 +197,9 @@ fn create_config_yml(creator: &dyn FileCreator, writer: &dyn FileWriter, tunnel_
 
     let serialized = serde_yaml::to_string(&config).expect("Failed to serialize config");
 
-    let mut file: Box<dyn FileLike> = creator.create_file(dir_path.join("config.yml"))
+    let mut file: Box<dyn FileLike> = fs.create_file(dir_path.join("config.yml"))
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
-    writer.write_file(&mut file, serialized.as_bytes())
+    fs.write_file(&mut file, serialized.as_bytes())
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
     Ok(())
 }
@@ -225,18 +225,6 @@ pub fn create_dns_record(tunnel_id: &str, tunnel_name: &str) -> Result<(), CliEr
     send_request(&client, &url, headers, Some(body), "POST")
 }
 
-#[automock]
-trait FileCreator {
-    fn create_file(&self, path: PathBuf) -> Result<Box<dyn FileLike>, CliError>;
-}
-struct RealFileCreator;
-impl FileCreator for RealFileCreator {
-    fn create_file(&self, path: PathBuf) -> Result<Box<dyn FileLike>, CliError> {
-        let file = File::create(path).map_err(|err| CliError::StatusErr(err.to_string()))?;
-        Ok(Box::new(file))
-    }
-}
-
 struct MockFile {
     content: Vec<u8>,
 }
@@ -246,6 +234,7 @@ impl MockFile {
         MockFile { content: Vec::new() }
     }
 }
+
 impl Read for MockFile {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
         let amount = std::cmp::min(buf.len(), self.content.len());
@@ -265,17 +254,26 @@ impl Write for MockFile {
     }
 }
 #[automock]
-trait FileWriter {
-    fn write_file(&self, file: &mut Box<(dyn FileLike + 'static)>, content: &[u8]) -> Result<(), CliError>;
+trait FileSystem {
+    fn create_file(&self, path: PathBuf) -> Result<Box<dyn FileLike>, CliError>;
+    fn write_file(&self, file: &mut Box<dyn FileLike>, content: &[u8]) -> Result<(), CliError>;
 }
-struct RealFileWriter;
-impl FileWriter for RealFileWriter {
-    fn write_file(&self,  file: &mut Box<(dyn FileLike + 'static)>, content: &[u8]) -> Result<(), CliError> {
+
+struct RealFileSystem;
+
+impl FileSystem for RealFileSystem {
+    fn create_file(&self, path: PathBuf) -> Result<Box<dyn FileLike>, CliError> {
+        let file = File::create(path).map_err(|err| CliError::StatusErr(err.to_string()))?;
+        Ok(Box::new(file))
+    }
+
+    fn write_file(&self, file: &mut Box<dyn FileLike>, content: &[u8]) -> Result<(), CliError> {
         file.write_all(content)
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
         Ok(())
     }
 }
+
 pub trait FileLike: Read + Write {}
 
 impl FileLike for std::fs::File {}
@@ -283,6 +281,7 @@ impl FileLike for MockFile {}
 
 #[cfg(test)]
 mod tests {
+
     use mockall::predicate;
 
     use super::*;
@@ -304,16 +303,15 @@ mod tests {
             env::set_var("HOME", "/tmp/home");
             let content = "url: http://localhost:8000\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
 
-            let mut file_creator = MockFileCreator::new();
-            file_creator.expect_create_file()
+            let mut file_system_mock = MockFileSystem::new();
+            file_system_mock.expect_create_file()
                 .withf(|path| path.ends_with("config.yml"))
                 .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
-            let mut file_writer = MockFileWriter::new();
-            file_writer.expect_write_file()
+            file_system_mock.expect_write_file()
                 .with(predicate::always(), predicate::eq(content.as_bytes()))
                 .returning(|_, _| Ok(()));
 
-            let result = create_config_yml(&file_creator,  &file_writer,"TUNNEL_ID");
+            let result = create_config_yml(&file_system_mock, "TUNNEL_ID");
             assert!(result.is_ok());
 
             env::remove_var("HOME")
