@@ -17,6 +17,7 @@ mod signal;
 mod start;
 mod status;
 mod stop;
+mod tunnel;
 mod worker_client;
 
 use completion::completion;
