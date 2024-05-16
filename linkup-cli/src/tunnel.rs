@@ -228,6 +228,7 @@ pub fn create_dns_record(tunnel_id: &str, tunnel_name: &str) -> Result<(), CliEr
     send_request(&client, &url, headers, Some(body), "POST")
 }
 
+#[allow(dead_code)]
 struct MockFile {
     content: Vec<u8>,
 }
