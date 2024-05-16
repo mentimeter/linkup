@@ -1,14 +1,14 @@
 use std::{
     env,
     fs::{self, File},
-    io::{Read, Result as IoResult, Write},
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
+use mockall::automock;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
 use crate::CliError;
-use mockall::{automock, predicate::*};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -227,38 +227,6 @@ pub fn create_dns_record(tunnel_id: &str, tunnel_name: &str) -> Result<(), CliEr
     send_request(&client, &url, headers, Some(body), "POST")
 }
 
-#[allow(dead_code)]
-struct MockFile {
-    content: Vec<u8>,
-}
-
-impl MockFile {
-    #[cfg(test)]
-    fn new() -> MockFile {
-        MockFile {
-            content: Vec::new(),
-        }
-    }
-}
-
-impl Read for MockFile {
-    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
-        let amount = std::cmp::min(buf.len(), self.content.len());
-        buf[..amount].copy_from_slice(&self.content[..amount]);
-        Ok(amount)
-    }
-}
-
-impl Write for MockFile {
-    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
-        self.content.extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> IoResult<()> {
-        Ok(())
-    }
-}
 #[automock]
 trait FileSystem {
     fn create_file(&self, path: PathBuf) -> Result<Box<dyn FileLike>, CliError>;
@@ -281,16 +249,46 @@ impl FileSystem for RealFileSystem {
 }
 
 pub trait FileLike: Read + Write {}
-
 impl FileLike for std::fs::File {}
-impl FileLike for MockFile {}
 
 #[cfg(test)]
 mod tests {
 
-    use mockall::predicate;
-
     use super::*;
+    use mockall::predicate;
+    use std::io::Result as IoResult;
+    struct MockFile {
+        content: Vec<u8>,
+    }
+
+    impl MockFile {
+        fn new() -> MockFile {
+            MockFile {
+                content: Vec::new(),
+            }
+        }
+    }
+
+    impl FileLike for MockFile {}
+
+    impl Read for MockFile {
+        fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+            let amount = std::cmp::min(buf.len(), self.content.len());
+            buf[..amount].copy_from_slice(&self.content[..amount]);
+            Ok(amount)
+        }
+    }
+
+    impl Write for MockFile {
+        fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+            self.content.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> IoResult<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_prepare_client_and_headers() {
