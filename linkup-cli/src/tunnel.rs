@@ -1,15 +1,16 @@
 use std::{
-    env, fs::{self, File},
-    io::{Read, Write, Result as IoResult},
+    env,
+    fs::{self, File},
+    io::{Read, Result as IoResult, Write},
     path::{Path, PathBuf},
 };
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
 use crate::CliError;
+use mockall::{automock, predicate::*};
 use serde::{Deserialize, Serialize};
 use serde_yaml;
-use mockall::{automock, predicate::*};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GetTunnelApiResponse {
@@ -142,7 +143,8 @@ pub fn create_tunnel(tunnel_name: &str) -> Result<String, CliError> {
     let parsed: CreateTunnelResponse = send_request(&client, &url, headers, Some(body), "POST")?;
     save_tunnel_credentials(&parsed.result.id, &tunnel_secret)
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
-    create_config_yml(&RealFileSystem, &parsed.result.id).map_err(|err| CliError::StatusErr(err.to_string()))?;
+    create_config_yml(&RealFileSystem, &parsed.result.id)
+        .map_err(|err| CliError::StatusErr(err.to_string()))?;
 
     Ok(parsed.result.id)
 }
@@ -197,7 +199,8 @@ fn create_config_yml(fs: &dyn FileSystem, tunnel_id: &str) -> Result<(), CliErro
 
     let serialized = serde_yaml::to_string(&config).expect("Failed to serialize config");
 
-    let mut file: Box<dyn FileLike> = fs.create_file(dir_path.join("config.yml"))
+    let mut file: Box<dyn FileLike> = fs
+        .create_file(dir_path.join("config.yml"))
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
     fs.write_file(&mut file, serialized.as_bytes())
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
@@ -230,8 +233,11 @@ struct MockFile {
 }
 
 impl MockFile {
+    #[cfg(test)]
     fn new() -> MockFile {
-        MockFile { content: Vec::new() }
+        MockFile {
+            content: Vec::new(),
+        }
     }
 }
 
@@ -298,22 +304,23 @@ mod tests {
     }
 
     #[test]
-    fn test_create_config_yml(){
+    fn test_create_config_yml() {
+        env::set_var("HOME", "/tmp/home");
+        let content = "url: http://localhost:8000\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
 
-            env::set_var("HOME", "/tmp/home");
-            let content = "url: http://localhost:8000\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
+        let mut file_system_mock = MockFileSystem::new();
+        file_system_mock
+            .expect_create_file()
+            .withf(|path| path.ends_with("config.yml"))
+            .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
+        file_system_mock
+            .expect_write_file()
+            .with(predicate::always(), predicate::eq(content.as_bytes()))
+            .returning(|_, _| Ok(()));
 
-            let mut file_system_mock = MockFileSystem::new();
-            file_system_mock.expect_create_file()
-                .withf(|path| path.ends_with("config.yml"))
-                .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
-            file_system_mock.expect_write_file()
-                .with(predicate::always(), predicate::eq(content.as_bytes()))
-                .returning(|_, _| Ok(()));
+        let result = create_config_yml(&file_system_mock, "TUNNEL_ID");
+        assert!(result.is_ok());
 
-            let result = create_config_yml(&file_system_mock, "TUNNEL_ID");
-            assert!(result.is_ok());
-
-            env::remove_var("HOME")
-        }
+        env::remove_var("HOME")
+    }
 }

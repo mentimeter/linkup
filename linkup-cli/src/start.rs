@@ -3,7 +3,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{background_booting::boot_background_services, env_files::write_to_env_file, linkup_file_path, local_config::{config_path, config_to_state, get_config}, LINKUP_LOCALDNS_INSTALL};
+use crate::{
+    background_booting::boot_background_services,
+    env_files::write_to_env_file,
+    linkup_file_path,
+    local_config::{config_path, config_to_state, get_config},
+    LINKUP_LOCALDNS_INSTALL,
+};
 use crate::{
     local_config::LocalState,
     status::{server_status, ServerStatus},
@@ -17,6 +23,16 @@ fn file_exists(file_path: &str) -> bool {
 }
 
 pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
+    if env::var("PAID_TUNNELS").is_ok() {
+        start_paid_tunnel()?;
+    } else {
+        start_free_tunnel(config_arg, no_tunnel)?;
+    }
+    Ok(())
+}
+
+fn start_paid_tunnel() -> Result<(), CliError> {
+    println!("Starting paid tunnel");
     let tunnel_name = "happy-lion".to_string();
     let tunnel_id = match get_tunnel_id(&tunnel_name) {
         Ok(Some(id)) => id,
@@ -37,7 +53,11 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
         let tunnel_id = create_tunnel(&tunnel_name)?;
         create_dns_record(&tunnel_id, &tunnel_name)?;
     }
+    Ok(())
+}
 
+fn start_free_tunnel(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
+    println!("Starting free tunnel");
     let previous_state = LocalState::load();
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
@@ -74,7 +94,6 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
     boot_background_services()?;
 
     check_local_not_started()?;
-
     Ok(())
 }
 
@@ -132,4 +151,3 @@ fn check_local_not_started() -> Result<(), CliError> {
     }
     Ok(())
 }
-
