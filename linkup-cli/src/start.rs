@@ -19,12 +19,18 @@ use crate::{
 };
 
 pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
-    if env::var("PAID_TUNNELS").is_ok() {
+    if use_paid_tunnels() {
         start_paid_tunnel(&RealTunnelManager, &RealFileSystem, "happy-lion")?;
     } else {
         start_free_tunnel(config_arg, no_tunnel)?;
     }
     Ok(())
+}
+
+fn use_paid_tunnels() -> bool {
+    env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
+        && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
+        && env::var("LINKUP_CF_API_TOKEN").is_ok()
 }
 
 fn start_paid_tunnel(

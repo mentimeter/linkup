@@ -1,7 +1,6 @@
 use std::{
     env,
-    fs::{self, File},
-    io::Write,
+    fs::{self},
     path::Path,
 };
 
@@ -10,6 +9,9 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use crate::file_system::{FileLike, FileSystem, RealFileSystem};
 use crate::CliError;
 use serde::{Deserialize, Serialize};
+
+use base64::prelude::*;
+use rand::Rng;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GetTunnelApiResponse {
@@ -135,7 +137,7 @@ impl TunnelManager for RealTunnelManager {
     }
 
     fn create_tunnel(&self, tunnel_name: &str) -> Result<String, CliError> {
-        let tunnel_secret = "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=".to_string(); // This is a hardcoded secret, it should be generated
+        let tunnel_secret = generate_tunnel_secret();
         let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
             .map_err(|err| CliError::BadConfig(err.to_string()))?;
         let url = format!(
@@ -151,7 +153,7 @@ impl TunnelManager for RealTunnelManager {
 
         let parsed: CreateTunnelResponse =
             send_request(&client, &url, headers, Some(body), "POST")?;
-        save_tunnel_credentials(&parsed.result.id, &tunnel_secret)
+        save_tunnel_credentials(&RealFileSystem, &parsed.result.id, &tunnel_secret)
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
         create_config_yml(&RealFileSystem, &parsed.result.id)
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
@@ -181,13 +183,23 @@ impl TunnelManager for RealTunnelManager {
     }
 }
 
-fn save_tunnel_credentials(tunnel_id: &str, tunnel_secret: &str) -> Result<(), CliError> {
+fn generate_tunnel_secret() -> String {
+    let mut rng = rand::thread_rng();
+    let random_bytes: [u8; 32] = rng.gen();
+    BASE64_STANDARD.encode(random_bytes)
+}
+
+fn save_tunnel_credentials(
+    fs: &dyn FileSystem,
+    tunnel_id: &str,
+    tunnel_secret: &str,
+) -> Result<(), CliError> {
     let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
         .map_err(|err| CliError::BadConfig(err.to_string()))?;
     let data = serde_json::json!({
         "AccountTag": account_id,
-        "TunnelSecret": tunnel_secret,
         "TunnelID": tunnel_id,
+        "TunnelSecret": tunnel_secret,
     });
 
     // Determine the directory path
@@ -203,8 +215,12 @@ fn save_tunnel_credentials(tunnel_id: &str, tunnel_secret: &str) -> Result<(), C
     let file_path = dir_path.join(format!("{}.json", tunnel_id));
 
     // Create and write to the file
-    let mut file = File::create(file_path).map_err(|err| CliError::StatusErr(err.to_string()))?;
-    write!(file, "{}", data).map_err(|err| CliError::StatusErr(err.to_string()))?;
+    let mut file: Box<dyn FileLike> = fs
+        .create_file(file_path)
+        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+    let data_string = data.to_string();
+    fs.write_file(&mut file, &data_string)
+        .map_err(|err| CliError::StatusErr(err.to_string()))?;
 
     Ok(())
 }
@@ -234,7 +250,7 @@ fn create_config_yml(fs: &dyn FileSystem, tunnel_id: &str) -> Result<(), CliErro
     let mut file: Box<dyn FileLike> = fs
         .create_file(dir_path.join("config.yml"))
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
-    fs.write_file(&mut file, serialized.as_bytes())
+    fs.write_file(&mut file, &serialized)
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
     Ok(())
 }
@@ -246,7 +262,7 @@ mod tests {
     use crate::file_system::MockFileSystem;
 
     use mockall::predicate;
-    use std::io::{Read, Result as IoResult};
+    use std::io::{Read, Result as IoResult, Write};
     struct MockFile {
         content: Vec<u8>,
     }
@@ -303,12 +319,45 @@ mod tests {
             .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
         file_system_mock
             .expect_write_file()
-            .with(predicate::always(), predicate::eq(content.as_bytes()))
+            .with(predicate::always(), predicate::eq(content))
             .returning(|_, _| Ok(()));
 
         let result = create_config_yml(&file_system_mock, "TUNNEL_ID");
         assert!(result.is_ok());
 
         env::remove_var("HOME")
+    }
+
+    #[test]
+    fn test_save_tunnel_credentials() {
+        env::set_var("HOME", "/tmp/home");
+        env::set_var("LINKUP_CLOUDFLARE_ACCOUNT_ID", "ACCOUNT_ID");
+        let content = "{\"AccountTag\":\"ACCOUNT_ID\",\"TunnelID\":\"TUNNEL_ID\",\"TunnelSecret\":\"AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=\"}";
+
+        let mut file_system_mock = MockFileSystem::new();
+        file_system_mock
+            .expect_create_file()
+            .withf(|path| path.ends_with("TUNNEL_ID.json"))
+            .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
+        file_system_mock
+            .expect_write_file()
+            .with(predicate::always(), predicate::eq(content))
+            .returning(|_, _| Ok(()));
+
+        let result = save_tunnel_credentials(
+            &file_system_mock,
+            "TUNNEL_ID",
+            "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=",
+        );
+        assert!(result.is_ok());
+
+        env::remove_var("HOME");
+        env::remove_var("LINKUP_CLOUDFLARE_ACCOUNT_ID");
+    }
+
+    #[test]
+    fn test_generate_tunnel_secret() {
+        let secret = generate_tunnel_secret();
+        assert_eq!(secret.len(), 44);
     }
 }
