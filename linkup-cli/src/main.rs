@@ -7,6 +7,7 @@ use thiserror::Error;
 mod background_booting;
 mod completion;
 mod env_files;
+mod file_system;
 mod local_config;
 mod local_dns;
 mod preview;

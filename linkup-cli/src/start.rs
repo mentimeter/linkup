@@ -6,8 +6,10 @@ use std::{
 use crate::{
     background_booting::boot_background_services,
     env_files::write_to_env_file,
+    file_system::{FileSystem, RealFileSystem},
     linkup_file_path,
     local_config::{config_path, config_to_state, get_config},
+    tunnel::{RealTunnelManager, TunnelManager},
     LINKUP_LOCALDNS_INSTALL,
 };
 use crate::{
@@ -16,43 +18,47 @@ use crate::{
     CliError,
 };
 
-use crate::tunnel::{create_dns_record, create_tunnel, get_tunnel_id};
-
-fn file_exists(file_path: &str) -> bool {
-    Path::new(file_path).exists()
-}
-
 pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
     if env::var("PAID_TUNNELS").is_ok() {
-        start_paid_tunnel()?;
+        start_paid_tunnel(&RealTunnelManager, &RealFileSystem, "happy-lion")?;
     } else {
         start_free_tunnel(config_arg, no_tunnel)?;
     }
     Ok(())
 }
 
-fn start_paid_tunnel() -> Result<(), CliError> {
-    println!("Starting paid tunnel");
-    let tunnel_name = "happy-lion".to_string();
-    let tunnel_id = match get_tunnel_id(&tunnel_name) {
+fn start_paid_tunnel(
+    manager: &dyn TunnelManager,
+    fs: &dyn FileSystem,
+    session_name: &str,
+) -> Result<(), CliError> {
+    println!("Starting paid tunnel with session name: {}", session_name);
+    let tunnel_name = session_name.to_string();
+    let tunnel_id = match manager.get_tunnel_id(&tunnel_name) {
         Ok(Some(id)) => id,
         Ok(None) => "".to_string(),
         Err(e) => return Err(e),
     };
 
     // If there exists a /$ENV_HOME/.cloudflared/<Tunnel-UUID>.json file, skip creating a tunnel
-    let file_path = format!(
-        "{}/.cloudflared/{}.json",
-        env::var("HOME").expect("HOME is not set"),
-        tunnel_id
-    );
-    if file_exists(&file_path) {
-        println!("File exists: {}", file_path);
+    if tunnel_id.is_empty() {
+        println!("Tunnel ID is empty");
     } else {
-        println!("File does not exist: {}", file_path);
-        let tunnel_id = create_tunnel(&tunnel_name)?;
-        create_dns_record(&tunnel_id, &tunnel_name)?;
+        println!("Tunnel ID: {}", tunnel_id);
+        let file_path = format!(
+            "{}/.cloudflared/{}.json",
+            env::var("HOME").expect("HOME is not set"),
+            tunnel_id
+        );
+        if fs.file_exists(&file_path) {
+            println!("File exists: {}", file_path);
+            return Ok(());
+        }
     }
+
+    println!("Creating tunnel");
+    let tunnel_id = manager.create_tunnel(&tunnel_name)?;
+    manager.create_dns_record(&tunnel_id, &tunnel_name)?;
     Ok(())
 }
 
@@ -150,4 +156,41 @@ fn check_local_not_started() -> Result<(), CliError> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{file_system::MockFileSystem, tunnel::MockTunnelManager};
+
+    use super::*;
+
+    #[test]
+    fn test_start_paid_tunnel_tunnel_exists() {
+        let mut mock_manager = MockTunnelManager::new();
+        let mut mock_fs = MockFileSystem::new();
+        mock_manager
+            .expect_get_tunnel_id()
+            .returning(|_| Ok(Some("test_tunnel_id".to_string())));
+        mock_fs.expect_file_exists().returning(|_| true);
+        mock_manager.expect_create_tunnel().never();
+        mock_manager.expect_create_dns_record().never();
+        let _result = start_paid_tunnel(&mock_manager, &mock_fs, "test_session");
+    }
+
+    #[test]
+    fn test_start_paid_tunnel_no_tunnel_exists() {
+        let mut mock_manager = MockTunnelManager::new();
+        let mut mock_fs = MockFileSystem::new();
+        mock_manager.expect_get_tunnel_id().returning(|_| Ok(None));
+        mock_fs.expect_file_exists().never();
+        mock_manager
+            .expect_create_tunnel()
+            .times(1)
+            .returning(|_| Ok("tunnel-id".to_string()));
+        mock_manager
+            .expect_create_dns_record()
+            .times(1)
+            .returning(|_, _| Ok(()));
+        let _result = start_paid_tunnel(&mock_manager, &mock_fs, "test_session");
+    }
 }

@@ -1,13 +1,13 @@
 use std::{
     env,
     fs::{self, File},
-    io::{Read, Write},
-    path::{Path, PathBuf},
+    io::Write,
+    path::Path,
 };
 
-use mockall::automock;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
+use crate::file_system::{FileLike, FileSystem, RealFileSystem};
 use crate::CliError;
 use serde::{Deserialize, Serialize};
 
@@ -106,46 +106,79 @@ fn send_request<T: for<'de> serde::Deserialize<'de>>(
     }
 }
 
-pub fn get_tunnel_id(tunnel_name: &str) -> Result<Option<String>, CliError> {
-    let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
-        .map_err(|err| CliError::BadConfig(err.to_string()))?;
-    let url = format!(
-        "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
-        account_id
-    );
-    let (client, headers) = prepare_client_and_headers()?;
-    let query_url = format!("{}?name=tunnel-{}", url, tunnel_name);
-
-    let parsed: GetTunnelApiResponse = send_request(&client, &query_url, headers, None, "GET")?;
-    if parsed.result.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(parsed.result[0].id.clone()))
-    }
+#[cfg_attr(test, mockall::automock)]
+pub trait TunnelManager {
+    fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError>;
+    fn create_tunnel(&self, tunnel_name: &str) -> Result<String, CliError>;
+    fn create_dns_record(&self, tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError>;
 }
 
-pub fn create_tunnel(tunnel_name: &str) -> Result<String, CliError> {
-    let tunnel_secret = "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=".to_string(); // This is a hardcoded secret, it should be generated
-    let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
-        .map_err(|err| CliError::BadConfig(err.to_string()))?;
-    let url = format!(
-        "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
-        account_id,
-    );
-    let (client, headers) = prepare_client_and_headers()?;
-    let body = serde_json::to_string(&CreateTunnelRequest {
-        name: format!("tunnel-{}", tunnel_name),
-        tunnel_secret: tunnel_secret.clone(),
-    })
-    .map_err(|err| CliError::StatusErr(err.to_string()))?;
+pub struct RealTunnelManager;
 
-    let parsed: CreateTunnelResponse = send_request(&client, &url, headers, Some(body), "POST")?;
-    save_tunnel_credentials(&parsed.result.id, &tunnel_secret)
-        .map_err(|err| CliError::StatusErr(err.to_string()))?;
-    create_config_yml(&RealFileSystem, &parsed.result.id)
+impl TunnelManager for RealTunnelManager {
+    fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError> {
+        let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
+            .map_err(|err| CliError::BadConfig(err.to_string()))?;
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
+            account_id
+        );
+        let (client, headers) = prepare_client_and_headers()?;
+        let query_url = format!("{}?name=tunnel-{}", url, tunnel_name);
+
+        let parsed: GetTunnelApiResponse = send_request(&client, &query_url, headers, None, "GET")?;
+        if parsed.result.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(parsed.result[0].id.clone()))
+        }
+    }
+
+    fn create_tunnel(&self, tunnel_name: &str) -> Result<String, CliError> {
+        let tunnel_secret = "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=".to_string(); // This is a hardcoded secret, it should be generated
+        let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
+            .map_err(|err| CliError::BadConfig(err.to_string()))?;
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
+            account_id,
+        );
+        let (client, headers) = prepare_client_and_headers()?;
+        let body = serde_json::to_string(&CreateTunnelRequest {
+            name: format!("tunnel-{}", tunnel_name),
+            tunnel_secret: tunnel_secret.clone(),
+        })
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
 
-    Ok(parsed.result.id)
+        let parsed: CreateTunnelResponse =
+            send_request(&client, &url, headers, Some(body), "POST")?;
+        save_tunnel_credentials(&parsed.result.id, &tunnel_secret)
+            .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        create_config_yml(&RealFileSystem, &parsed.result.id)
+            .map_err(|err| CliError::StatusErr(err.to_string()))?;
+
+        Ok(parsed.result.id)
+    }
+
+    fn create_dns_record(&self, tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError> {
+        //let zone_id = env::var("LINKUP_CLOUDFLARE_ZONE_ID").map_err(|err| CliError::BadConfig(err.to_string()) )?;
+        let zone_id = "ZONE_ID";
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
+            zone_id
+        );
+        let (client, headers) = prepare_client_and_headers()?;
+        let body = serde_json::to_string(&CreateDNSRecordRequest {
+            name: format!("tunnel-{}", tunnel_name),
+            content: format!("{}.cfargotunnel.com", tunnel_id),
+            r#type: "CNAME".to_string(),
+            proxied: true,
+        })
+        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+
+        println!("{}", body);
+
+        send_request(&client, &url, headers, Some(body), "POST")
+    }
 }
 
 fn save_tunnel_credentials(tunnel_id: &str, tunnel_secret: &str) -> Result<(), CliError> {
@@ -206,57 +239,14 @@ fn create_config_yml(fs: &dyn FileSystem, tunnel_id: &str) -> Result<(), CliErro
     Ok(())
 }
 
-pub fn create_dns_record(tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError> {
-    //let zone_id = env::var("LINKUP_CLOUDFLARE_ZONE_ID").map_err(|err| CliError::BadConfig(err.to_string()) )?;
-    let zone_id = "ZONE_ID";
-    let url = format!(
-        "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
-        zone_id
-    );
-    let (client, headers) = prepare_client_and_headers()?;
-    let body = serde_json::to_string(&CreateDNSRecordRequest {
-        name: format!("tunnel-{}", tunnel_name),
-        content: format!("{}.cfargotunnel.com", tunnel_id),
-        r#type: "CNAME".to_string(),
-        proxied: true,
-    })
-    .map_err(|err| CliError::StatusErr(err.to_string()))?;
-
-    println!("{}", body);
-
-    send_request(&client, &url, headers, Some(body), "POST")
-}
-
-#[automock]
-trait FileSystem {
-    fn create_file(&self, path: PathBuf) -> Result<Box<dyn FileLike>, CliError>;
-    fn write_file(&self, file: &mut Box<dyn FileLike>, content: &[u8]) -> Result<(), CliError>;
-}
-
-struct RealFileSystem;
-
-impl FileSystem for RealFileSystem {
-    fn create_file(&self, path: PathBuf) -> Result<Box<dyn FileLike>, CliError> {
-        let file = File::create(path).map_err(|err| CliError::StatusErr(err.to_string()))?;
-        Ok(Box::new(file))
-    }
-
-    fn write_file(&self, file: &mut Box<dyn FileLike>, content: &[u8]) -> Result<(), CliError> {
-        file.write_all(content)
-            .map_err(|err| CliError::StatusErr(err.to_string()))?;
-        Ok(())
-    }
-}
-
-pub trait FileLike: Read + Write {}
-impl FileLike for std::fs::File {}
-
 #[cfg(test)]
 mod tests {
-
     use super::*;
+
+    use crate::file_system::MockFileSystem;
+
     use mockall::predicate;
-    use std::io::Result as IoResult;
+    use std::io::{Read, Result as IoResult};
     struct MockFile {
         content: Vec<u8>,
     }
