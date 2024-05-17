@@ -172,10 +172,6 @@ fn is_cacheable_request(req: &Request, config: &Session) -> bool {
         return false;
     }
 
-    if config.session_token == PREVIEW_SESSION_TOKEN {
-        return true;
-    }
-
     if let Some(routes) = &config.cache_routes {
         let path = req.path();
         if routes.iter().any(|route| route.is_match(&path)) {
