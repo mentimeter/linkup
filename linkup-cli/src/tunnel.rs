@@ -262,7 +262,7 @@ mod tests {
     use crate::file_system::MockFileSystem;
 
     use mockall::predicate;
-    use std::io::{Read, Write, Result as IoResult};
+    use std::io::{Read, Result as IoResult, Write};
     struct MockFile {
         content: Vec<u8>,
     }
