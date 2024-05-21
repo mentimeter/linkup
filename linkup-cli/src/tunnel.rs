@@ -190,7 +190,7 @@ fn generate_tunnel_secret() -> String {
 }
 
 fn save_tunnel_credentials(
-    fs: &dyn FileSystem,
+    filesys: &dyn FileSystem,
     tunnel_id: &str,
     tunnel_secret: &str,
 ) -> Result<(), CliError> {
@@ -215,24 +215,28 @@ fn save_tunnel_credentials(
     let file_path = dir_path.join(format!("{}.json", tunnel_id));
 
     // Create and write to the file
-    let mut file: Box<dyn FileLike> = fs
+    let mut file: Box<dyn FileLike> = filesys
         .create_file(file_path)
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
     let data_string = data.to_string();
-    fs.write_file(&mut file, &data_string)
+    filesys
+        .write_file(&mut file, &data_string)
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
 
     Ok(())
 }
 
-fn create_config_yml(fs: &dyn FileSystem, tunnel_id: &str) -> Result<(), CliError> {
+fn create_config_yml(filesys: &dyn FileSystem, tunnel_id: &str) -> Result<(), CliError> {
     // Determine the directory path
     let home_dir = env::var("HOME").map_err(|err| CliError::BadConfig(err.to_string()))?;
     let dir_path = Path::new(&home_dir).join(".cloudflared");
 
     // Create the directory if it does not exist
-    if !dir_path.exists() {
-        fs::create_dir_all(&dir_path).map_err(|err| CliError::StatusErr(err.to_string()))?;
+    if !filesys.file_exists(dir_path.as_path()) {
+        println!("Creating directory: {:?}", dir_path);
+        filesys
+            .create_dir_all(&dir_path)
+            .map_err(|err| CliError::StatusErr(err.to_string()))?;
     }
 
     // Define the file path
@@ -247,10 +251,11 @@ fn create_config_yml(fs: &dyn FileSystem, tunnel_id: &str) -> Result<(), CliErro
 
     let serialized = serde_yaml::to_string(&config).expect("Failed to serialize config");
 
-    let mut file: Box<dyn FileLike> = fs
+    let mut file: Box<dyn FileLike> = filesys
         .create_file(dir_path.join("config.yml"))
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
-    fs.write_file(&mut file, &serialized)
+    filesys
+        .write_file(&mut file, &serialized)
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
     Ok(())
 }
@@ -308,21 +313,63 @@ mod tests {
     }
 
     #[test]
-    fn test_create_config_yml() {
+    fn create_config_yml_when_no_config_dir() {
         env::set_var("HOME", "/tmp/home");
         let content = "url: http://localhost:8000\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
 
-        let mut file_system_mock = MockFileSystem::new();
-        file_system_mock
+        let mut mock_fs = MockFileSystem::new();
+        // If .cloudflared directory does not exist:
+        mock_fs
+            .expect_file_exists()
+            .withf(|path| path.ends_with(".cloudflared"))
+            .returning(|_| false);
+        // Create .cloudflared directory:
+        mock_fs
+            .expect_create_dir_all()
+            .with(predicate::eq(Path::new("/tmp/home/.cloudflared")))
+            .returning(|_| Ok(()));
+        // Create config.yml file:
+        mock_fs
             .expect_create_file()
             .withf(|path| path.ends_with("config.yml"))
             .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
-        file_system_mock
+        // Write to config.yml file:
+        mock_fs
             .expect_write_file()
             .with(predicate::always(), predicate::eq(content))
             .returning(|_, _| Ok(()));
 
-        let result = create_config_yml(&file_system_mock, "TUNNEL_ID");
+        let result = create_config_yml(&mock_fs, "TUNNEL_ID");
+        assert!(result.is_ok());
+
+        env::remove_var("HOME")
+    }
+
+    #[test]
+    fn create_config_yml_config_dir_exists() {
+        env::set_var("HOME", "/tmp/home");
+        let content = "url: http://localhost:8000\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
+
+        let mut mock_fs = MockFileSystem::new();
+        // If .cloudflared directory exists:
+        mock_fs
+            .expect_file_exists()
+            .withf(|path| path.ends_with(".cloudflared"))
+            .returning(|_| true);
+        // Don't create .cloudflared directory:
+        mock_fs.expect_create_dir_all().never();
+        // Create/truncate config.yml file:
+        mock_fs
+            .expect_create_file()
+            .withf(|path| path.ends_with("config.yml"))
+            .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
+        // Write to config.yml file:
+        mock_fs
+            .expect_write_file()
+            .with(predicate::always(), predicate::eq(content))
+            .returning(|_, _| Ok(()));
+
+        let result = create_config_yml(&mock_fs, "TUNNEL_ID");
         assert!(result.is_ok());
 
         env::remove_var("HOME")
@@ -334,18 +381,18 @@ mod tests {
         env::set_var("LINKUP_CLOUDFLARE_ACCOUNT_ID", "ACCOUNT_ID");
         let content = "{\"AccountTag\":\"ACCOUNT_ID\",\"TunnelID\":\"TUNNEL_ID\",\"TunnelSecret\":\"AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=\"}";
 
-        let mut file_system_mock = MockFileSystem::new();
-        file_system_mock
+        let mut mock_fs = MockFileSystem::new();
+        mock_fs
             .expect_create_file()
             .withf(|path| path.ends_with("TUNNEL_ID.json"))
             .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
-        file_system_mock
+        mock_fs
             .expect_write_file()
             .with(predicate::always(), predicate::eq(content))
             .returning(|_, _| Ok(()));
 
         let result = save_tunnel_credentials(
-            &file_system_mock,
+            &mock_fs,
             "TUNNEL_ID",
             "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=",
         );

@@ -35,7 +35,7 @@ fn use_paid_tunnels() -> bool {
 
 fn start_paid_tunnel(
     manager: &dyn TunnelManager,
-    fs: &dyn FileSystem,
+    filesys: &dyn FileSystem,
     session_name: &str,
 ) -> Result<(), CliError> {
     println!("Starting paid tunnel with session name: {}", session_name);
@@ -56,7 +56,7 @@ fn start_paid_tunnel(
             env::var("HOME").expect("HOME is not set"),
             tunnel_id
         );
-        if fs.file_exists(&file_path) {
+        if filesys.file_exists(Path::new(&file_path)) {
             println!("File exists: {}", file_path);
             return Ok(());
         }
@@ -172,6 +172,7 @@ mod tests {
 
     #[test]
     fn test_start_paid_tunnel_tunnel_exists() {
+        env::set_var("HOME", "/tmp/home");
         let mut mock_manager = MockTunnelManager::new();
         let mut mock_fs = MockFileSystem::new();
         mock_manager
@@ -181,6 +182,7 @@ mod tests {
         mock_manager.expect_create_tunnel().never();
         mock_manager.expect_create_dns_record().never();
         let _result = start_paid_tunnel(&mock_manager, &mock_fs, "test_session");
+        env::remove_var("HOME");
     }
 
     #[test]
