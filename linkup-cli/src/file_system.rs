@@ -1,5 +1,5 @@
 use crate::CliError;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -10,9 +10,8 @@ impl FileLike for std::fs::File {}
 pub trait FileSystem {
     fn create_file(&self, path: PathBuf) -> Result<Box<dyn FileLike>, CliError>;
     fn write_file(&self, file: &mut Box<dyn FileLike>, content: &str) -> Result<(), CliError>;
-    fn file_exists(&self, file_path: &str) -> bool {
-        Path::new(file_path).exists()
-    }
+    fn file_exists(&self, file_path: &Path) -> bool;
+    fn create_dir_all(&self, path: &Path) -> Result<(), CliError>;
 }
 
 pub struct RealFileSystem;
@@ -27,5 +26,13 @@ impl FileSystem for RealFileSystem {
         file.write_all(content.as_bytes())
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
         Ok(())
+    }
+
+    fn file_exists(&self, file_path: &Path) -> bool {
+        file_path.exists()
+    }
+
+    fn create_dir_all(&self, path: &Path) -> Result<(), CliError> {
+        fs::create_dir_all(path).map_err(|err| CliError::StatusErr(err.to_string()))
     }
 }
