@@ -10,6 +10,7 @@ use nix::sys::signal::Signal;
 use regex::Regex;
 use url::Url;
 
+use crate::local_config::LocalState;
 use crate::signal::send_signal;
 
 use crate::stop::stop_pid_file;
@@ -21,19 +22,19 @@ const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";
 
 const TUNNEL_START_WAIT: u64 = 20;
 
-pub fn is_tunnel_started() -> Result<(), CheckErr> {
+pub fn is_tunnel_running() -> Result<(), CheckErr> {
     if !linkup_file_path(LINKUP_CLOUDFLARED_PID).exists() {
-        Err(CheckErr::TunnelNotStarted)
+        Err(CheckErr::TunnelNotRunning)
     } else {
         Ok(())
     }
 }
 
-pub fn start_tunnel() -> Result<Url, CliError> {
+pub fn run_tunnel(state: &LocalState) -> Result<Url, CliError> {
     let mut attempt = 0;
     loop {
         attempt += 1;
-        match try_start_tunnel() {
+        match try_run_tunnel(&state) {
             Ok(url) => return Ok(url),
             Err(CliError::StopErr(e)) => {
                 return Err(CliError::StopErr(format!(
@@ -53,7 +54,7 @@ pub fn start_tunnel() -> Result<Url, CliError> {
     }
 }
 
-fn try_start_tunnel() -> Result<Url, CliError> {
+fn try_run_tunnel(state: &LocalState) -> Result<Url, CliError> {
     let stdout_file = File::create(linkup_file_path(LINKUP_CLOUDFLARED_STDOUT)).map_err(|_| {
         CliError::StartLocalTunnel("Failed to create stdout file for local tunnel".to_string())
     })?;
@@ -70,7 +71,7 @@ fn try_start_tunnel() -> Result<Url, CliError> {
 
     match daemonize.execute() {
         Outcome::Child(child_result) => match child_result {
-            Ok(_) => daemonized_tunnel_child(),
+            Ok(_) => daemonized_tunnel_child(&state),
             Err(e) => {
                 return Err(CliError::StartLocalTunnel(format!(
                     "Failed to start local tunnel: {}",
@@ -152,13 +153,14 @@ fn try_start_tunnel() -> Result<Url, CliError> {
     }
 }
 
-fn daemonized_tunnel_child() {
+fn daemonized_tunnel_child(state: &LocalState) {
+    let url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
+    let cmd_args: Vec<&str> = match state.is_paid {
+        true => vec!["tunnel", "run", state.linkup.session_name.as_str()],
+        false => vec!["tunnel", "run", "--url", url.as_str()],
+    };
     let mut child_cmd = Command::new("cloudflared")
-        .args([
-            "tunnel",
-            "--url",
-            &format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
-        ])
+        .args(cmd_args)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()

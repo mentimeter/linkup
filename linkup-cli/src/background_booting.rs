@@ -12,72 +12,82 @@ use url::Url;
 
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::services::local_server::{is_local_server_started, start_local_server};
-use crate::services::tunnel::{is_tunnel_started, start_tunnel};
+use crate::services::tunnel::{is_tunnel_running, run_tunnel};
 use crate::status::print_session_names;
 use crate::worker_client::WorkerClient;
 use crate::{linkup_file_path, services, LINKUP_LOCALSERVER_PORT};
 use crate::{CliError, LINKUP_LOCALDNS_INSTALL};
 
-pub fn boot_background_services() -> Result<(), CliError> {
-    let mut state = LocalState::load()?;
+#[cfg_attr(test, mockall::automock)]
+pub trait BackgroundServices {
+    fn boot_background_services(&self, is_paid: bool) -> Result<(), CliError>;
+}
 
-    let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
-        .expect("linkup url invalid");
+pub struct RealBackgroundServices;
 
-    if is_local_server_started().is_err() {
-        println!("Starting linkup local server...");
-        start_local_server()?;
-    } else {
-        println!("Linkup local server was already running.. Try stopping linkup first if you have problems.");
-    }
+impl BackgroundServices for RealBackgroundServices {
+    fn boot_background_services(&self, is_paid: bool) -> Result<(), CliError> {
+        let mut state = LocalState::load()?;
 
-    wait_till_ok(format!("{}linkup-check", local_url))?;
+        let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
+            .expect("linkup url invalid");
 
-    if state.should_use_tunnel() {
-        if is_tunnel_started().is_err() {
-            println!("Starting tunnel...");
-            let tunnel = start_tunnel()?;
-            state.linkup.tunnel = Some(tunnel);
+        if is_local_server_started().is_err() {
+            println!("Starting linkup local server...");
+            start_local_server()?;
         } else {
-            println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
+            println!("Linkup local server was already running.. Try stopping linkup first if you have problems.");
         }
-    } else {
-        println!(
+
+        wait_till_ok(format!("{}linkup-check", local_url))?;
+
+        if state.should_use_tunnel() {
+            if is_tunnel_running().is_err() {
+                println!("Starting tunnel...");
+                let tunnel = run_tunnel(&state)?;
+                state.linkup.tunnel = Some(tunnel);
+            } else {
+                println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
+            }
+        } else {
+            println!(
             "Skipping tunnel start... WARNING: not all kinds of requests will work in this mode."
         );
+        }
+
+        let server_config = ServerConfig::from(&state);
+
+        let server_session_name = load_config(
+            &state.linkup.remote,
+            &state.linkup.session_name,
+            server_config.remote,
+        )?;
+        let local_session_name =
+            load_config(&local_url, &server_session_name, server_config.local)?;
+
+        if server_session_name != local_session_name {
+            return Err(CliError::InconsistentState);
+        }
+
+        state.linkup.session_name = server_session_name;
+        state.save()?;
+
+        if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
+            boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
+        }
+
+        if let Some(tunnel) = &state.linkup.tunnel {
+            println!("Waiting for tunnel DNS to propogate at {}...", tunnel);
+
+            wait_for_dns_ok(tunnel.clone())?;
+
+            println!();
+        }
+
+        print_session_names(&state);
+
+        Ok(())
     }
-
-    let server_config = ServerConfig::from(&state);
-
-    let server_session_name = load_config(
-        &state.linkup.remote,
-        &state.linkup.session_name,
-        server_config.remote,
-    )?;
-    let local_session_name = load_config(&local_url, &server_session_name, server_config.local)?;
-
-    if server_session_name != local_session_name {
-        return Err(CliError::InconsistentState);
-    }
-
-    state.linkup.session_name = server_session_name;
-    state.save()?;
-
-    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
-        boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
-    }
-
-    if let Some(tunnel) = &state.linkup.tunnel {
-        println!("Waiting for tunnel DNS to propogate at {}...", tunnel);
-
-        wait_for_dns_ok(tunnel.clone())?;
-
-        println!();
-    }
-
-    print_session_names(&state);
-
-    Ok(())
 }
 
 pub fn load_config(

@@ -17,6 +17,7 @@ pub struct LocalState {
     pub linkup: LinkupState,
     pub domains: Vec<StorableDomain>,
     pub services: Vec<LocalService>,
+    pub is_paid: bool,
 }
 
 impl LocalState {
@@ -183,6 +184,7 @@ pub fn config_to_state(
     yaml_config: YamlLocalConfig,
     config_path: String,
     no_tunnel: bool,
+    is_paid: bool,
 ) -> LocalState {
     let random_token: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
@@ -230,6 +232,7 @@ pub fn config_to_state(
         linkup,
         domains,
         services,
+        is_paid,
     }
 }
 
@@ -312,7 +315,12 @@ domains:
     fn test_config_to_state() {
         let input_str = String::from(CONF_STR);
         let yaml_config = serde_yaml::from_str(&input_str).unwrap();
-        let local_state = config_to_state(yaml_config, "./path/to/config.yaml".to_string(), false);
+        let local_state = config_to_state(
+            yaml_config,
+            "./path/to/config.yaml".to_string(),
+            false,
+            false,
+        );
 
         assert_eq!(local_state.linkup.config_path, "./path/to/config.yaml");
 

@@ -162,8 +162,8 @@ impl TunnelManager for RealTunnelManager {
     }
 
     fn create_dns_record(&self, tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError> {
-        //let zone_id = env::var("LINKUP_CLOUDFLARE_ZONE_ID").map_err(|err| CliError::BadConfig(err.to_string()) )?;
-        let zone_id = "ZONE_ID";
+        let zone_id = env::var("LINKUP_CLOUDFLARE_ZONE_ID")
+            .map_err(|err| CliError::BadConfig(err.to_string()))?;
         let url = format!(
             "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
             zone_id
