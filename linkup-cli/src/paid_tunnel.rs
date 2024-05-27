@@ -1,8 +1,4 @@
-use std::{
-    env,
-    fs::{self},
-    path::Path,
-};
+use std::{env, fs, path::Path};
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
@@ -34,8 +30,14 @@ struct CreateTunnelRequest {
     name: String,
     tunnel_secret: String,
 }
+
 #[derive(Serialize, Deserialize, Debug)]
-struct CreateDNSRecordRequest {
+struct CreateDNSRecordResponse {
+    result: DNSRecord,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct DNSRecord {
     content: String,
     name: String,
     r#type: String,
@@ -91,15 +93,23 @@ fn send_request<T: for<'de> serde::Deserialize<'de>>(
         builder
     };
 
-    let response = builder
-        .send()
-        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+    let response = builder.send().map_err(|err| {
+        CliError::StatusErr(format!("Failed to send request, {}", err).to_string())
+    })?;
 
     if response.status().is_success() {
-        let response_body = response
-            .text()
-            .map_err(|err| CliError::StatusErr(err.to_string()))?;
-        serde_json::from_str(&response_body).map_err(|err| CliError::StatusErr(err.to_string()))
+        let response_body = response.text().map_err(|err| {
+            CliError::StatusErr(format!("Could not read response body, {}", err).to_string())
+        })?;
+        serde_json::from_str(&response_body).map_err(|err| {
+            CliError::StatusErr(
+                format!(
+                    "Could not parse JSON, {}. Response body: {}",
+                    err, response_body
+                )
+                .to_string(),
+            )
+        })
     } else {
         Err(CliError::StatusErr(format!(
             "Failed to get a successful response: {}",
@@ -109,15 +119,15 @@ fn send_request<T: for<'de> serde::Deserialize<'de>>(
 }
 
 #[cfg_attr(test, mockall::automock)]
-pub trait TunnelManager {
+pub trait PaidTunnelManager {
     fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError>;
     fn create_tunnel(&self, tunnel_name: &str) -> Result<String, CliError>;
     fn create_dns_record(&self, tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError>;
 }
 
-pub struct RealTunnelManager;
+pub struct RealPaidTunnelManager;
 
-impl TunnelManager for RealTunnelManager {
+impl PaidTunnelManager for RealPaidTunnelManager {
     fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError> {
         let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
             .map_err(|err| CliError::BadConfig(err.to_string()))?;
@@ -169,7 +179,7 @@ impl TunnelManager for RealTunnelManager {
             zone_id
         );
         let (client, headers) = prepare_client_and_headers()?;
-        let body = serde_json::to_string(&CreateDNSRecordRequest {
+        let body = serde_json::to_string(&DNSRecord {
             name: format!("tunnel-{}", tunnel_name),
             content: format!("{}.cfargotunnel.com", tunnel_id),
             r#type: "CNAME".to_string(),
@@ -179,7 +189,8 @@ impl TunnelManager for RealTunnelManager {
 
         println!("{}", body);
 
-        send_request(&client, &url, headers, Some(body), "POST")
+        let _parsed : CreateDNSRecordResponse = send_request(&client, &url, headers, Some(body), "POST")?;
+        Ok(())
     }
 }
 

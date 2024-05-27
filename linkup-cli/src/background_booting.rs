@@ -12,7 +12,7 @@ use url::Url;
 
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::services::local_server::{is_local_server_started, start_local_server};
-use crate::services::tunnel::{is_tunnel_running, run_tunnel};
+use crate::services::tunnel::{is_tunnel_running, RealTunnelManager, TunnelManager};
 use crate::status::print_session_names;
 use crate::worker_client::WorkerClient;
 use crate::{linkup_file_path, services, LINKUP_LOCALSERVER_PORT};
@@ -20,15 +20,13 @@ use crate::{CliError, LINKUP_LOCALDNS_INSTALL};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait BackgroundServices {
-    fn boot_background_services(&self, is_paid: bool) -> Result<(), CliError>;
+    fn boot_background_services(&self, state: LocalState) -> Result<(), CliError>;
 }
 
 pub struct RealBackgroundServices;
 
 impl BackgroundServices for RealBackgroundServices {
-    fn boot_background_services(&self, is_paid: bool) -> Result<(), CliError> {
-        let mut state = LocalState::load()?;
-
+    fn boot_background_services(&self, mut state: LocalState) -> Result<(), CliError> {
         let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
             .expect("linkup url invalid");
 
@@ -41,10 +39,11 @@ impl BackgroundServices for RealBackgroundServices {
 
         wait_till_ok(format!("{}linkup-check", local_url))?;
 
-        if state.should_use_tunnel() {
+        if state.should_use_tunnel() && !state.is_paid {
             if is_tunnel_running().is_err() {
                 println!("Starting tunnel...");
-                let tunnel = run_tunnel(&state)?;
+                let tunnel_manager = RealTunnelManager {};
+                let tunnel = tunnel_manager.run_tunnel(&state)?;
                 state.linkup.tunnel = Some(tunnel);
             } else {
                 println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
@@ -76,13 +75,13 @@ impl BackgroundServices for RealBackgroundServices {
             boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
         }
 
-        if let Some(tunnel) = &state.linkup.tunnel {
-            println!("Waiting for tunnel DNS to propogate at {}...", tunnel);
+        // if let Some(tunnel) = &state.linkup.tunnel {
+        //     println!("Waiting for tunnel DNS to propogate at {}...", tunnel);
 
-            wait_for_dns_ok(tunnel.clone())?;
+        //     wait_for_dns_ok(tunnel.clone())?;
 
-            println!();
-        }
+        //     println!();
+        // }
 
         print_session_names(&state);
 

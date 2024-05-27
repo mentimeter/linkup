@@ -7,11 +7,11 @@ use crate::{
 
 pub fn reset() -> Result<(), CliError> {
     // Ensure there is some kind of state from before, otherwise reset doesn't make sense
-    LocalState::load()?;
+    let state = LocalState::load()?;
 
     shutdown()?;
     let background_service = RealBackgroundServices;
-    let _ = background_service.boot_background_services(false);
+    let _ = background_service.boot_background_services(state);
 
     Ok(())
 }

@@ -30,25 +30,34 @@ pub fn is_tunnel_running() -> Result<(), CheckErr> {
     }
 }
 
-pub fn run_tunnel(state: &LocalState) -> Result<Url, CliError> {
-    let mut attempt = 0;
-    loop {
-        attempt += 1;
-        match try_run_tunnel(&state) {
-            Ok(url) => return Ok(url),
-            Err(CliError::StopErr(e)) => {
-                return Err(CliError::StopErr(format!(
-                    "Failed to stop tunnel when retrying tunnel boot: {}",
-                    e
-                )))
-            }
-            Err(err) => {
-                println!("Tunnel failed to boot within the time limit. Retrying...");
-                if attempt >= 3 {
-                    return Err(err);
+#[cfg_attr(test, mockall::automock)]
+pub trait TunnelManager {
+    fn run_tunnel(&self, state: &LocalState) -> Result<Url, CliError>;
+}
+
+pub struct RealTunnelManager;
+
+impl TunnelManager for RealTunnelManager {
+    fn run_tunnel(&self, state: &LocalState) -> Result<Url, CliError> {
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match try_run_tunnel(&state) {
+                Ok(url) => return Ok(url),
+                Err(CliError::StopErr(e)) => {
+                    return Err(CliError::StopErr(format!(
+                        "Failed to stop tunnel when retrying tunnel boot: {}",
+                        e
+                    )))
                 }
-                // Give the tunnel a chance to clean up
-                thread::sleep(Duration::from_secs(1));
+                Err(err) => {
+                    println!("Tunnel failed to boot within the time limit. Retrying...");
+                    if attempt >= 3 {
+                        return Err(err);
+                    }
+                    // Give the tunnel a chance to clean up
+                    thread::sleep(Duration::from_secs(1));
+                }
             }
         }
     }
@@ -91,7 +100,7 @@ fn try_run_tunnel(state: &LocalState) -> Result<Url, CliError> {
     }
 
     let tunnel_url_re =
-        Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com").expect("Failed to compile regex");
+        Regex::new(r"Starting tunnel tunnelID=.*").expect("Failed to compile regex");
     let tunnel_started_re =
         Regex::new(r"Registered tunnel connection").expect("Failed to compile regex");
 
