@@ -3,10 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use url::Url;
-
 use crate::{
-    background_booting::{load_config, BackgroundServices, RealBackgroundServices, ServerConfig},
+    background_booting::{BackgroundServices, RealBackgroundServices},
     env_files::write_to_env_file,
     file_system::{FileSystem, RealFileSystem},
     linkup_file_path,
@@ -14,7 +12,6 @@ use crate::{
     paid_tunnel::{PaidTunnelManager, RealPaidTunnelManager},
     services::tunnel::{RealTunnelManager, TunnelManager},
     LINKUP_LOCALDNS_INSTALL,
-    LINKUP_LOCALSERVER_PORT
 };
 use crate::{
     local_config::LocalState,
@@ -29,6 +26,7 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
         start_paid_tunnel(
             &RealPaidTunnelManager,
             &RealFileSystem,
+            &RealBackgroundServices,
             &RealTunnelManager,
             state,
         )?;
@@ -47,16 +45,16 @@ fn use_paid_tunnels() -> bool {
 fn start_paid_tunnel(
     paid_manager: &dyn PaidTunnelManager,
     filesys: &dyn FileSystem,
+    boot: &dyn BackgroundServices,
     tunnel_manager: &dyn TunnelManager,
     mut state: LocalState,
 ) -> Result<(), CliError> {
-    let boot = RealBackgroundServices {};
-    boot.boot_background_services(state.clone())?;
+    state = boot.boot_background_services(state.clone())?;
 
-    state = LocalState::load()?;
-
-
-    println!("Starting paid tunnel with session name: {}", state.linkup.session_name);
+    println!(
+        "Starting paid tunnel with session name: {}",
+        state.linkup.session_name
+    );
     let tunnel_name = state.linkup.session_name.to_string();
     let tunnel_id = match paid_manager.get_tunnel_id(&tunnel_name) {
         Ok(Some(id)) => id,
@@ -72,7 +70,9 @@ fn start_paid_tunnel(
         let file_path = format!("{}/.cloudflared/{}.json", filesys.get_home()?, tunnel_id);
         if filesys.file_exists(Path::new(&file_path)) {
             println!("File exists: {}", file_path);
-            tunnel_manager.run_tunnel(&state)?;
+            let tunnel = tunnel_manager.run_tunnel(&state)?;
+            state.linkup.tunnel = Some(tunnel);
+            state.save()?;
             return Ok(());
         }
     }
@@ -102,7 +102,7 @@ fn start_free_tunnel(state: LocalState, no_tunnel: bool) -> Result<(), CliError>
         return Err(CliError::NoTunnelWithoutLocalDns);
     }
 
-    let background_service = RealBackgroundServices;
+    let background_service = RealBackgroundServices {};
     background_service.boot_background_services(state)?;
 
     check_local_not_started()?;
@@ -122,7 +122,7 @@ fn load_and_save_state(
 
     // Reuse previous session name if possible
     if let Ok(ps) = previous_state {
-        println!("Previous session name: {}", ps.linkup.session_name);
+        //println!("Previous session name: {}", ps.linkup.session_name);
         state.linkup.session_name = ps.linkup.session_name;
         state.linkup.session_token = ps.linkup.session_token;
 
@@ -193,19 +193,26 @@ fn check_local_not_started() -> Result<(), CliError> {
 
 #[cfg(test)]
 mod tests {
+    use mockall::mock;
+
     use crate::{
-        file_system::MockFileSystem, local_config::LinkupState, paid_tunnel::MockPaidTunnelManager,
+        background_booting::MockBackgroundServices, file_system::MockFileSystem,
+        local_config::LinkupState, paid_tunnel::MockPaidTunnelManager,
         services::tunnel::MockTunnelManager,
     };
 
+    use url::Url;
+
     use super::*;
 
-    #[test]
-    fn test_start_paid_tunnel_tunnel_exists() {
-        let mut mock_paid_manager = MockPaidTunnelManager::new();
-        let mut mock_fs = MockFileSystem::new();
-        let mut mock_tunnel_manager = MockTunnelManager::new();
-        let mocked_state: LocalState = LocalState {
+    mock! {
+        pub LocalState {
+            pub fn save(&self) -> Result<(), CliError>;
+        }
+    }
+
+    fn make_state() -> LocalState {
+        return LocalState {
             linkup: {
                 LinkupState {
                     session_name: "test_session".to_string(),
@@ -220,6 +227,15 @@ mod tests {
             domains: vec![],
             is_paid: true,
         };
+    }
+
+    #[test]
+    fn test_start_paid_tunnel_tunnel_exists() {
+        let mut mock_boot_bg_services = MockBackgroundServices::new();
+        let mut mock_paid_manager = MockPaidTunnelManager::new();
+        let mut mock_fs = MockFileSystem::new();
+        let mut mock_tunnel_manager = MockTunnelManager::new();
+
         mock_paid_manager
             .expect_get_tunnel_id()
             .returning(|_| Ok(Some("test_tunnel_id".to_string())));
@@ -229,6 +245,10 @@ mod tests {
             .returning(|| Ok("/tmp/home".to_string()));
         mock_paid_manager.expect_create_tunnel().never();
         mock_paid_manager.expect_create_dns_record().never();
+        mock_boot_bg_services
+            .expect_boot_background_services()
+            .times(1)
+            .returning(|_| Ok(make_state()));
         mock_tunnel_manager
             .expect_run_tunnel()
             .times(1)
@@ -236,31 +256,23 @@ mod tests {
         let _result = start_paid_tunnel(
             &mock_paid_manager,
             &mock_fs,
+            &mock_boot_bg_services,
             &mock_tunnel_manager,
-            mocked_state,
+            make_state(),
         );
     }
 
     #[test]
     fn test_start_paid_tunnel_no_tunnel_exists() {
+        let mut mock_boot_bg_services = MockBackgroundServices::new();
         let mut mock_manager = MockPaidTunnelManager::new();
         let mut mock_fs = MockFileSystem::new();
         let mut mock_tunnel_manager = MockTunnelManager::new();
-        let mocked_state: LocalState = LocalState {
-            linkup: {
-                LinkupState {
-                    session_name: "test_session".to_string(),
-                    session_token: "test_token".to_string(),
-                    config_path: "/tmp/home/.linkup/config".to_string(),
-                    remote: Url::parse("http://localhost:9066").unwrap(),
-                    tunnel: None,
-                    cache_routes: None,
-                }
-            },
-            services: vec![],
-            domains: vec![],
-            is_paid: true,
-        };
+
+        mock_boot_bg_services
+            .expect_boot_background_services()
+            .times(1)
+            .returning(|_| Ok(make_state()));
         mock_manager.expect_get_tunnel_id().returning(|_| Ok(None));
         mock_fs.expect_file_exists().never();
         mock_manager
@@ -275,7 +287,12 @@ mod tests {
             .expect_run_tunnel()
             .times(1)
             .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
-        let _result =
-            start_paid_tunnel(&mock_manager, &mock_fs, &mock_tunnel_manager, mocked_state);
+        let _result = start_paid_tunnel(
+            &mock_manager,
+            &mock_fs,
+            &mock_boot_bg_services,
+            &mock_tunnel_manager,
+            make_state(),
+        );
     }
 }

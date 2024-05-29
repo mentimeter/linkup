@@ -14,6 +14,7 @@ pub trait FileSystem {
     fn file_exists(&self, file_path: &Path) -> bool;
     fn create_dir_all(&self, path: &Path) -> Result<(), CliError>;
     fn get_home(&self) -> Result<String, CliError>;
+    fn get_env(&self, key: &str) -> Result<String, CliError>;
 }
 
 pub struct RealFileSystem;
@@ -40,5 +41,9 @@ impl FileSystem for RealFileSystem {
 
     fn get_home(&self) -> Result<String, CliError> {
         Ok(env::var("HOME").expect("HOME is not set"))
+    }
+
+    fn get_env(&self, key: &str) -> Result<String, CliError> {
+        Ok(env::var(key).unwrap_or_else(|_| panic!("{} is not set", key)))
     }
 }

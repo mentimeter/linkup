@@ -42,7 +42,7 @@ impl TunnelManager for RealTunnelManager {
         let mut attempt = 0;
         loop {
             attempt += 1;
-            match try_run_tunnel(&state) {
+            match try_run_tunnel(state) {
                 Ok(url) => return Ok(url),
                 Err(CliError::StopErr(e)) => {
                     return Err(CliError::StopErr(format!(
@@ -80,7 +80,7 @@ fn try_run_tunnel(state: &LocalState) -> Result<Url, CliError> {
 
     match daemonize.execute() {
         Outcome::Child(child_result) => match child_result {
-            Ok(_) => daemonized_tunnel_child(&state),
+            Ok(_) => daemonized_tunnel_child(state),
             Err(e) => {
                 return Err(CliError::StartLocalTunnel(format!(
                     "Failed to start local tunnel: {}",
@@ -99,8 +99,11 @@ fn try_run_tunnel(state: &LocalState) -> Result<Url, CliError> {
         },
     }
 
+    let is_paid = state.is_paid;
+    let session_name = state.linkup.session_name.clone();
+
     let tunnel_url_re =
-        Regex::new(r"Starting tunnel tunnelID=.*").expect("Failed to compile regex");
+        Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com").expect("Failed to compile regex");
     let tunnel_started_re =
         Regex::new(r"Registered tunnel connection").expect("Failed to compile regex");
 
@@ -123,7 +126,15 @@ fn try_run_tunnel(state: &LocalState) -> Result<Url, CliError> {
 
                     for line in buf_reader.lines() {
                         let line = line.unwrap_or_default();
-                        if let Some(url_match) = tunnel_url_re.find(&line) {
+                        if is_paid {
+                            url = Some(
+                                Url::parse(
+                                    format!("https://tunnel-{}.mentimeter.dev", session_name)
+                                        .as_str(),
+                                )
+                                .expect("Failed to parse tunnel URL"),
+                            );
+                        } else if let Some(url_match) = tunnel_url_re.find(&line) {
                             let found_url =
                                 Url::parse(url_match.as_str()).expect("Failed to parse tunnel URL");
                             url = Some(found_url);
@@ -149,7 +160,6 @@ fn try_run_tunnel(state: &LocalState) -> Result<Url, CliError> {
             thread::sleep(Duration::from_millis(100));
         }
     });
-
     match rx.recv_timeout(Duration::from_secs(TUNNEL_START_WAIT)) {
         Ok(result) => result,
         Err(e) => {
@@ -166,8 +176,9 @@ fn daemonized_tunnel_child(state: &LocalState) {
     let url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
     let cmd_args: Vec<&str> = match state.is_paid {
         true => vec!["tunnel", "run", state.linkup.session_name.as_str()],
-        false => vec!["tunnel", "run", "--url", url.as_str()],
+        false => vec!["tunnel", "--url", url.as_str()],
     };
+    println!("Starting cloudflared tunnel with args: {:?}", cmd_args);
     let mut child_cmd = Command::new("cloudflared")
         .args(cmd_args)
         .stdout(Stdio::inherit())

@@ -20,13 +20,13 @@ use crate::{CliError, LINKUP_LOCALDNS_INSTALL};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait BackgroundServices {
-    fn boot_background_services(&self, state: LocalState) -> Result<(), CliError>;
+    fn boot_background_services(&self, state: LocalState) -> Result<LocalState, CliError>;
 }
 
 pub struct RealBackgroundServices;
 
 impl BackgroundServices for RealBackgroundServices {
-    fn boot_background_services(&self, mut state: LocalState) -> Result<(), CliError> {
+    fn boot_background_services(&self, mut state: LocalState) -> Result<LocalState, CliError> {
         let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
             .expect("linkup url invalid");
 
@@ -75,17 +75,17 @@ impl BackgroundServices for RealBackgroundServices {
             boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
         }
 
-        // if let Some(tunnel) = &state.linkup.tunnel {
-        //     println!("Waiting for tunnel DNS to propogate at {}...", tunnel);
+        if let Some(tunnel) = &state.linkup.tunnel {
+            println!("Waiting for tunnel DNS to propagate at {}...", tunnel);
 
-        //     wait_for_dns_ok(tunnel.clone())?;
+            wait_for_dns_ok(tunnel.clone())?;
 
-        //     println!();
-        // }
+            println!();
+        }
 
         print_session_names(&state);
 
-        Ok(())
+        Ok(state)
     }
 }
 

@@ -38,6 +38,9 @@ impl LocalState {
     }
 
     pub fn save(&mut self) -> Result<(), CliError> {
+        if cfg!(test) {
+            return Ok(());
+        }
         let yaml_string = match serde_yaml::to_string(self) {
             Ok(yaml) => yaml,
             Err(_) => {
