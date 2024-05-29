@@ -1,14 +1,17 @@
 use crate::{
-    background_booting::boot_background_services, local_config::LocalState, stop::shutdown,
+    background_booting::{BackgroundServices, RealBackgroundServices},
+    local_config::LocalState,
+    stop::shutdown,
     CliError,
 };
 
 pub fn reset() -> Result<(), CliError> {
     // Ensure there is some kind of state from before, otherwise reset doesn't make sense
-    LocalState::load()?;
+    let state = LocalState::load()?;
 
     shutdown()?;
-    boot_background_services()?;
+    let background_service = RealBackgroundServices;
+    let _ = background_service.boot_background_services(state);
 
     Ok(())
 }

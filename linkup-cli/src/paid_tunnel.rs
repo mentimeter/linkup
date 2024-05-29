@@ -1,13 +1,9 @@
-use std::{
-    env,
-    fs::{self},
-    path::Path,
-};
+use std::{env, fs, path::Path};
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
 use crate::file_system::{FileLike, FileSystem, RealFileSystem};
-use crate::CliError;
+use crate::{CliError, LINKUP_LOCALSERVER_PORT};
 use serde::{Deserialize, Serialize};
 
 use base64::prelude::*;
@@ -34,8 +30,14 @@ struct CreateTunnelRequest {
     name: String,
     tunnel_secret: String,
 }
+
 #[derive(Serialize, Deserialize, Debug)]
-struct CreateDNSRecordRequest {
+struct CreateDNSRecordResponse {
+    result: DNSRecord,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct DNSRecord {
     content: String,
     name: String,
     r#type: String,
@@ -91,15 +93,23 @@ fn send_request<T: for<'de> serde::Deserialize<'de>>(
         builder
     };
 
-    let response = builder
-        .send()
-        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+    let response = builder.send().map_err(|err| {
+        CliError::StatusErr(format!("Failed to send request, {}", err).to_string())
+    })?;
 
     if response.status().is_success() {
-        let response_body = response
-            .text()
-            .map_err(|err| CliError::StatusErr(err.to_string()))?;
-        serde_json::from_str(&response_body).map_err(|err| CliError::StatusErr(err.to_string()))
+        let response_body = response.text().map_err(|err| {
+            CliError::StatusErr(format!("Could not read response body, {}", err).to_string())
+        })?;
+        serde_json::from_str(&response_body).map_err(|err| {
+            CliError::StatusErr(
+                format!(
+                    "Could not parse JSON, {}. Response body: {}",
+                    err, response_body
+                )
+                .to_string(),
+            )
+        })
     } else {
         Err(CliError::StatusErr(format!(
             "Failed to get a successful response: {}",
@@ -109,15 +119,15 @@ fn send_request<T: for<'de> serde::Deserialize<'de>>(
 }
 
 #[cfg_attr(test, mockall::automock)]
-pub trait TunnelManager {
+pub trait PaidTunnelManager {
     fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError>;
     fn create_tunnel(&self, tunnel_name: &str) -> Result<String, CliError>;
     fn create_dns_record(&self, tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError>;
 }
 
-pub struct RealTunnelManager;
+pub struct RealPaidTunnelManager;
 
-impl TunnelManager for RealTunnelManager {
+impl PaidTunnelManager for RealPaidTunnelManager {
     fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError> {
         let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
             .map_err(|err| CliError::BadConfig(err.to_string()))?;
@@ -162,14 +172,14 @@ impl TunnelManager for RealTunnelManager {
     }
 
     fn create_dns_record(&self, tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError> {
-        //let zone_id = env::var("LINKUP_CLOUDFLARE_ZONE_ID").map_err(|err| CliError::BadConfig(err.to_string()) )?;
-        let zone_id = "ZONE_ID";
+        let zone_id = env::var("LINKUP_CLOUDFLARE_ZONE_ID")
+            .map_err(|err| CliError::BadConfig(err.to_string()))?;
         let url = format!(
             "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
             zone_id
         );
         let (client, headers) = prepare_client_and_headers()?;
-        let body = serde_json::to_string(&CreateDNSRecordRequest {
+        let body = serde_json::to_string(&DNSRecord {
             name: format!("tunnel-{}", tunnel_name),
             content: format!("{}.cfargotunnel.com", tunnel_id),
             r#type: "CNAME".to_string(),
@@ -179,7 +189,9 @@ impl TunnelManager for RealTunnelManager {
 
         println!("{}", body);
 
-        send_request(&client, &url, headers, Some(body), "POST")
+        let _parsed: CreateDNSRecordResponse =
+            send_request(&client, &url, headers, Some(body), "POST")?;
+        Ok(())
     }
 }
 
@@ -194,7 +206,8 @@ fn save_tunnel_credentials(
     tunnel_id: &str,
     tunnel_secret: &str,
 ) -> Result<(), CliError> {
-    let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
+    let account_id = filesys
+        .get_env("LINKUP_CLOUDFLARE_ACCOUNT_ID")
         .map_err(|err| CliError::BadConfig(err.to_string()))?;
     let data = serde_json::json!({
         "AccountTag": account_id,
@@ -203,7 +216,9 @@ fn save_tunnel_credentials(
     });
 
     // Determine the directory path
-    let home_dir = env::var("HOME").map_err(|err| CliError::BadConfig(err.to_string()))?;
+    let home_dir = filesys
+        .get_env("HOME")
+        .map_err(|err| CliError::BadConfig(err.to_string()))?;
     let dir_path = Path::new(&home_dir).join(".cloudflared");
 
     // Create the directory if it does not exist
@@ -228,7 +243,9 @@ fn save_tunnel_credentials(
 
 fn create_config_yml(filesys: &dyn FileSystem, tunnel_id: &str) -> Result<(), CliError> {
     // Determine the directory path
-    let home_dir = env::var("HOME").map_err(|err| CliError::BadConfig(err.to_string()))?;
+    let home_dir = filesys
+        .get_env("HOME")
+        .map_err(|err| CliError::BadConfig(err.to_string()))?;
     let dir_path = Path::new(&home_dir).join(".cloudflared");
 
     // Create the directory if it does not exist
@@ -244,7 +261,7 @@ fn create_config_yml(filesys: &dyn FileSystem, tunnel_id: &str) -> Result<(), Cl
     let file_path_str = file_path.to_string_lossy().to_string();
 
     let config = Config {
-        url: "http://localhost:8000".to_string(),
+        url: format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
         tunnel: tunnel_id.to_string(),
         credentials_file: file_path_str,
     };
@@ -314,11 +331,14 @@ mod tests {
 
     #[test]
     fn create_config_yml_when_no_config_dir() {
-        env::set_var("HOME", "/tmp/home");
-        let content = "url: http://localhost:8000\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
+        let content = "url: http://localhost:9066\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
 
         let mut mock_fs = MockFileSystem::new();
         // If .cloudflared directory does not exist:
+        mock_fs
+            .expect_get_env()
+            .with(predicate::eq("HOME"))
+            .returning(|_| Ok("/tmp/home".to_string()));
         mock_fs
             .expect_file_exists()
             .withf(|path| path.ends_with(".cloudflared"))
@@ -341,16 +361,17 @@ mod tests {
 
         let result = create_config_yml(&mock_fs, "TUNNEL_ID");
         assert!(result.is_ok());
-
-        env::remove_var("HOME")
     }
 
     #[test]
     fn create_config_yml_config_dir_exists() {
-        env::set_var("HOME", "/tmp/home");
-        let content = "url: http://localhost:8000\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
+        let content = "url: http://localhost:9066\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
 
         let mut mock_fs = MockFileSystem::new();
+        mock_fs
+            .expect_get_env()
+            .with(predicate::eq("HOME"))
+            .returning(|_| Ok("/tmp/home".to_string()));
         // If .cloudflared directory exists:
         mock_fs
             .expect_file_exists()
@@ -371,17 +392,23 @@ mod tests {
 
         let result = create_config_yml(&mock_fs, "TUNNEL_ID");
         assert!(result.is_ok());
-
-        env::remove_var("HOME")
     }
 
     #[test]
     fn test_save_tunnel_credentials() {
-        env::set_var("HOME", "/tmp/home");
-        env::set_var("LINKUP_CLOUDFLARE_ACCOUNT_ID", "ACCOUNT_ID");
         let content = "{\"AccountTag\":\"ACCOUNT_ID\",\"TunnelID\":\"TUNNEL_ID\",\"TunnelSecret\":\"AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=\"}";
 
         let mut mock_fs = MockFileSystem::new();
+        mock_fs
+            .expect_get_env()
+            .with(predicate::eq("HOME"))
+            .returning(|_| Ok("/tmp/home".to_string()));
+
+        mock_fs
+            .expect_get_env()
+            .with(predicate::eq("LINKUP_CLOUDFLARE_ACCOUNT_ID"))
+            .returning(|_| Ok("ACCOUNT_ID".to_string()));
+
         mock_fs
             .expect_create_file()
             .withf(|path| path.ends_with("TUNNEL_ID.json"))
@@ -397,9 +424,6 @@ mod tests {
             "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=",
         );
         assert!(result.is_ok());
-
-        env::remove_var("HOME");
-        env::remove_var("LINKUP_CLOUDFLARE_ACCOUNT_ID");
     }
 
     #[test]

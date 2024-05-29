@@ -10,6 +10,7 @@ use nix::sys::signal::Signal;
 use regex::Regex;
 use url::Url;
 
+use crate::local_config::LocalState;
 use crate::signal::send_signal;
 
 use crate::stop::stop_pid_file;
@@ -21,39 +22,48 @@ const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";
 
 const TUNNEL_START_WAIT: u64 = 20;
 
-pub fn is_tunnel_started() -> Result<(), CheckErr> {
+pub fn is_tunnel_running() -> Result<(), CheckErr> {
     if !linkup_file_path(LINKUP_CLOUDFLARED_PID).exists() {
-        Err(CheckErr::TunnelNotStarted)
+        Err(CheckErr::TunnelNotRunning)
     } else {
         Ok(())
     }
 }
 
-pub fn start_tunnel() -> Result<Url, CliError> {
-    let mut attempt = 0;
-    loop {
-        attempt += 1;
-        match try_start_tunnel() {
-            Ok(url) => return Ok(url),
-            Err(CliError::StopErr(e)) => {
-                return Err(CliError::StopErr(format!(
-                    "Failed to stop tunnel when retrying tunnel boot: {}",
-                    e
-                )))
-            }
-            Err(err) => {
-                println!("Tunnel failed to boot within the time limit. Retrying...");
-                if attempt >= 3 {
-                    return Err(err);
+#[cfg_attr(test, mockall::automock)]
+pub trait TunnelManager {
+    fn run_tunnel(&self, state: &LocalState) -> Result<Url, CliError>;
+}
+
+pub struct RealTunnelManager;
+
+impl TunnelManager for RealTunnelManager {
+    fn run_tunnel(&self, state: &LocalState) -> Result<Url, CliError> {
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match try_run_tunnel(state) {
+                Ok(url) => return Ok(url),
+                Err(CliError::StopErr(e)) => {
+                    return Err(CliError::StopErr(format!(
+                        "Failed to stop tunnel when retrying tunnel boot: {}",
+                        e
+                    )))
                 }
-                // Give the tunnel a chance to clean up
-                thread::sleep(Duration::from_secs(1));
+                Err(err) => {
+                    println!("Tunnel failed to boot within the time limit. Retrying...");
+                    if attempt >= 3 {
+                        return Err(err);
+                    }
+                    // Give the tunnel a chance to clean up
+                    thread::sleep(Duration::from_secs(1));
+                }
             }
         }
     }
 }
 
-fn try_start_tunnel() -> Result<Url, CliError> {
+fn try_run_tunnel(state: &LocalState) -> Result<Url, CliError> {
     let stdout_file = File::create(linkup_file_path(LINKUP_CLOUDFLARED_STDOUT)).map_err(|_| {
         CliError::StartLocalTunnel("Failed to create stdout file for local tunnel".to_string())
     })?;
@@ -70,7 +80,7 @@ fn try_start_tunnel() -> Result<Url, CliError> {
 
     match daemonize.execute() {
         Outcome::Child(child_result) => match child_result {
-            Ok(_) => daemonized_tunnel_child(),
+            Ok(_) => daemonized_tunnel_child(state),
             Err(e) => {
                 return Err(CliError::StartLocalTunnel(format!(
                     "Failed to start local tunnel: {}",
@@ -88,6 +98,9 @@ fn try_start_tunnel() -> Result<Url, CliError> {
             }
         },
     }
+
+    let is_paid = state.is_paid;
+    let session_name = state.linkup.session_name.clone();
 
     let tunnel_url_re =
         Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com").expect("Failed to compile regex");
@@ -113,7 +126,15 @@ fn try_start_tunnel() -> Result<Url, CliError> {
 
                     for line in buf_reader.lines() {
                         let line = line.unwrap_or_default();
-                        if let Some(url_match) = tunnel_url_re.find(&line) {
+                        if is_paid {
+                            url = Some(
+                                Url::parse(
+                                    format!("https://tunnel-{}.mentimeter.dev", session_name)
+                                        .as_str(),
+                                )
+                                .expect("Failed to parse tunnel URL"),
+                            );
+                        } else if let Some(url_match) = tunnel_url_re.find(&line) {
                             let found_url =
                                 Url::parse(url_match.as_str()).expect("Failed to parse tunnel URL");
                             url = Some(found_url);
@@ -139,7 +160,6 @@ fn try_start_tunnel() -> Result<Url, CliError> {
             thread::sleep(Duration::from_millis(100));
         }
     });
-
     match rx.recv_timeout(Duration::from_secs(TUNNEL_START_WAIT)) {
         Ok(result) => result,
         Err(e) => {
@@ -152,13 +172,15 @@ fn try_start_tunnel() -> Result<Url, CliError> {
     }
 }
 
-fn daemonized_tunnel_child() {
+fn daemonized_tunnel_child(state: &LocalState) {
+    let url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
+    let cmd_args: Vec<&str> = match state.is_paid {
+        true => vec!["tunnel", "run", state.linkup.session_name.as_str()],
+        false => vec!["tunnel", "--url", url.as_str()],
+    };
+    println!("Starting cloudflared tunnel with args: {:?}", cmd_args);
     let mut child_cmd = Command::new("cloudflared")
-        .args([
-            "tunnel",
-            "--url",
-            &format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
-        ])
+        .args(cmd_args)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()

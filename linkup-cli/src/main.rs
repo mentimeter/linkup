@@ -10,6 +10,7 @@ mod env_files;
 mod file_system;
 mod local_config;
 mod local_dns;
+mod paid_tunnel;
 mod preview;
 mod remote_local;
 mod reset;
@@ -18,7 +19,6 @@ mod signal;
 mod start;
 mod status;
 mod stop;
-mod tunnel;
 mod worker_client;
 
 use completion::completion;
@@ -127,7 +127,7 @@ pub enum CheckErr {
     #[error("local server not started")]
     LocalNotStarted,
     #[error("cloudflared tunnel not started")]
-    TunnelNotStarted,
+    TunnelNotRunning,
 }
 
 #[derive(Parser)]
