@@ -57,9 +57,11 @@ struct Config {
 }
 
 // Helper to create an HTTP client and prepare headers
-fn prepare_client_and_headers() -> Result<(reqwest::blocking::Client, HeaderMap), CliError> {
-    let bearer_token =
-        env::var("LINKUP_CF_API_TOKEN").map_err(|err| CliError::BadConfig(err.to_string()))?;
+fn prepare_client_and_headers(
+    sys: &dyn System,
+) -> Result<(reqwest::blocking::Client, HeaderMap), CliError> {
+    // this should be a string, not a result
+    let bearer_token = sys.get_env("LINKUP_CF_API_TOKEN")?;
     let client = reqwest::blocking::Client::new();
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -135,7 +137,7 @@ impl PaidTunnelManager for RealPaidTunnelManager {
             "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
             account_id
         );
-        let (client, headers) = prepare_client_and_headers()?;
+        let (client, headers) = prepare_client_and_headers(&RealSystem)?;
         let query_url = format!("{}?name=tunnel-{}", url, tunnel_name);
 
         let parsed: GetTunnelApiResponse = send_request(&client, &query_url, headers, None, "GET")?;
@@ -154,7 +156,7 @@ impl PaidTunnelManager for RealPaidTunnelManager {
             "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
             account_id,
         );
-        let (client, headers) = prepare_client_and_headers()?;
+        let (client, headers) = prepare_client_and_headers(&RealSystem)?;
         let body = serde_json::to_string(&CreateTunnelRequest {
             name: format!("tunnel-{}", tunnel_name),
             tunnel_secret: tunnel_secret.clone(),
@@ -178,7 +180,7 @@ impl PaidTunnelManager for RealPaidTunnelManager {
             "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
             zone_id
         );
-        let (client, headers) = prepare_client_and_headers()?;
+        let (client, headers) = prepare_client_and_headers(&RealSystem)?;
         let body = serde_json::to_string(&DNSRecord {
             name: format!("tunnel-{}", tunnel_name),
             content: format!("{}.cfargotunnel.com", tunnel_id),
@@ -317,9 +319,14 @@ mod tests {
 
     #[test]
     fn test_prepare_client_and_headers() {
-        env::set_var("LINKUP_CF_API_TOKEN", "TOKEN");
-        let result = prepare_client_and_headers();
-        env::remove_var("LINKUP_CF_API_TOKEN");
+        let mut mock_sys = MockSystem::new();
+
+        mock_sys
+            .expect_get_env()
+            .with(predicate::eq("LINKUP_CF_API_TOKEN"))
+            .returning(|_| Ok("TOKEN".to_string()));
+
+        let result = prepare_client_and_headers(&mock_sys);
         assert!(result.is_ok());
         let (_client, headers) = result.unwrap();
         assert!(headers.contains_key("Authorization"));
@@ -327,30 +334,48 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "LINKUP_CF_API_TOKEN is not set")]
+    fn test_prepare_client_and_headers_token_env_var_not_set() {
+        let mut mock_sys = MockSystem::new();
+
+        mock_sys
+            .expect_get_env()
+            .with(predicate::eq("LINKUP_CF_API_TOKEN"))
+            .returning(|_| panic!("LINKUP_CF_API_TOKEN is not set"));
+
+        let result = prepare_client_and_headers(&mock_sys);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn create_config_yml_when_no_config_dir() {
+        let mut mock_sys = MockSystem::new();
         let content = "url: http://localhost:9066\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
 
-        let mut mock_sys = MockSystem::new();
-        // If .cloudflared directory does not exist:
         mock_sys
             .expect_get_env()
             .with(predicate::eq("HOME"))
             .returning(|_| Ok("/tmp/home".to_string()));
+
+        // Check if .cloudflared directory exists -> false
         mock_sys
             .expect_file_exists()
             .withf(|path| path.ends_with(".cloudflared"))
             .returning(|_| false);
-        // Create .cloudflared directory:
+
+        // Create .cloudflared directory
         mock_sys
             .expect_create_dir_all()
             .with(predicate::eq(Path::new("/tmp/home/.cloudflared")))
             .returning(|_| Ok(()));
-        // Create config.yml file:
+
+        // Create/truncate config.yml file
         mock_sys
             .expect_create_file()
             .withf(|path| path.ends_with("config.yml"))
             .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
-        // Write to config.yml file:
+
+        // Write to config.yml file
         mock_sys
             .expect_write_file()
             .with(predicate::always(), predicate::eq(content))
@@ -362,26 +387,30 @@ mod tests {
 
     #[test]
     fn create_config_yml_config_dir_exists() {
+        let mut mock_sys = MockSystem::new();
         let content = "url: http://localhost:9066\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
 
-        let mut mock_sys = MockSystem::new();
         mock_sys
             .expect_get_env()
             .with(predicate::eq("HOME"))
             .returning(|_| Ok("/tmp/home".to_string()));
-        // If .cloudflared directory exists:
+
+        // Check if .cloudflared directory exists -> true
         mock_sys
             .expect_file_exists()
             .withf(|path| path.ends_with(".cloudflared"))
             .returning(|_| true);
-        // Don't create .cloudflared directory:
+
+        // Don't create .cloudflared directory
         mock_sys.expect_create_dir_all().never();
-        // Create/truncate config.yml file:
+
+        // Create/truncate config.yml file
         mock_sys
             .expect_create_file()
             .withf(|path| path.ends_with("config.yml"))
             .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
-        // Write to config.yml file:
+
+        // Write to config.yml file
         mock_sys
             .expect_write_file()
             .with(predicate::always(), predicate::eq(content))
@@ -393,9 +422,9 @@ mod tests {
 
     #[test]
     fn test_save_tunnel_credentials() {
+        let mut mock_sys = MockSystem::new();
         let content = "{\"AccountTag\":\"ACCOUNT_ID\",\"TunnelID\":\"TUNNEL_ID\",\"TunnelSecret\":\"AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=\"}";
 
-        let mut mock_sys = MockSystem::new();
         mock_sys
             .expect_get_env()
             .with(predicate::eq("HOME"))
@@ -406,10 +435,13 @@ mod tests {
             .with(predicate::eq("LINKUP_CLOUDFLARE_ACCOUNT_ID"))
             .returning(|_| Ok("ACCOUNT_ID".to_string()));
 
+        // Create/truncate TUNNEL_ID.json file
         mock_sys
             .expect_create_file()
             .withf(|path| path.ends_with("TUNNEL_ID.json"))
             .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
+
+        // Write to TUNNEL_ID.json file
         mock_sys
             .expect_write_file()
             .with(predicate::always(), predicate::eq(content))
