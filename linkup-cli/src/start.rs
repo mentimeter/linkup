@@ -277,13 +277,14 @@ mod tests {
         mock_paid_manager.expect_create_tunnel().never();
         mock_paid_manager.expect_create_dns_record().never();
 
-        let _result = start_paid_tunnel(
+        let result = start_paid_tunnel(
             &mock_sys,
             &mock_paid_manager,
             &mock_boot_bg_services,
             &mock_tunnel_manager,
             make_state("test_session"),
         );
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -328,13 +329,14 @@ mod tests {
             .with(predicate::eq(make_state("test_session")))
             .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
 
-        let _result = start_paid_tunnel(
+        let result = start_paid_tunnel(
             &mock_sys,
             &mock_paid_manager,
             &mock_boot_bg_services,
             &mock_tunnel_manager,
             make_state("test_session"),
         );
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -391,13 +393,14 @@ mod tests {
             .with(predicate::eq(make_state("test_session")))
             .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
 
-        let _result = start_paid_tunnel(
+        let result = start_paid_tunnel(
             &mock_sys,
             &mock_paid_manager,
             &mock_boot_bg_services,
             &mock_tunnel_manager,
             make_state("test_session"),
         );
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -426,7 +429,6 @@ mod tests {
             &mock_tunnel_manager,
             make_state("test_session"),
         );
-
         assert!(result.is_err());
     }
 }
