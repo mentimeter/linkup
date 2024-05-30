@@ -2,7 +2,7 @@ use std::{env, fs, path::Path};
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
-use crate::file_system::{FileLike, FileSystem, RealFileSystem};
+use crate::system::{FileLike, RealSystem, System};
 use crate::{CliError, LINKUP_LOCALSERVER_PORT};
 use serde::{Deserialize, Serialize};
 
@@ -163,9 +163,9 @@ impl PaidTunnelManager for RealPaidTunnelManager {
 
         let parsed: CreateTunnelResponse =
             send_request(&client, &url, headers, Some(body), "POST")?;
-        save_tunnel_credentials(&RealFileSystem, &parsed.result.id, &tunnel_secret)
+        save_tunnel_credentials(&RealSystem, &parsed.result.id, &tunnel_secret)
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
-        create_config_yml(&RealFileSystem, &parsed.result.id)
+        create_config_yml(&RealSystem, &parsed.result.id)
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
 
         Ok(parsed.result.id)
@@ -202,11 +202,11 @@ fn generate_tunnel_secret() -> String {
 }
 
 fn save_tunnel_credentials(
-    filesys: &dyn FileSystem,
+    sys: &dyn System,
     tunnel_id: &str,
     tunnel_secret: &str,
 ) -> Result<(), CliError> {
-    let account_id = filesys
+    let account_id = sys
         .get_env("LINKUP_CLOUDFLARE_ACCOUNT_ID")
         .map_err(|err| CliError::BadConfig(err.to_string()))?;
     let data = serde_json::json!({
@@ -216,7 +216,7 @@ fn save_tunnel_credentials(
     });
 
     // Determine the directory path
-    let home_dir = filesys
+    let home_dir = sys
         .get_env("HOME")
         .map_err(|err| CliError::BadConfig(err.to_string()))?;
     let dir_path = Path::new(&home_dir).join(".cloudflared");
@@ -230,29 +230,27 @@ fn save_tunnel_credentials(
     let file_path = dir_path.join(format!("{}.json", tunnel_id));
 
     // Create and write to the file
-    let mut file: Box<dyn FileLike> = filesys
+    let mut file: Box<dyn FileLike> = sys
         .create_file(file_path)
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
     let data_string = data.to_string();
-    filesys
-        .write_file(&mut file, &data_string)
+    sys.write_file(&mut file, &data_string)
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
 
     Ok(())
 }
 
-fn create_config_yml(filesys: &dyn FileSystem, tunnel_id: &str) -> Result<(), CliError> {
+fn create_config_yml(sys: &dyn System, tunnel_id: &str) -> Result<(), CliError> {
     // Determine the directory path
-    let home_dir = filesys
+    let home_dir = sys
         .get_env("HOME")
         .map_err(|err| CliError::BadConfig(err.to_string()))?;
     let dir_path = Path::new(&home_dir).join(".cloudflared");
 
     // Create the directory if it does not exist
-    if !filesys.file_exists(dir_path.as_path()) {
+    if !sys.file_exists(dir_path.as_path()) {
         println!("Creating directory: {:?}", dir_path);
-        filesys
-            .create_dir_all(&dir_path)
+        sys.create_dir_all(&dir_path)
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
     }
 
@@ -268,11 +266,10 @@ fn create_config_yml(filesys: &dyn FileSystem, tunnel_id: &str) -> Result<(), Cl
 
     let serialized = serde_yaml::to_string(&config).expect("Failed to serialize config");
 
-    let mut file: Box<dyn FileLike> = filesys
+    let mut file: Box<dyn FileLike> = sys
         .create_file(dir_path.join("config.yml"))
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
-    filesys
-        .write_file(&mut file, &serialized)
+    sys.write_file(&mut file, &serialized)
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
     Ok(())
 }
@@ -281,7 +278,7 @@ fn create_config_yml(filesys: &dyn FileSystem, tunnel_id: &str) -> Result<(), Cl
 mod tests {
     use super::*;
 
-    use crate::file_system::MockFileSystem;
+    use crate::system::MockSystem;
 
     use mockall::predicate;
     use std::io::{Read, Result as IoResult, Write};
@@ -333,33 +330,33 @@ mod tests {
     fn create_config_yml_when_no_config_dir() {
         let content = "url: http://localhost:9066\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
 
-        let mut mock_fs = MockFileSystem::new();
+        let mut mock_sys = MockSystem::new();
         // If .cloudflared directory does not exist:
-        mock_fs
+        mock_sys
             .expect_get_env()
             .with(predicate::eq("HOME"))
             .returning(|_| Ok("/tmp/home".to_string()));
-        mock_fs
+        mock_sys
             .expect_file_exists()
             .withf(|path| path.ends_with(".cloudflared"))
             .returning(|_| false);
         // Create .cloudflared directory:
-        mock_fs
+        mock_sys
             .expect_create_dir_all()
             .with(predicate::eq(Path::new("/tmp/home/.cloudflared")))
             .returning(|_| Ok(()));
         // Create config.yml file:
-        mock_fs
+        mock_sys
             .expect_create_file()
             .withf(|path| path.ends_with("config.yml"))
             .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
         // Write to config.yml file:
-        mock_fs
+        mock_sys
             .expect_write_file()
             .with(predicate::always(), predicate::eq(content))
             .returning(|_, _| Ok(()));
 
-        let result = create_config_yml(&mock_fs, "TUNNEL_ID");
+        let result = create_config_yml(&mock_sys, "TUNNEL_ID");
         assert!(result.is_ok());
     }
 
@@ -367,30 +364,30 @@ mod tests {
     fn create_config_yml_config_dir_exists() {
         let content = "url: http://localhost:9066\ntunnel: TUNNEL_ID\ncredentials-file: /tmp/home/.cloudflared/TUNNEL_ID.json\n";
 
-        let mut mock_fs = MockFileSystem::new();
-        mock_fs
+        let mut mock_sys = MockSystem::new();
+        mock_sys
             .expect_get_env()
             .with(predicate::eq("HOME"))
             .returning(|_| Ok("/tmp/home".to_string()));
         // If .cloudflared directory exists:
-        mock_fs
+        mock_sys
             .expect_file_exists()
             .withf(|path| path.ends_with(".cloudflared"))
             .returning(|_| true);
         // Don't create .cloudflared directory:
-        mock_fs.expect_create_dir_all().never();
+        mock_sys.expect_create_dir_all().never();
         // Create/truncate config.yml file:
-        mock_fs
+        mock_sys
             .expect_create_file()
             .withf(|path| path.ends_with("config.yml"))
             .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
         // Write to config.yml file:
-        mock_fs
+        mock_sys
             .expect_write_file()
             .with(predicate::always(), predicate::eq(content))
             .returning(|_, _| Ok(()));
 
-        let result = create_config_yml(&mock_fs, "TUNNEL_ID");
+        let result = create_config_yml(&mock_sys, "TUNNEL_ID");
         assert!(result.is_ok());
     }
 
@@ -398,28 +395,28 @@ mod tests {
     fn test_save_tunnel_credentials() {
         let content = "{\"AccountTag\":\"ACCOUNT_ID\",\"TunnelID\":\"TUNNEL_ID\",\"TunnelSecret\":\"AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=\"}";
 
-        let mut mock_fs = MockFileSystem::new();
-        mock_fs
+        let mut mock_sys = MockSystem::new();
+        mock_sys
             .expect_get_env()
             .with(predicate::eq("HOME"))
             .returning(|_| Ok("/tmp/home".to_string()));
 
-        mock_fs
+        mock_sys
             .expect_get_env()
             .with(predicate::eq("LINKUP_CLOUDFLARE_ACCOUNT_ID"))
             .returning(|_| Ok("ACCOUNT_ID".to_string()));
 
-        mock_fs
+        mock_sys
             .expect_create_file()
             .withf(|path| path.ends_with("TUNNEL_ID.json"))
             .returning(|_| Ok(Box::new(MockFile::new()) as Box<dyn FileLike>));
-        mock_fs
+        mock_sys
             .expect_write_file()
             .with(predicate::always(), predicate::eq(content))
             .returning(|_, _| Ok(()));
 
         let result = save_tunnel_credentials(
-            &mock_fs,
+            &mock_sys,
             "TUNNEL_ID",
             "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=",
         );

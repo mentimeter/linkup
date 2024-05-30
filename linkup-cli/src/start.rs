@@ -6,11 +6,11 @@ use std::{
 use crate::{
     background_booting::{BackgroundServices, RealBackgroundServices},
     env_files::write_to_env_file,
-    file_system::{FileSystem, RealFileSystem},
     linkup_file_path,
     local_config::{config_path, config_to_state, get_config},
     paid_tunnel::{PaidTunnelManager, RealPaidTunnelManager},
     services::tunnel::{RealTunnelManager, TunnelManager},
+    system::{RealSystem, System},
     LINKUP_LOCALDNS_INSTALL,
 };
 use crate::{
@@ -24,8 +24,8 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
     let state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
     if is_paid {
         start_paid_tunnel(
+            &RealSystem,
             &RealPaidTunnelManager,
-            &RealFileSystem,
             &RealBackgroundServices,
             &RealTunnelManager,
             state,
@@ -43,8 +43,8 @@ fn use_paid_tunnels() -> bool {
 }
 
 fn start_paid_tunnel(
+    sys: &dyn System,
     paid_manager: &dyn PaidTunnelManager,
-    filesys: &dyn FileSystem,
     boot: &dyn BackgroundServices,
     tunnel_manager: &dyn TunnelManager,
     mut state: LocalState,
@@ -67,8 +67,8 @@ fn start_paid_tunnel(
         println!("Tunnel ID is empty");
     } else {
         println!("Tunnel ID: {}", tunnel_id);
-        let file_path = format!("{}/.cloudflared/{}.json", filesys.get_home()?, tunnel_id);
-        if filesys.file_exists(Path::new(&file_path)) {
+        let file_path = format!("{}/.cloudflared/{}.json", sys.get_env("HOME")?, tunnel_id);
+        if sys.file_exists(Path::new(&file_path)) {
             println!("File exists: {}", file_path);
             let tunnel = tunnel_manager.run_tunnel(&state)?;
             state.linkup.tunnel = Some(tunnel);
@@ -193,12 +193,12 @@ fn check_local_not_started() -> Result<(), CliError> {
 
 #[cfg(test)]
 mod tests {
-    use mockall::mock;
+    use mockall::{mock, predicate};
 
     use crate::{
-        background_booting::MockBackgroundServices, file_system::MockFileSystem,
-        local_config::LinkupState, paid_tunnel::MockPaidTunnelManager,
-        services::tunnel::MockTunnelManager,
+        background_booting::MockBackgroundServices, local_config::LinkupState,
+        paid_tunnel::MockPaidTunnelManager, services::tunnel::MockTunnelManager,
+        system::MockSystem,
     };
 
     use url::Url;
@@ -233,29 +233,48 @@ mod tests {
     fn test_start_paid_tunnel_tunnel_exists() {
         let mut mock_boot_bg_services = MockBackgroundServices::new();
         let mut mock_paid_manager = MockPaidTunnelManager::new();
-        let mut mock_fs = MockFileSystem::new();
+        let mut mock_sys = MockSystem::new();
         let mut mock_tunnel_manager = MockTunnelManager::new();
 
-        mock_paid_manager
-            .expect_get_tunnel_id()
-            .returning(|_| Ok(Some("test_tunnel_id".to_string())));
-        mock_fs.expect_file_exists().returning(|_| true);
-        mock_fs
-            .expect_get_home()
-            .returning(|| Ok("/tmp/home".to_string()));
-        mock_paid_manager.expect_create_tunnel().never();
-        mock_paid_manager.expect_create_dns_record().never();
+        // Start background services
         mock_boot_bg_services
             .expect_boot_background_services()
-            .times(1)
+            .once()
             .returning(|_| Ok(make_state()));
+
+        // Check if tunnel exists
+        mock_paid_manager
+            .expect_get_tunnel_id()
+            .with(predicate::eq("test_session"))
+            .returning(|_| Ok(Some("test_tunnel_id".to_string())));
+
+        // Mock HOME env var
+        mock_sys
+            .expect_get_env()
+            .with(predicate::eq("HOME"))
+            .returning(|_| Ok("/tmp/home".to_string()));
+
+        // If tunnel exists, check if config file exists
+        mock_sys
+            .expect_file_exists()
+            .with(predicate::eq(Path::new(
+                "/tmp/home/.cloudflared/test_tunnel_id.json",
+            )))
+            .returning(|_| true);
+
+        // If tunnel exists and config file exists, run tunnel
         mock_tunnel_manager
             .expect_run_tunnel()
-            .times(1)
+            .once()
             .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
+
+        // If tunnel exists and config file exists, don't create tunnel or DNS record
+        mock_paid_manager.expect_create_tunnel().never();
+        mock_paid_manager.expect_create_dns_record().never();
+
         let _result = start_paid_tunnel(
+            &mock_sys,
             &mock_paid_manager,
-            &mock_fs,
             &mock_boot_bg_services,
             &mock_tunnel_manager,
             make_state(),
@@ -266,7 +285,7 @@ mod tests {
     fn test_start_paid_tunnel_no_tunnel_exists() {
         let mut mock_boot_bg_services = MockBackgroundServices::new();
         let mut mock_manager = MockPaidTunnelManager::new();
-        let mut mock_fs = MockFileSystem::new();
+        let mut mock_sys = MockSystem::new();
         let mut mock_tunnel_manager = MockTunnelManager::new();
 
         mock_boot_bg_services
@@ -274,7 +293,7 @@ mod tests {
             .times(1)
             .returning(|_| Ok(make_state()));
         mock_manager.expect_get_tunnel_id().returning(|_| Ok(None));
-        mock_fs.expect_file_exists().never();
+        mock_sys.expect_file_exists().never();
         mock_manager
             .expect_create_tunnel()
             .times(1)
@@ -288,8 +307,8 @@ mod tests {
             .times(1)
             .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
         let _result = start_paid_tunnel(
+            &mock_sys,
             &mock_manager,
-            &mock_fs,
             &mock_boot_bg_services,
             &mock_tunnel_manager,
             make_state(),
