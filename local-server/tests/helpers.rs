@@ -4,17 +4,18 @@ use reqwest::Url;
 use tokio::net::TcpListener;
 
 pub async fn setup_server() -> String {
-    let app = linkup_router();
+    // let app = linkup_router();
 
-    // Bind to a random port assigned by the OS
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
+    // // Bind to a random port assigned by the OS
+    // let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    // let addr = listener.local_addr().unwrap();
 
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
+    // tokio::spawn(async move {
+    //     axum::serve(listener, app).await.unwrap();
+    // });
 
-    format!("http://{}", addr)
+    // format!("http://{}", addr)
+    format!("http://localhost:8787")
 }
 
 pub async fn post(url: String, body: String) -> reqwest::Response {
