@@ -12,7 +12,7 @@ use linkup::{CreatePreviewRequest, StorableDomain, StorableRewrite, StorableServ
 
 use crate::{linkup_file_path, CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE};
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct LocalState {
     pub linkup: LinkupState,
     pub domains: Vec<StorableDomain>,
@@ -83,7 +83,7 @@ impl LocalState {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct LinkupState {
     pub session_name: String,
     pub session_token: String,
@@ -93,7 +93,7 @@ pub struct LinkupState {
     pub cache_routes: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct LocalService {
     pub name: String,
     pub remote: Url,

@@ -73,20 +73,20 @@ pub struct StorableService {
     pub rewrites: Option<Vec<StorableRewrite>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct StorableRewrite {
     pub source: String,
     pub target: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct StorableDomain {
     pub domain: String,
     pub default_service: String,
     pub routes: Option<Vec<StorableRoute>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct StorableRoute {
     pub path: String,
     pub service: String,
