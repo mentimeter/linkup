@@ -1,54 +1,25 @@
 use axum::{
-    debug_handler,
     extract::{Json, Request, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{any, get, post},
     Router,
 };
-use futures::{
-    future::{self, Either},
-    stream::StreamExt,
-};
+
 use http::{HeaderMap, Uri};
+use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
     allow_all_cors, get_additional_headers, get_target_service, NameKind, Session,
     SessionAllocator, UpdateSessionRequest,
 };
 use tower_service::Service;
-use worker::{
-    console_log, event, kv::KvStore, Env, Error, Fetch, HttpRequest, HttpResponse, WebSocketPair,
-};
-use ws::{close_with_internal_error, forward_ws_event};
+use worker::{event, kv::KvStore, Env, Fetch, HttpRequest, HttpResponse};
+use ws::handle_ws_resp;
 
+mod http_error;
 mod kv_store;
 mod ws;
-
-#[derive(Debug)]
-struct ApiError {
-    message: String,
-    status_code: StatusCode,
-}
-
-impl ApiError {
-    fn new(message: String, status_code: StatusCode) -> Self {
-        ApiError {
-            message,
-            status_code,
-        }
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::http::Response<axum::body::Body> {
-        Response::builder()
-            .status(self.status_code)
-            .header("Content-Type", "text/plain")
-            .body(axum::body::Body::from(self.message))
-            .unwrap()
-    }
-}
 
 pub fn linkup_router(kv: KvStore) -> Router {
     Router::new()
@@ -81,7 +52,6 @@ async fn fetch(
     Ok(linkup_router(kv).call(req).await?)
 }
 
-#[debug_handler]
 #[worker::send]
 async fn linkup_request_handler(State(kv): State<KvStore>, mut req: Request) -> impl IntoResponse {
     let store = CfWorkerStringStore::new(kv);
@@ -92,7 +62,7 @@ async fn linkup_request_handler(State(kv): State<KvStore>, mut req: Request) -> 
     let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
         Ok(session) => session,
         Err(_) => {
-            return ApiError::new(
+            return HttpError::new(
                 "Linkup was unable to determine the session origin of the request. Ensure that your request includes a valid session identifier in the referer or tracestate headers. - Local Server".to_string(),
                 StatusCode::UNPROCESSABLE_ENTITY,
             )
@@ -103,7 +73,7 @@ async fn linkup_request_handler(State(kv): State<KvStore>, mut req: Request) -> 
     let target_service = match get_target_service(&url, &headers, &config, &session_name) {
         Some(result) => result,
         None => {
-            return ApiError::new(
+            return HttpError::new(
                 "The request belonged to a session, but there was no target for the request. Check that the routing rules in your linkup config have a match for this request. - Local Server".to_string(),
                 StatusCode::NOT_FOUND,
             )
@@ -128,7 +98,7 @@ async fn linkup_request_handler(State(kv): State<KvStore>, mut req: Request) -> 
     let worker_req: worker::Request = match req.try_into() {
         Ok(req) => req,
         Err(e) => {
-            return ApiError::new(
+            return HttpError::new(
                 format!("Failed to parse request: {}", e),
                 StatusCode::BAD_REQUEST,
             )
@@ -139,7 +109,7 @@ async fn linkup_request_handler(State(kv): State<KvStore>, mut req: Request) -> 
     let worker_resp = match Fetch::Request(worker_req).send().await {
         Ok(resp) => resp,
         Err(e) => {
-            return ApiError::new(
+            return HttpError::new(
                 format!("Failed to fetch from target service: {}", e),
                 StatusCode::BAD_GATEWAY,
             )
@@ -158,109 +128,7 @@ async fn handle_http_resp(worker_resp: worker::Response) -> impl IntoResponse {
     let mut resp: HttpResponse = match worker_resp.try_into() {
         Ok(resp) => resp,
         Err(e) => {
-            return ApiError::new(
-                format!("Failed to parse response: {}", e),
-                StatusCode::BAD_GATEWAY,
-            )
-            .into_response()
-        }
-    };
-
-    resp.headers_mut().extend(allow_all_cors());
-
-    resp.into_response()
-}
-
-async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse {
-    let dest_ws_res = match worker_resp.websocket() {
-        Some(ws) => Ok(ws),
-        None => Err(Error::RustError("server did not accept".into())),
-    };
-    let dest_ws = match dest_ws_res {
-        Ok(ws) => ws,
-        Err(e) => {
-            return ApiError::new(
-                format!("Failed to connect to destination: {}", e),
-                StatusCode::BAD_GATEWAY,
-            )
-            .into_response()
-        }
-    };
-
-    let source_ws = match WebSocketPair::new() {
-        Ok(ws) => ws,
-        Err(e) => {
-            return ApiError::new(
-                format!("Failed to create source websocket: {}", e),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-            .into_response()
-        }
-    };
-    let source_ws_server = source_ws.server;
-
-    wasm_bindgen_futures::spawn_local(async move {
-        let mut dest_events = dest_ws.events().expect("could not open dest event stream");
-        let mut source_events = source_ws_server
-            .events()
-            .expect("could not open source event stream");
-
-        dest_ws.accept().expect("could not accept dest ws");
-        source_ws_server
-            .accept()
-            .expect("could not accept source ws");
-
-        loop {
-            match future::select(source_events.next(), dest_events.next()).await {
-                Either::Left((Some(source_event), _)) => {
-                    if let Err(e) = forward_ws_event(
-                        source_event,
-                        &source_ws_server,
-                        &dest_ws,
-                        "to destination".into(),
-                    ) {
-                        console_log!("Error forwarding source event: {:?}", e);
-                        break;
-                    }
-                }
-                Either::Right((Some(dest_event), _)) => {
-                    if let Err(e) = forward_ws_event(
-                        dest_event,
-                        &dest_ws,
-                        &source_ws_server,
-                        "to source".into(),
-                    ) {
-                        console_log!("Error forwarding dest event: {:?}", e);
-                        break;
-                    }
-                }
-                _ => {
-                    console_log!("No event received, error");
-                    close_with_internal_error(
-                        "Received something other than event from streams".to_string(),
-                        &source_ws_server,
-                        &dest_ws,
-                    );
-                    break;
-                }
-            }
-        }
-    });
-
-    let worker_resp = match worker::Response::from_websocket(source_ws.client) {
-        Ok(res) => res,
-        Err(e) => {
-            return ApiError::new(
-                format!("Failed to create response from websocket: {}", e),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-            .into_response()
-        }
-    };
-    let mut resp: HttpResponse = match worker_resp.try_into() {
-        Ok(resp) => resp,
-        Err(e) => {
-            return ApiError::new(
+            return HttpError::new(
                 format!("Failed to parse response: {}", e),
                 StatusCode::BAD_GATEWAY,
             )
@@ -285,7 +153,7 @@ async fn linkup_session_handler(
     let server_conf: Session = match update_req.try_into() {
         Ok(conf) => conf,
         Err(e) => {
-            return ApiError::new(
+            return HttpError::new(
                 format!("Failed to parse server config: {} - local server", e),
                 StatusCode::BAD_REQUEST,
             )
@@ -300,7 +168,7 @@ async fn linkup_session_handler(
     let name = match session_name {
         Ok(session_name) => session_name,
         Err(e) => {
-            return ApiError::new(
+            return HttpError::new(
                 format!("Failed to store server config: {}", e),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
@@ -319,11 +187,10 @@ async fn linkup_preview_handler(
     let store = CfWorkerStringStore::new(kv);
     let sessions = SessionAllocator::new(&store);
 
-    let desired_name = update_req.desired_name.clone();
     let server_conf: Session = match update_req.try_into() {
         Ok(conf) => conf,
         Err(e) => {
-            return ApiError::new(
+            return HttpError::new(
                 format!("Failed to parse server config: {} - local server", e),
                 StatusCode::BAD_REQUEST,
             )
@@ -338,7 +205,7 @@ async fn linkup_preview_handler(
     let name = match session_name {
         Ok(session_name) => session_name,
         Err(e) => {
-            return ApiError::new(
+            return HttpError::new(
                 format!("Failed to store server config: {}", e),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
