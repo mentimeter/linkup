@@ -304,6 +304,7 @@ async fn handle_ws_req(
                 }
             }
         }
+        console_log!("Outside loop");
     });
 
     let worker_resp = match worker::Response::from_websocket(source_ws.client) {
@@ -331,44 +332,6 @@ async fn handle_ws_req(
 
     resp.into_response()
 }
-
-// async fn websocket_connect(url: &str, additional_headers: &LinkupHeaderMap) -> Result<WebSocket> {
-//     let mut proper_url = match url.parse::<Url>() {
-//         Ok(url) => url,
-//         Err(_) => return Err(Error::RustError("invalid url".into())),
-//     };
-
-//     // With fetch we can only make requests to http(s) urls, but Workers will allow us to upgrade
-//     // those connections into websockets if we use the `Upgrade` header.
-//     let scheme: String = match proper_url.scheme() {
-//         "ws" => "http".into(),
-//         "wss" => "https".into(),
-//         scheme => scheme.into(),
-//     };
-
-//     proper_url.set_scheme(&scheme).unwrap();
-
-//     let mut headers = worker::Headers::new();
-//     additional_headers.into_iter().for_each(|(k, v)| {
-//         headers
-//             .append(k.as_str(), v.as_str())
-//             .expect("could not append header to websocket request");
-//     });
-//     headers.set("upgrade", "websocket")?;
-
-//     let mut init = RequestInit::new();
-//     init.with_method(Method::Get);
-//     init.with_headers(headers);
-
-//     let req = Request::new_with_init(proper_url.as_str(), &init)?;
-
-//     let res = Fetch::Request(req).send().await?;
-
-//     match res.websocket() {
-//         Some(ws) => Ok(ws),
-//         None => Err(Error::RustError("server did not accept".into())),
-//     }
-// }
 
 #[worker::send]
 async fn linkup_session_handler(

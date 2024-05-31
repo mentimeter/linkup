@@ -39,7 +39,13 @@ pub fn forward_ws_event(
         }
         Ok(WebsocketEvent::Close(close)) => {
             console_log!("Close event from source: {:?}", close);
-            let _ = to.close(Some(close.code()), Some(close.reason()));
+            let close_res = to.close(Some(close.code()), Some(close.reason()));
+            match close_res {
+                Err(e) => {
+                    console_log!("Error closing {} with close event: {:?}", description, e);
+                }
+                _ => {}
+            };
             Err(Error::RustError(format!("Close event: {}", close.reason())))
         }
         Err(e) => {
@@ -51,7 +57,7 @@ pub fn forward_ws_event(
 }
 
 pub fn close_with_internal_error(msg: String, from: &WebSocket, to: &WebSocket) {
-    console_log!("{}", msg);
+    console_log!("close message: {}", msg);
     let close_res = to.close(Some(1011), Some(msg.clone()));
     if let Err(e) = close_res {
         console_log!("Error closing to websocket: {:?}", e);
