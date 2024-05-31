@@ -60,6 +60,21 @@ async fn can_request_underlying_websocket_server() {
             panic!("Failed to receive message")
         }
     }
+
+    ws_stream
+        .send(tokio_tungstenite::tungstenite::Message::Close(None))
+        .await
+        .expect("Failed to close WebSocket");
+
+    match ws_stream.next().await {
+        Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => {
+            println!("WebSocket closed successfully");
+        }
+        anythingelse => {
+            println!("{:?}", anythingelse);
+            panic!("Failed to receive close frame")
+        }
+    }
 }
 
 async fn websocket_echo(ws: WebSocketUpgrade) -> impl IntoResponse {
@@ -78,6 +93,12 @@ async fn handle_websocket(mut socket: WebSocket) {
                         println!("Failed to send message: {:?}", e);
                         break;
                     }
+                } else if let Message::Close(_) = msg {
+                    println!("Received close message");
+                    if let Err(e) = socket.send(Message::Close(None)).await {
+                        println!("Failed to send close message: {:?}", e);
+                    }
+                    break;
                 }
             }
             Err(e) => {

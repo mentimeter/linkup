@@ -1,28 +1,37 @@
 use std::sync::Arc;
 
 use axum::{
+    debug_handler,
     extract::{Json, Request, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{any, get, post},
-    Extension, Router,
+    Router,
 };
-// use futures::stream::StreamExt;
-// use futures::TryStreamExt;
-// use http_util::*;
+use futures::{
+    future::{self, Either},
+    stream::StreamExt,
+};
+use http::{HeaderMap, Uri};
 use kv_store::CfWorkerStringStore;
 // use linkup::{HeaderMap as LinkupHeaderMap, *};
 // use tower_service::Service;
 // use kv::KvStore;
-use linkup::{NameKind, Session, SessionAllocator, UpdateSessionRequest};
+use linkup::{
+    allow_all_cors, get_additional_headers, get_target_service, NameKind, Session,
+    SessionAllocator, UpdateSessionRequest,
+};
 use tower_service::Service;
-use worker::{event, kv::KvStore, Env, HttpRequest};
+use worker::{
+    console_log, event, kv::KvStore, Env, Error, Fetch, HttpRequest, HttpResponse, WebSocketPair,
+};
 // use ws::linkup_ws_handler;
+use ws::{close_with_internal_error, forward_ws_event};
 
 // mod http_util;
 mod kv_store;
 // mod utils;
-// mod ws;
+mod ws;
 
 #[derive(Debug)]
 struct ApiError {
@@ -39,11 +48,6 @@ impl ApiError {
     }
 }
 
-// #[derive(Clone)]
-// struct AppState {
-//     kv: Arc<KvStore>,
-// }
-
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::http::Response<axum::body::Body> {
         Response::builder()
@@ -55,11 +59,10 @@ impl IntoResponse for ApiError {
 }
 
 pub fn linkup_router(kv: KvStore) -> Router {
-    // let state = AppState { kv: Arc::new(kv) };
     Router::new()
         .route("/linkup", post(linkup_session_handler))
         .route("/linkup-check", get(always_ok))
-        // .fallback(any(linkup_request_handler))
+        .fallback(any(linkup_request_handler))
         // .layer(Extension(env))
         .with_state(kv)
 }
@@ -98,15 +101,281 @@ async fn fetch(
 // };
 // }
 
-async fn always_ok() -> &'static str {
-    "OK"
+#[debug_handler]
+#[worker::send]
+async fn linkup_request_handler(State(kv): State<KvStore>, req: Request) -> impl IntoResponse {
+    let store = CfWorkerStringStore::new(kv);
+    let sessions = SessionAllocator::new(&store);
+
+    let headers: linkup::HeaderMap = req.headers().into();
+    let url = req.uri().to_string();
+    let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
+        Ok(session) => session,
+        Err(_) => {
+            return ApiError::new(
+                "Linkup was unable to determine the session origin of the request. Ensure that your request includes a valid session identifier in the referer or tracestate headers. - Local Server".to_string(),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            )
+            .into_response()
+        }
+    };
+
+    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
+        Some(result) => result,
+        None => {
+            return ApiError::new(
+                "The request belonged to a session, but there was no target for the request. Check that the routing rules in your linkup config have a match for this request. - Local Server".to_string(),
+                StatusCode::NOT_FOUND,
+            )
+            .into_response()
+        }
+    };
+
+    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
+
+    if req
+        .headers()
+        .get("upgrade")
+        .map(|v| v == "websocket")
+        .unwrap_or(false)
+    {
+        handle_ws_req(req, target_service, extra_headers)
+            .await
+            .into_response()
+    } else {
+        handle_http_req(req, target_service, extra_headers)
+            .await
+            .into_response()
+    }
 }
 
+async fn handle_http_req(
+    mut req: Request,
+    target_service: linkup::TargetService,
+    extra_headers: linkup::HeaderMap,
+) -> impl IntoResponse {
+    *req.uri_mut() = Uri::try_from(target_service.url).unwrap();
+    let extra_http_headers: HeaderMap = extra_headers.into();
+    req.headers_mut().extend(extra_http_headers);
+    // Request uri and host headers should not conflict
+    req.headers_mut().remove(http::header::HOST);
+
+    let worker_req: worker::Request = match req.try_into() {
+        Ok(req) => req,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to parse request: {}", e),
+                StatusCode::BAD_REQUEST,
+            )
+            .into_response()
+        }
+    };
+
+    let mut worker_resp = match Fetch::Request(worker_req).send().await {
+        Ok(resp) => resp,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to fetch from target service: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
+        }
+    };
+
+    let mut resp: HttpResponse = match worker_resp.try_into() {
+        Ok(resp) => resp,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to parse response: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
+        }
+    };
+
+    resp.headers_mut().extend(allow_all_cors());
+
+    resp.into_response()
+}
+
+async fn handle_ws_req(
+    mut req: Request,
+    target_service: linkup::TargetService,
+    extra_headers: linkup::HeaderMap,
+) -> impl IntoResponse {
+    *req.uri_mut() = Uri::try_from(target_service.url).unwrap();
+    let extra_http_headers: HeaderMap = extra_headers.into();
+    req.headers_mut().extend(extra_http_headers);
+    // Request uri and host headers should not conflict
+    req.headers_mut().remove(http::header::HOST);
+
+    let worker_req: worker::Request = match req.try_into() {
+        Ok(req) => req,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to parse request: {}", e),
+                StatusCode::BAD_REQUEST,
+            )
+            .into_response()
+        }
+    };
+
+    let mut worker_resp = match Fetch::Request(worker_req).send().await {
+        Ok(resp) => resp,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to fetch from target service: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
+        }
+    };
+
+    let dest_ws_res = match worker_resp.websocket() {
+        Some(ws) => Ok(ws),
+        None => Err(Error::RustError("server did not accept".into())),
+    };
+    let dest_ws = match dest_ws_res {
+        Ok(ws) => ws,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to connect to destination: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
+        }
+    };
+
+    let source_ws = match WebSocketPair::new() {
+        Ok(ws) => ws,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to create source websocket: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response()
+        }
+    };
+    let source_ws_server = source_ws.server;
+
+    wasm_bindgen_futures::spawn_local(async move {
+        let mut dest_events = dest_ws.events().expect("could not open dest event stream");
+        let mut source_events = source_ws_server
+            .events()
+            .expect("could not open source event stream");
+
+        dest_ws.accept().expect("could not accept dest ws");
+        source_ws_server
+            .accept()
+            .expect("could not accept source ws");
+
+        loop {
+            match future::select(source_events.next(), dest_events.next()).await {
+                Either::Left((Some(source_event), _)) => {
+                    if let Err(e) = forward_ws_event(
+                        source_event,
+                        &source_ws_server,
+                        &dest_ws,
+                        "to destination".into(),
+                    ) {
+                        console_log!("Error forwarding source event: {:?}", e);
+                        break;
+                    }
+                }
+                Either::Right((Some(dest_event), _)) => {
+                    if let Err(e) = forward_ws_event(
+                        dest_event,
+                        &dest_ws,
+                        &source_ws_server,
+                        "to source".into(),
+                    ) {
+                        console_log!("Error forwarding dest event: {:?}", e);
+                        break;
+                    }
+                }
+                _ => {
+                    console_log!("No event received, error");
+                    close_with_internal_error(
+                        "Received something other than event from streams".to_string(),
+                        &source_ws_server,
+                        &dest_ws,
+                    );
+                    break;
+                }
+            }
+        }
+    });
+
+    let worker_resp = match worker::Response::from_websocket(source_ws.client) {
+        Ok(res) => res,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to create response from websocket: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response()
+        }
+    };
+    let mut resp: HttpResponse = match worker_resp.try_into() {
+        Ok(resp) => resp,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to parse response: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
+        }
+    };
+
+    resp.headers_mut().extend(allow_all_cors());
+
+    resp.into_response()
+}
+
+// async fn websocket_connect(url: &str, additional_headers: &LinkupHeaderMap) -> Result<WebSocket> {
+//     let mut proper_url = match url.parse::<Url>() {
+//         Ok(url) => url,
+//         Err(_) => return Err(Error::RustError("invalid url".into())),
+//     };
+
+//     // With fetch we can only make requests to http(s) urls, but Workers will allow us to upgrade
+//     // those connections into websockets if we use the `Upgrade` header.
+//     let scheme: String = match proper_url.scheme() {
+//         "ws" => "http".into(),
+//         "wss" => "https".into(),
+//         scheme => scheme.into(),
+//     };
+
+//     proper_url.set_scheme(&scheme).unwrap();
+
+//     let mut headers = worker::Headers::new();
+//     additional_headers.into_iter().for_each(|(k, v)| {
+//         headers
+//             .append(k.as_str(), v.as_str())
+//             .expect("could not append header to websocket request");
+//     });
+//     headers.set("upgrade", "websocket")?;
+
+//     let mut init = RequestInit::new();
+//     init.with_method(Method::Get);
+//     init.with_headers(headers);
+
+//     let req = Request::new_with_init(proper_url.as_str(), &init)?;
+
+//     let res = Fetch::Request(req).send().await?;
+
+//     match res.websocket() {
+//         Some(ws) => Ok(ws),
+//         None => Err(Error::RustError("server did not accept".into())),
+//     }
+// }
+
+#[worker::send]
 async fn linkup_session_handler(
-    State(linkupState): State<KvStore>,
+    State(kv): State<KvStore>,
     Json(update_req): Json<UpdateSessionRequest>,
 ) -> impl IntoResponse {
-    let store = CfWorkerStringStore::new(linkupState);
+    let store = CfWorkerStringStore::new(kv);
     let sessions = SessionAllocator::new(&store);
 
     let desired_name = update_req.desired_name.clone();
@@ -178,94 +447,9 @@ async fn linkup_session_handler(
 //     (StatusCode::OK, name).into_response()
 // }
 
-// fn store_from_env(env: &Env) -> Result<CfWorkerStringStore, ApiError> {
-//     let kv = match env.kv("LINKUP_SESSIONS") {
-//         Ok(kv) => kv,
-//         Err(e) => {
-//             return Err(ApiError::new(
-//                 format!("Failed to get KV namespace: {}", e),
-//                 StatusCode::INTERNAL_SERVER_ERROR,
-//             ));
-//         }
-//     };
-
-//     Ok()
-// }
-
-// async fn linkup_request_handler<'a, S: StringStore>(
-//     mut req: Request,
-//     sessions: &'a SessionAllocator<'a, S>,
-// ) -> Result<Response> {
-//     let url = match req.url() {
-//         Ok(url) => url.to_string(),
-//         Err(_) => return plaintext_error("Bad or missing request url", 400),
-//     };
-
-//     let mut headers = LinkupHeaderMap::from_worker_request(&req);
-
-//     let (session_name, config) =
-//         match sessions.get_request_session(&url, &headers).await {
-//             Ok(result) => result,
-//             Err(e) => return plaintext_error(format!("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate, {:?}",e), 422),
-//         };
-
-//     if is_cacheable_request(&req, &config) {
-//         if let Some(cached_response) = get_cached_req(&req, &session_name).await {
-//             return Ok(cached_response);
-//         }
-//     }
-
-//     let body_bytes = match req.bytes().await {
-//         Ok(bytes) => bytes,
-//         Err(_) => return plaintext_error("Bad or missing request body", 400),
-//     };
-
-//     let target_service = match get_target_service(&url, &headers, &config, &session_name) {
-//         Some(result) => result,
-//         None => return plaintext_error("No target URL for request", 422),
-//     };
-
-//     let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
-
-//     let method = match convert_cf_method_to_reqwest(&req.method()) {
-//         Ok(method) => method,
-//         Err(_) => return plaintext_error("Bad request method", 400),
-//     };
-
-//     // if let Ok(Some(upgrade)) = req.headers().get("upgrade") {
-//     //     if upgrade == "websocket" {
-//     //         return linkup_ws_handler(req, &sessions).await;
-//     //     }
-//     // }
-
-//     // // Proxy the request using the destination_url and the merged headers
-//     let client = reqwest::Client::builder()
-//         .redirect(reqwest::redirect::Policy::none())
-//         .build()
-//         .unwrap();
-
-//     headers.extend(&extra_headers);
-//     let response_result = client
-//         .request(method, &target_service.url)
-//         .headers(headers.into())
-//         .body(body_bytes)
-//         .send()
-//         .await;
-
-//     let response = match response_result {
-//         Ok(response) => response,
-//         Err(e) => return plaintext_error(format!("Failed to proxy request: {}", e), 502),
-//     };
-
-//     let mut cf_resp =
-//         convert_reqwest_response_to_cf(response, &additional_response_headers()).await?;
-
-//     if is_cacheable_request(&req, &config) {
-//         cf_resp = set_cached_req(&req, cf_resp, session_name).await?;
-//     }
-
-//     Ok(cf_resp)
-// }
+async fn always_ok() -> &'static str {
+    "OK"
+}
 
 // fn is_cacheable_request(req: &Request, config: &Session) -> bool {
 //     if req.method() != Method::Get {

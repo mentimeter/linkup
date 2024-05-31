@@ -1,4 +1,3 @@
-use linkup::{HeaderMap as LinkupHeaderMap, *};
 use worker::*;
 
 use futures::{
@@ -6,97 +5,7 @@ use futures::{
     stream::StreamExt,
 };
 
-use crate::http_util::plaintext_error;
-
-pub async fn linkup_ws_handler<'a, S: StringStore>(
-    req: Request,
-    sessions: &'a SessionAllocator<'a, S>,
-) -> Result<Response> {
-    let url = match req.url() {
-        Ok(url) => url.to_string(),
-        Err(_) => return plaintext_error("Bad or missing request url", 400),
-    };
-
-    let mut headers = LinkupHeaderMap::from_worker_request(&req);
-
-    let (session_name, config) =
-        match sessions.get_request_session(&url, &headers).await {
-            Ok(result) => result,
-            Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
-        };
-
-    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
-        Some(result) => result,
-        None => return plaintext_error("No target URL for request", 422),
-    };
-
-    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
-    headers.extend(&extra_headers);
-
-    let dest_ws_res = websocket_connect(&target_service.url, &headers).await;
-    let dest_ws = match dest_ws_res {
-        Ok(ws) => ws,
-        Err(e) => {
-            console_log!("Failed to connect to destination: {}", e);
-            return plaintext_error(format!("Failed to connect to destination: {}", e), 502);
-        }
-    };
-
-    let source_ws = WebSocketPair::new()?;
-    let source_ws_server = source_ws.server;
-
-    wasm_bindgen_futures::spawn_local(async move {
-        let mut dest_events = dest_ws.events().expect("could not open dest event stream");
-        let mut source_events = source_ws_server
-            .events()
-            .expect("could not open source event stream");
-
-        dest_ws.accept().expect("could not accept dest ws");
-        source_ws_server
-            .accept()
-            .expect("could not accept source ws");
-
-        loop {
-            match future::select(source_events.next(), dest_events.next()).await {
-                Either::Left((Some(source_event), _)) => {
-                    if let Err(e) = forward_ws_event(
-                        source_event,
-                        &source_ws_server,
-                        &dest_ws,
-                        "to destination".into(),
-                    ) {
-                        console_log!("Error forwarding source event: {:?}", e);
-                        break;
-                    }
-                }
-                Either::Right((Some(dest_event), _)) => {
-                    if let Err(e) = forward_ws_event(
-                        dest_event,
-                        &dest_ws,
-                        &source_ws_server,
-                        "to source".into(),
-                    ) {
-                        console_log!("Error forwarding dest event: {:?}", e);
-                        break;
-                    }
-                }
-                _ => {
-                    console_log!("No event received, error");
-                    close_with_internal_error(
-                        "Received something other than event from streams".to_string(),
-                        &source_ws_server,
-                        &dest_ws,
-                    );
-                    break;
-                }
-            }
-        }
-    });
-
-    Response::from_websocket(source_ws.client)
-}
-
-fn forward_ws_event(
+pub fn forward_ws_event(
     event: Result<WebsocketEvent>,
     from: &WebSocket,
     to: &WebSocket,
@@ -141,45 +50,7 @@ fn forward_ws_event(
     }
 }
 
-async fn websocket_connect(url: &str, additional_headers: &LinkupHeaderMap) -> Result<WebSocket> {
-    let mut proper_url = match url.parse::<Url>() {
-        Ok(url) => url,
-        Err(_) => return Err(Error::RustError("invalid url".into())),
-    };
-
-    // With fetch we can only make requests to http(s) urls, but Workers will allow us to upgrade
-    // those connections into websockets if we use the `Upgrade` header.
-    let scheme: String = match proper_url.scheme() {
-        "ws" => "http".into(),
-        "wss" => "https".into(),
-        scheme => scheme.into(),
-    };
-
-    proper_url.set_scheme(&scheme).unwrap();
-
-    let mut headers = worker::Headers::new();
-    additional_headers.into_iter().for_each(|(k, v)| {
-        headers
-            .append(k.as_str(), v.as_str())
-            .expect("could not append header to websocket request");
-    });
-    headers.set("upgrade", "websocket")?;
-
-    let mut init = RequestInit::new();
-    init.with_method(Method::Get);
-    init.with_headers(headers);
-
-    let req = Request::new_with_init(proper_url.as_str(), &init)?;
-
-    let res = Fetch::Request(req).send().await?;
-
-    match res.websocket() {
-        Some(ws) => Ok(ws),
-        None => Err(Error::RustError("server did not accept".into())),
-    }
-}
-
-fn close_with_internal_error(msg: String, from: &WebSocket, to: &WebSocket) {
+pub fn close_with_internal_error(msg: String, from: &WebSocket, to: &WebSocket) {
     console_log!("{}", msg);
     let close_res = to.close(Some(1011), Some(msg.clone()));
     if let Err(e) = close_res {

@@ -10,3 +10,7 @@
 
 # We don't want to save KV IDs in our source code
 **/wrangler.toml
+
+# Side effects of running the wrangler cli
+**/.wrangler
+**/node_modules

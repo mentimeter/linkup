@@ -11,9 +11,13 @@ linkup = { path = "../linkup", features = ["worker"] }
 console_error_panic_hook = { version = "0.1.1" }
 worker = { version = "0.3.0", features = ["http", "axum"] }
 getrandom = { version = "0.2", features = ["js"] }
-axum = { version = "0.7", features = ["json"], default_features = false }
+axum = { version = "0.7", features = [
+    "json",
+    "macros",
+], default_features = false }
 tower-service = "0.3"
 http = "1.1"
 cfg-if = "1.0.0"
 futures = "0.3"
 regex = "1.10"
+wasm-bindgen-futures = "0.4"
