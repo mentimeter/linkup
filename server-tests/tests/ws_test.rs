@@ -4,6 +4,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use axum::Router;
 use futures::{SinkExt, StreamExt};
+use helpers::ServerKind;
 use http::Uri;
 use tokio::net::TcpListener;
 
@@ -13,7 +14,7 @@ mod helpers;
 
 #[tokio::test]
 async fn can_request_underlying_websocket_server() {
-    let url = setup_server().await;
+    let url = setup_server(ServerKind::Local).await;
     let ws_url = setup_websocket_server().await;
 
     let session_req = create_session_request("ws-session".to_string(), Some(ws_url));

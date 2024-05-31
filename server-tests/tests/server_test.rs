@@ -1,10 +1,12 @@
+use helpers::ServerKind;
+
 use crate::helpers::{create_session_request, post, setup_server};
 
 mod helpers;
 
 #[tokio::test]
 async fn can_respond_to_health_check() {
-    let url = setup_server().await;
+    let url = setup_server(ServerKind::Local).await;
 
     let response = get(format!("{}/linkup-check", url)).await;
 
@@ -13,7 +15,7 @@ async fn can_respond_to_health_check() {
 
 #[tokio::test]
 async fn no_such_session() {
-    let url = setup_server().await;
+    let url = setup_server(ServerKind::Local).await;
 
     let response = get(format!("{}/anypath", url)).await;
 
@@ -22,7 +24,7 @@ async fn no_such_session() {
 
 #[tokio::test]
 async fn method_not_allowed_config_get() {
-    let url = setup_server().await;
+    let url = setup_server(ServerKind::Local).await;
 
     let response = get(format!("{}/linkup", url)).await;
 
@@ -31,7 +33,7 @@ async fn method_not_allowed_config_get() {
 
 #[tokio::test]
 async fn can_create_session() {
-    let url = setup_server().await;
+    let url = setup_server(ServerKind::Local).await;
 
     let session_req = create_session_request("potatoname".to_string(), None);
     let response = post(format!("{}/linkup", url), session_req).await;

@@ -21,10 +21,3 @@ thiserror = "1"
 tokio = { version="1", features=["macros", "signal"] }
 tower-http = {version="0.5.2", features=["trace"]}
 
-
-[dev-dependencies]
-axum = { version="*", features=["ws"] }
-serde_json = "1.0"
-tokio-tungstenite = "0.21.0"
-tokio = { version = "1", features = ["test-util", "macros"] }
-reqwest = { version = "0.12", features = ["blocking"] }
