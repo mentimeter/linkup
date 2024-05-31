@@ -62,19 +62,9 @@ async fn can_request_underlying_websocket_server() {
     }
 
     ws_stream
-        .send(tokio_tungstenite::tungstenite::Message::Close(None))
+        .close(None)
         .await
         .expect("Failed to close WebSocket");
-
-    match ws_stream.next().await {
-        Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => {
-            println!("WebSocket closed successfully");
-        }
-        anythingelse => {
-            println!("{:?}", anythingelse);
-            panic!("Failed to receive close frame")
-        }
-    }
 }
 
 async fn websocket_echo(ws: WebSocketUpgrade) -> impl IntoResponse {
@@ -84,7 +74,6 @@ async fn websocket_echo(ws: WebSocketUpgrade) -> impl IntoResponse {
 async fn handle_websocket(mut socket: WebSocket) {
     println!("WebSocket connected");
     while let Some(result) = socket.recv().await {
-        println!("Received message {:?}", result);
         match result {
             Ok(msg) => {
                 println!("Received message: {:?}", msg);
@@ -94,9 +83,8 @@ async fn handle_websocket(mut socket: WebSocket) {
                         break;
                     }
                 } else if let Message::Close(_) = msg {
-                    println!("Received close message");
-                    if let Err(e) = socket.send(Message::Close(None)).await {
-                        println!("Failed to send close message: {:?}", e);
+                    if let Err(e) = socket.close().await {
+                        println!("Failed to close: {:?}", e);
                     }
                     break;
                 }

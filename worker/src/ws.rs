@@ -1,10 +1,5 @@
 use worker::*;
 
-use futures::{
-    future::{self, Either},
-    stream::StreamExt,
-};
-
 pub fn forward_ws_event(
     event: Result<WebsocketEvent>,
     from: &WebSocket,
@@ -38,14 +33,10 @@ pub fn forward_ws_event(
             }
         }
         Ok(WebsocketEvent::Close(close)) => {
-            console_log!("Close event from source: {:?}", close);
-            let close_res = to.close(Some(close.code()), Some(close.reason()));
-            match close_res {
-                Err(e) => {
-                    console_log!("Error closing {} with close event: {:?}", description, e);
-                }
-                _ => {}
-            };
+            let close_res = to.close(Some(1000), Some(close.reason()));
+            if let Err(e) = close_res {
+                console_log!("Error closing {} with close event: {:?}", description, e);
+            }
             Err(Error::RustError(format!("Close event: {}", close.reason())))
         }
         Err(e) => {

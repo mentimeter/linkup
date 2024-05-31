@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     debug_handler,
     extract::{Json, Request, State},
@@ -14,9 +12,6 @@ use futures::{
 };
 use http::{HeaderMap, Uri};
 use kv_store::CfWorkerStringStore;
-// use linkup::{HeaderMap as LinkupHeaderMap, *};
-// use tower_service::Service;
-// use kv::KvStore;
 use linkup::{
     allow_all_cors, get_additional_headers, get_target_service, NameKind, Session,
     SessionAllocator, UpdateSessionRequest,
@@ -25,12 +20,9 @@ use tower_service::Service;
 use worker::{
     console_log, event, kv::KvStore, Env, Error, Fetch, HttpRequest, HttpResponse, WebSocketPair,
 };
-// use ws::linkup_ws_handler;
 use ws::{close_with_internal_error, forward_ws_event};
 
-// mod http_util;
 mod kv_store;
-// mod utils;
 mod ws;
 
 #[derive(Debug)]
@@ -61,9 +53,10 @@ impl IntoResponse for ApiError {
 pub fn linkup_router(kv: KvStore) -> Router {
     Router::new()
         .route("/linkup", post(linkup_session_handler))
+        .route("/preview", post(linkup_preview_handler))
         .route("/linkup-check", get(always_ok))
+        .route("/linkup-no-tunnel", get(no_tunnel))
         .fallback(any(linkup_request_handler))
-        // .layer(Extension(env))
         .with_state(kv)
 }
 
@@ -88,22 +81,9 @@ async fn fetch(
     Ok(linkup_router(kv).call(req).await?)
 }
 
-// Ok(linkup_router(kv).call(req).await?)
-
-// return match (req.method(), req.uri().path()) {
-//     (&Method::POST, "/linkup") => linkup_session_handler(req, &sessions).await,
-//     (&Method::POST, "/preview") => linkup_preview_handler(req, &sessions).await,
-//     (&Method::GET, "/linkup-no-tunnel") => plaintext_error(
-//         "This linkup session has no associated tunnel / was started with --no-tunnel",
-//         422,
-//     ),
-//     _ => linkup_request_handler(req, &sessions).await,
-// };
-// }
-
 #[debug_handler]
 #[worker::send]
-async fn linkup_request_handler(State(kv): State<KvStore>, req: Request) -> impl IntoResponse {
+async fn linkup_request_handler(State(kv): State<KvStore>, mut req: Request) -> impl IntoResponse {
     let store = CfWorkerStringStore::new(kv);
     let sessions = SessionAllocator::new(&store);
 
@@ -133,27 +113,12 @@ async fn linkup_request_handler(State(kv): State<KvStore>, req: Request) -> impl
 
     let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
-    if req
+    let is_websocket = req
         .headers()
         .get("upgrade")
         .map(|v| v == "websocket")
-        .unwrap_or(false)
-    {
-        handle_ws_req(req, target_service, extra_headers)
-            .await
-            .into_response()
-    } else {
-        handle_http_req(req, target_service, extra_headers)
-            .await
-            .into_response()
-    }
-}
+        .unwrap_or(false);
 
-async fn handle_http_req(
-    mut req: Request,
-    target_service: linkup::TargetService,
-    extra_headers: linkup::HeaderMap,
-) -> impl IntoResponse {
     *req.uri_mut() = Uri::try_from(target_service.url).unwrap();
     let extra_http_headers: HeaderMap = extra_headers.into();
     req.headers_mut().extend(extra_http_headers);
@@ -171,7 +136,7 @@ async fn handle_http_req(
         }
     };
 
-    let mut worker_resp = match Fetch::Request(worker_req).send().await {
+    let worker_resp = match Fetch::Request(worker_req).send().await {
         Ok(resp) => resp,
         Err(e) => {
             return ApiError::new(
@@ -182,6 +147,14 @@ async fn handle_http_req(
         }
     };
 
+    if is_websocket {
+        handle_ws_resp(worker_resp).await.into_response()
+    } else {
+        handle_http_resp(worker_resp).await.into_response()
+    }
+}
+
+async fn handle_http_resp(worker_resp: worker::Response) -> impl IntoResponse {
     let mut resp: HttpResponse = match worker_resp.try_into() {
         Ok(resp) => resp,
         Err(e) => {
@@ -198,39 +171,7 @@ async fn handle_http_req(
     resp.into_response()
 }
 
-async fn handle_ws_req(
-    mut req: Request,
-    target_service: linkup::TargetService,
-    extra_headers: linkup::HeaderMap,
-) -> impl IntoResponse {
-    *req.uri_mut() = Uri::try_from(target_service.url).unwrap();
-    let extra_http_headers: HeaderMap = extra_headers.into();
-    req.headers_mut().extend(extra_http_headers);
-    // Request uri and host headers should not conflict
-    req.headers_mut().remove(http::header::HOST);
-
-    let worker_req: worker::Request = match req.try_into() {
-        Ok(req) => req,
-        Err(e) => {
-            return ApiError::new(
-                format!("Failed to parse request: {}", e),
-                StatusCode::BAD_REQUEST,
-            )
-            .into_response()
-        }
-    };
-
-    let mut worker_resp = match Fetch::Request(worker_req).send().await {
-        Ok(resp) => resp,
-        Err(e) => {
-            return ApiError::new(
-                format!("Failed to fetch from target service: {}", e),
-                StatusCode::BAD_GATEWAY,
-            )
-            .into_response()
-        }
-    };
-
+async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse {
     let dest_ws_res = match worker_resp.websocket() {
         Some(ws) => Ok(ws),
         None => Err(Error::RustError("server did not accept".into())),
@@ -304,7 +245,6 @@ async fn handle_ws_req(
                 }
             }
         }
-        console_log!("Outside loop");
     });
 
     let worker_resp = match worker::Response::from_websocket(source_ws.client) {
@@ -371,47 +311,54 @@ async fn linkup_session_handler(
     (StatusCode::OK, name).into_response()
 }
 
-// async fn linkup_preview_handler(
-//     Extension(env): Extension<Env>,
-//     Json(update_req): Json<UpdateSessionRequest>,
-// ) -> impl IntoResponse {
-//     let store = match store_from_env(&env) {
-//         Ok(store) => store,
-//         Err(e) => return e.into_response(),
-//     };
-//     let sessions = SessionAllocator::new(&store);
+#[worker::send]
+async fn linkup_preview_handler(
+    State(kv): State<KvStore>,
+    Json(update_req): Json<UpdateSessionRequest>,
+) -> impl IntoResponse {
+    let store = CfWorkerStringStore::new(kv);
+    let sessions = SessionAllocator::new(&store);
 
-//     let server_conf: Session = match update_req.try_into() {
-//         Ok(conf) => conf,
-//         Err(e) => {
-//             return ApiError::new(
-//                 format!("Failed to parse server config: {} - local server", e),
-//                 StatusCode::BAD_REQUEST,
-//             )
-//             .into_response()
-//         }
-//     };
+    let desired_name = update_req.desired_name.clone();
+    let server_conf: Session = match update_req.try_into() {
+        Ok(conf) => conf,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to parse server config: {} - local server", e),
+                StatusCode::BAD_REQUEST,
+            )
+            .into_response()
+        }
+    };
 
-//     let session_name = sessions
-//         .store_session(server_conf, NameKind::SixChar, String::from(""))
-//         .await;
+    let session_name = sessions
+        .store_session(server_conf, NameKind::SixChar, String::from(""))
+        .await;
 
-//     let name = match session_name {
-//         Ok(session_name) => session_name,
-//         Err(e) => {
-//             return ApiError::new(
-//                 format!("Failed to store server config: {}", e),
-//                 StatusCode::INTERNAL_SERVER_ERROR,
-//             )
-//             .into_response()
-//         }
-//     };
+    let name = match session_name {
+        Ok(session_name) => session_name,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to store server config: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response()
+        }
+    };
 
-//     (StatusCode::OK, name).into_response()
-// }
+    (StatusCode::OK, name).into_response()
+}
 
 async fn always_ok() -> &'static str {
     "OK"
+}
+
+async fn no_tunnel() -> impl IntoResponse {
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "This linkup session has no associated tunnel / was started with --no-tunnel",
+    )
+        .into_response()
 }
 
 // fn is_cacheable_request(req: &Request, config: &Session) -> bool {
