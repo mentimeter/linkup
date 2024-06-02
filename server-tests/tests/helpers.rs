@@ -1,19 +1,9 @@
-use std::{
-    env,
-    path::Path,
-    process::{Child, Command, Stdio},
-    thread,
-    time::Duration,
-};
+use std::process::Command;
 
 use linkup::{StorableDomain, StorableService, UpdateSessionRequest};
 use linkup_local_server::linkup_router;
 use reqwest::Url;
 use tokio::{net::TcpListener, sync::OnceCell};
-
-use anyhow::Result;
-
-static INIT: OnceCell<()> = OnceCell::const_new();
 
 #[derive(Debug)]
 pub enum ServerKind {
@@ -22,8 +12,6 @@ pub enum ServerKind {
 }
 
 pub async fn setup_server(kind: ServerKind) -> String {
-    println!("Setting up server of kind {:?}", kind);
-    // Run command once
     match kind {
         ServerKind::Local => {
             let app = linkup_router();
@@ -39,17 +27,10 @@ pub async fn setup_server(kind: ServerKind) -> String {
             format!("http://{}", addr)
         }
         ServerKind::Worker => {
-            INIT.get_or_init(|| async {
-                boot_worker().expect("Failed to boot worker");
-                // let _ = Command::new("echo")
-                //     .arg("wrangler@latest")
-                //     .arg("dev")
-                //     .spawn()
-                //     .expect("Failed to start wrangler dev command");
-            })
-            .await;
-            wait_worker_started();
-            format!("http://localhost:8787")
+            if !check_worker_running() {
+                panic!("Worker not running! Run npx wrangler@latest dev in the worker dir");
+            }
+            "http://localhost:8787".to_string()
         }
     }
 }
@@ -88,54 +69,12 @@ pub fn create_session_request(name: String, fe_location: Option<String>) -> Stri
     serde_json::to_string(&req).unwrap()
 }
 
-pub fn wait_worker_started() -> Result<()> {
-    let mut count = 0;
+pub fn check_worker_running() -> bool {
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg("lsof -i tcp:8787")
+        .output()
+        .expect("Failed to execute command");
 
-    loop {
-        let output = Command::new("bash")
-            .arg("-c")
-            .arg("lsof -i tcp:8787")
-            .output()
-            .expect("Failed to execute command");
-
-        if output.status.success() {
-            println!("Worker started.");
-            break;
-        } else if count == 20 {
-            return Err(anyhow::anyhow!("Command failed after 20 retries"));
-        } else {
-            count += 1;
-            thread::sleep(Duration::from_millis(500));
-        }
-    }
-
-    Ok(())
-}
-
-pub fn boot_worker() -> Result<Child> {
-    let original_cwd = env::current_dir()?;
-    env::set_current_dir(Path::new("../worker"))?;
-
-    Command::new("npm")
-        .arg("install")
-        .arg("-g")
-        .arg("wrangler@latest")
-        .status()?;
-
-    let cmd = Command::new("npx")
-        .arg("wrangler@latest")
-        .arg("dev")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        // .stdout(Stdio::inherit())
-        // DEBUG POINT, use inherit stderr to see wrangler output
-        .stderr(Stdio::null())
-        // .stderr(Stdio::inherit())
-        .spawn()?;
-
-    thread::sleep(Duration::from_secs(5));
-
-    env::set_current_dir(original_cwd)?;
-
-    Ok(cmd)
+    output.status.success()
 }

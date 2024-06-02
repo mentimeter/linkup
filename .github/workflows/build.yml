@@ -1,0 +1,15 @@
+on:
+  pull_request:
+
+name: Build
+
+jobs:
+  worker-build:
+    name: Worker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install -q worker-build
+      - run: worker-build --release
+        working-directory: worker

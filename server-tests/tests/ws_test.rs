@@ -6,15 +6,19 @@ use axum::Router;
 use futures::{SinkExt, StreamExt};
 use helpers::ServerKind;
 use http::Uri;
+use rstest::rstest;
 use tokio::net::TcpListener;
 
 use crate::helpers::{create_session_request, post, setup_server};
 
 mod helpers;
 
+#[rstest]
 #[tokio::test]
-async fn can_request_underlying_websocket_server() {
-    let url = setup_server(ServerKind::Local).await;
+async fn can_request_underlying_websocket_server(
+    #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
+) {
+    let url = setup_server(server_kind).await;
     let ws_url = setup_websocket_server().await;
 
     let session_req = create_session_request("ws-session".to_string(), Some(ws_url));

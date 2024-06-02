@@ -35,9 +35,12 @@ async fn can_request_underlying_server(
     assert_eq!(response.text().await.unwrap(), "under_fe");
 }
 
+#[rstest]
 #[tokio::test]
-async fn does_not_follow_redirects() {
-    let url = setup_server(ServerKind::Worker).await;
+async fn does_not_follow_redirects(
+    #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
+) {
+    let url = setup_server(server_kind).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
     let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
@@ -58,9 +61,12 @@ async fn does_not_follow_redirects() {
     );
 }
 
+#[rstest]
 #[tokio::test]
-async fn maintains_multiple_set_cookie_headers() {
-    let url = setup_server(ServerKind::Local).await;
+async fn maintains_multiple_set_cookie_headers(
+    #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
+) {
+    let url = setup_server(server_kind).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
     let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));

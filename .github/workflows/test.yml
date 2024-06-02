@@ -1,0 +1,15 @@
+on:
+  pull_request:
+
+name: CI
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install -g wrangler
+      - run: npx wrangler@latest dev &
+      - run: cargo test --all-features
