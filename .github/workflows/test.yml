@@ -1,7 +1,7 @@
 on:
   pull_request:
 
-name: CI
+name: Test
 
 jobs:
   test:
@@ -10,6 +10,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: npm install -g wrangler
+      - run: npm install -g wrangler@latest
       - run: npx wrangler@latest dev &
       - run: cargo test --all-features
