@@ -1,6 +1,6 @@
 [package]
 name = "linkup-cli"
-version = "0.2.15"
+version = "1.0.0"
 edition = "2021"
 
 [[bin]]
@@ -17,10 +17,10 @@ hickory-resolver = "0.24.0"
 linkup = { path = "../linkup", features = ["reqwest"] }
 linkup-local-server = { path = "../local-server" }
 log = "0.4"
-nix = { version = "0.28", features = ["signal"] }
+nix = { version = "0.29", features = ["signal"] }
 rand = "0.8"
 regex = "1"
-reqwest = { version = "0.11", default-features = false, features = [
+reqwest = { version = "0.12", default-features = false, features = [
     "blocking",
     "rustls-tls",
 ] }
