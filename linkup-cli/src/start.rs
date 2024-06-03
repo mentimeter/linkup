@@ -225,12 +225,12 @@ mod tests {
                     config_path: "/tmp/home/.linkup/config".to_string(),
                     remote: Url::parse("http://localhost:9066").unwrap(),
                     tunnel: None,
+                    is_paid: Some(true),
                     cache_routes: None,
                 }
             },
             services: vec![],
             domains: vec![],
-            is_paid: true,
         };
     }
 
