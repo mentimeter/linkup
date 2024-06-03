@@ -1,7 +1,7 @@
 use helpers::ServerKind;
 use rstest::rstest;
 
-use crate::helpers::{create_session_request, post, setup_server};
+use crate::helpers::{create_preview_request, create_session_request, post, setup_server};
 
 mod helpers;
 
@@ -51,6 +51,18 @@ async fn can_create_session(
 
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     assert_eq!(response.text().await.unwrap(), "potatoname");
+}
+
+#[rstest]
+#[tokio::test]
+async fn can_create_preview(#[values(ServerKind::Worker)] server_kind: ServerKind) {
+    let url = setup_server(server_kind).await;
+
+    let session_req = create_preview_request(None);
+    let response = post(format!("{}/preview", url), session_req).await;
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(response.text().await.unwrap().len(), 6);
 }
 
 pub async fn get(url: String) -> reqwest::Response {

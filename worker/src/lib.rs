@@ -10,8 +10,8 @@ use http::{HeaderMap, Uri};
 use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
-    allow_all_cors, get_additional_headers, get_target_service, NameKind, Session,
-    SessionAllocator, UpdateSessionRequest,
+    allow_all_cors, get_additional_headers, get_target_service, CreatePreviewRequest, NameKind,
+    Session, SessionAllocator, UpdateSessionRequest,
 };
 use tower_service::Service;
 use worker::{event, kv::KvStore, Env, Fetch, HttpRequest, HttpResponse};
@@ -221,7 +221,7 @@ async fn linkup_session_handler(
 #[worker::send]
 async fn linkup_preview_handler(
     State(kv): State<KvStore>,
-    Json(update_req): Json<UpdateSessionRequest>,
+    Json(update_req): Json<CreatePreviewRequest>,
 ) -> impl IntoResponse {
     let store = CfWorkerStringStore::new(kv);
     let sessions = SessionAllocator::new(&store);

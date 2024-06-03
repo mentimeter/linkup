@@ -128,6 +128,26 @@ impl TryFrom<UpdateSessionRequest> for Session {
     }
 }
 
+impl From<CreatePreviewRequest> for StorableSession {
+    fn from(req: CreatePreviewRequest) -> Self {
+        StorableSession {
+            session_token: PREVIEW_SESSION_TOKEN.to_string(),
+            services: req.services,
+            domains: req.domains,
+            cache_routes: None,
+        }
+    }
+}
+
+impl TryFrom<CreatePreviewRequest> for Session {
+    type Error = ConfigError;
+
+    fn try_from(value: CreatePreviewRequest) -> Result<Self, Self::Error> {
+        let storable: StorableSession = value.into();
+        storable.try_into()
+    }
+}
+
 impl TryFrom<StorableRewrite> for Rewrite {
     type Error = ConfigError;
 
