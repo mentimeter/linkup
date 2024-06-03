@@ -1,48 +1,40 @@
-use linkup::{HeaderMap as LinkupHeaderMap, *};
-use worker::*;
+use axum::{http::StatusCode, response::IntoResponse};
+use linkup::allow_all_cors;
+use worker::{console_log, Error, HttpResponse, WebSocket, WebSocketPair, WebsocketEvent};
 
 use futures::{
     future::{self, Either},
     stream::StreamExt,
 };
 
-use crate::http_util::plaintext_error;
+use crate::http_error::HttpError;
 
-pub async fn linkup_ws_handler<'a, S: StringStore>(
-    req: Request,
-    sessions: &'a SessionAllocator<'a, S>,
-) -> Result<Response> {
-    let url = match req.url() {
-        Ok(url) => url.to_string(),
-        Err(_) => return plaintext_error("Bad or missing request url", 400),
+pub async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse {
+    let dest_ws_res = match worker_resp.websocket() {
+        Some(ws) => Ok(ws),
+        None => Err(Error::RustError("server did not accept".into())),
     };
-
-    let mut headers = LinkupHeaderMap::from_worker_request(&req);
-
-    let (session_name, config) =
-        match sessions.get_request_session(&url, &headers).await {
-            Ok(result) => result,
-            Err(_) => return plaintext_error("Could not find a linkup session for this request. Use a linkup subdomain or context headers like Referer/tracestate", 422),
-        };
-
-    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
-        Some(result) => result,
-        None => return plaintext_error("No target URL for request", 422),
-    };
-
-    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
-    headers.extend(&extra_headers);
-
-    let dest_ws_res = websocket_connect(&target_service.url, &headers).await;
     let dest_ws = match dest_ws_res {
         Ok(ws) => ws,
         Err(e) => {
-            console_log!("Failed to connect to destination: {}", e);
-            return plaintext_error(format!("Failed to connect to destination: {}", e), 502);
+            return HttpError::new(
+                format!("Failed to connect to destination: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
         }
     };
 
-    let source_ws = WebSocketPair::new()?;
+    let source_ws = match WebSocketPair::new() {
+        Ok(ws) => ws,
+        Err(e) => {
+            return HttpError::new(
+                format!("Failed to create source websocket: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response()
+        }
+    };
     let source_ws_server = source_ws.server;
 
     wasm_bindgen_futures::spawn_local(async move {
@@ -93,15 +85,38 @@ pub async fn linkup_ws_handler<'a, S: StringStore>(
         }
     });
 
-    Response::from_websocket(source_ws.client)
+    let worker_resp = match worker::Response::from_websocket(source_ws.client) {
+        Ok(res) => res,
+        Err(e) => {
+            return HttpError::new(
+                format!("Failed to create response from websocket: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response()
+        }
+    };
+    let mut resp: HttpResponse = match worker_resp.try_into() {
+        Ok(resp) => resp,
+        Err(e) => {
+            return HttpError::new(
+                format!("Failed to parse response: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+            .into_response()
+        }
+    };
+
+    resp.headers_mut().extend(allow_all_cors());
+
+    resp.into_response()
 }
 
 fn forward_ws_event(
-    event: Result<WebsocketEvent>,
+    event: Result<WebsocketEvent, Error>,
     from: &WebSocket,
     to: &WebSocket,
     description: String,
-) -> Result<()> {
+) -> Result<(), Error> {
     match event {
         Ok(WebsocketEvent::Message(msg)) => {
             if let Some(text) = msg.text() {
@@ -129,8 +144,10 @@ fn forward_ws_event(
             }
         }
         Ok(WebsocketEvent::Close(close)) => {
-            console_log!("Close event from source: {:?}", close);
-            let _ = to.close(Some(close.code()), Some(close.reason()));
+            let close_res = to.close(Some(1000), Some(close.reason()));
+            if let Err(e) = close_res {
+                console_log!("Error closing {} with close event: {:?}", description, e);
+            }
             Err(Error::RustError(format!("Close event: {}", close.reason())))
         }
         Err(e) => {
@@ -141,46 +158,8 @@ fn forward_ws_event(
     }
 }
 
-async fn websocket_connect(url: &str, additional_headers: &LinkupHeaderMap) -> Result<WebSocket> {
-    let mut proper_url = match url.parse::<Url>() {
-        Ok(url) => url,
-        Err(_) => return Err(Error::RustError("invalid url".into())),
-    };
-
-    // With fetch we can only make requests to http(s) urls, but Workers will allow us to upgrade
-    // those connections into websockets if we use the `Upgrade` header.
-    let scheme: String = match proper_url.scheme() {
-        "ws" => "http".into(),
-        "wss" => "https".into(),
-        scheme => scheme.into(),
-    };
-
-    proper_url.set_scheme(&scheme).unwrap();
-
-    let mut headers = worker::Headers::new();
-    additional_headers.into_iter().for_each(|(k, v)| {
-        headers
-            .append(k.as_str(), v.as_str())
-            .expect("could not append header to websocket request");
-    });
-    headers.set("upgrade", "websocket")?;
-
-    let mut init = RequestInit::new();
-    init.with_method(Method::Get);
-    init.with_headers(headers);
-
-    let req = Request::new_with_init(proper_url.as_str(), &init)?;
-
-    let res = Fetch::Request(req).send().await?;
-
-    match res.websocket() {
-        Some(ws) => Ok(ws),
-        None => Err(Error::RustError("server did not accept".into())),
-    }
-}
-
 fn close_with_internal_error(msg: String, from: &WebSocket, to: &WebSocket) {
-    console_log!("{}", msg);
+    console_log!("close message: {}", msg);
     let close_res = to.close(Some(1011), Some(msg.clone()));
     if let Err(e) = close_res {
         console_log!("Error closing to websocket: {:?}", e);

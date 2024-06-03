@@ -16,14 +16,6 @@ jobs:
       - run: rustup component add clippy
       - run: cargo clippy
 
-  test:
-    name: Test Suite
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --all-features
-
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
@@ -32,6 +24,27 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: rustup component add rustfmt
       - run: cargo fmt --all --check
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Start Wrangler Worker
+        working-directory: worker
+        run: |
+          cp wrangler.toml.sample wrangler.toml
+          npm install -g wrangler@latest
+          nohup npx wrangler@latest dev > wrangler.log 2>&1 &
+          tail -f wrangler.log | while read LOGLINE
+          do
+            echo "${LOGLINE}"
+            [[ "${LOGLINE}" == *"Ready on http://localhost:8787"* ]] && pkill -P $$ tail
+          done
+
+      - run: cd $GITHUB_WORKSPACE && cargo test --all-features
 
   worker-build:
     name: Worker build

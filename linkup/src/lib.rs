@@ -6,6 +6,7 @@ mod session_allocator;
 
 use std::future::Future;
 
+use http::{HeaderMap as HttpHeaderMap, HeaderValue as HttpHeaderValue};
 use rand::Rng;
 use thiserror::Error;
 
@@ -127,12 +128,38 @@ pub fn additional_response_headers() -> HeaderMap {
     headers
 }
 
+pub fn allow_all_cors() -> HttpHeaderMap {
+    let mut headers = HttpHeaderMap::new();
+
+    headers.insert(
+        "Access-Control-Allow-Methods",
+        HttpHeaderValue::from_static(
+            "GET, POST, PUT, PATCH, DELETE, HEAD, CONNECT, TRACE, OPTIONS",
+        ),
+    );
+    headers.insert(
+        "Access-Control-Allow-Origin",
+        HttpHeaderValue::from_static("*"),
+    );
+    headers.insert(
+        "Access-Control-Allow-Headers",
+        HttpHeaderValue::from_static("*"),
+    );
+    headers.insert(
+        "Access-Control-Max-Age",
+        HttpHeaderValue::from_static("86400"),
+    );
+
+    headers
+}
+
 #[derive(Debug, PartialEq)]
 pub struct TargetService {
     pub name: String,
     pub url: String,
 }
 
+// TODO(ostenbom): Accept a http::Uri instead of a string. Change TargetService to use Uri instead of String.
 // Returns a (name, url) pair for the destination service, if the request could be served by the config
 pub fn get_target_service(
     url: &str,
@@ -351,7 +378,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_request_session_by_subdomain() {
-        let string_store = MemoryStringStore::new();
+        let string_store = MemoryStringStore::default();
         let sessions = SessionAllocator::new(&string_store);
 
         let config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
@@ -530,7 +557,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_target_url() {
-        let string_store = MemoryStringStore::new();
+        let string_store = MemoryStringStore::default();
         let sessions = SessionAllocator::new(&string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
@@ -620,7 +647,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_repeatable_rewritten_routes() {
-        let string_store = MemoryStringStore::new();
+        let string_store = MemoryStringStore::default();
         let sessions = SessionAllocator::new(&string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
@@ -671,7 +698,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_iframable() {
-        let string_store = MemoryStringStore::new();
+        let string_store = MemoryStringStore::default();
         let sessions = SessionAllocator::new(&string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();

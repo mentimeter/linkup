@@ -1,0 +1,17 @@
+[package]
+name = "linkup-server-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dev-dependencies]
+linkup = { path = "../linkup", features = ["reqwest"] }
+linkup-local-server = { path = "../local-server" }
+http = "1.1"
+anyhow = "1"
+futures = "0.3"
+axum = { version="*", features=["ws"] }
+serde_json = "1.0"
+tokio-tungstenite = "0.23.0"
+tokio = { version = "1", features = ["test-util", "macros"] }
+reqwest = { version = "0.12", features = ["blocking"] }
+rstest = "0.21.0"

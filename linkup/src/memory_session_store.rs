@@ -1,35 +1,23 @@
-use std::{collections::HashMap, sync::RwLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 use crate::{SessionError, StringStore};
 
-pub struct MemoryStringStore {
-    store: RwLock<HashMap<String, String>>,
-}
-
-impl MemoryStringStore {
-    pub fn new() -> Self {
-        MemoryStringStore {
-            store: RwLock::new(HashMap::new()),
-        }
-    }
-}
-
-impl Default for MemoryStringStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+#[derive(Default, Clone)]
+pub struct MemoryStringStore(Arc<RwLock<HashMap<String, String>>>);
 
 impl StringStore for MemoryStringStore {
     async fn get(&self, key: String) -> Result<Option<String>, SessionError> {
-        match self.store.read() {
+        match self.0.read() {
             Ok(l) => Ok(l.get(key.as_str()).cloned()),
             Err(e) => Err(SessionError::GetError(e.to_string())),
         }
     }
 
     async fn exists(&self, key: String) -> Result<bool, SessionError> {
-        let value = match self.store.read() {
+        let value = match self.0.read() {
             Ok(l) => Ok(l.get(&key).cloned()),
             Err(e) => return Err(SessionError::GetError(e.to_string())),
         }?;
@@ -41,7 +29,7 @@ impl StringStore for MemoryStringStore {
     }
 
     async fn put(&self, key: String, value: String) -> Result<(), SessionError> {
-        match self.store.write() {
+        match self.0.write() {
             Ok(mut l) => Ok(l.insert(key, value)),
             Err(e) => Err(SessionError::PutError(e.to_string())),
         }?;

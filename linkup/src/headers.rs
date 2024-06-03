@@ -1,3 +1,4 @@
+use http::{HeaderMap as HttpHeaderMap, HeaderValue as HttpHeaderValue};
 use std::collections::HashMap;
 
 use unicase::UniCase;
@@ -95,9 +96,14 @@ impl HeaderMap {
         self.0.remove(&key.into())
     }
 
-    #[cfg(feature = "actix")]
-    pub fn from_actix_request(req: &actix_web::HttpRequest) -> Self {
-        req.headers().into()
+    fn from_http_headers(http_headers: &HttpHeaderMap) -> Self {
+        let mut linkup_headers = HeaderMap::new();
+        for (key, value) in http_headers.iter() {
+            if let Ok(value_str) = value.to_str() {
+                linkup_headers.insert(key.to_string(), value_str);
+            }
+        }
+        linkup_headers
     }
 
     #[cfg(feature = "worker")]
@@ -133,6 +139,32 @@ impl From<HeaderMap> for reqwest::header::HeaderMap {
     }
 }
 
+impl From<&HttpHeaderMap> for HeaderMap {
+    fn from(http_headers: &HttpHeaderMap) -> Self {
+        HeaderMap::from_http_headers(http_headers)
+    }
+}
+
+impl From<HttpHeaderMap> for HeaderMap {
+    fn from(http_headers: HttpHeaderMap) -> Self {
+        HeaderMap::from_http_headers(&http_headers)
+    }
+}
+
+impl From<HeaderMap> for HttpHeaderMap {
+    fn from(linkup_headers: HeaderMap) -> Self {
+        let mut http_headers = HttpHeaderMap::new();
+        for (key, value) in linkup_headers.into_iter() {
+            if let Ok(http_value) = HttpHeaderValue::from_str(&value) {
+                if let Ok(http_key) = http::header::HeaderName::from_bytes(key.as_bytes()) {
+                    http_headers.insert(http_key, http_value);
+                }
+            }
+        }
+        http_headers
+    }
+}
+
 #[cfg(feature = "worker")]
 impl From<&worker::Headers> for HeaderMap {
     fn from(value: &worker::Headers) -> Self {
@@ -146,39 +178,6 @@ impl FromIterator<(String, String)> for HeaderMap {
         let mut headers = HeaderMap::new();
         for (k, v) in iter {
             headers.insert(k.as_str(), v);
-        }
-
-        headers
-    }
-}
-
-#[cfg(feature = "actix")]
-impl From<&actix_web::http::header::HeaderMap> for HeaderMap {
-    fn from(value: &actix_web::http::header::HeaderMap) -> Self {
-        value.into_iter().collect::<HeaderMap>()
-    }
-}
-
-#[cfg(feature = "actix")]
-impl<'a>
-    FromIterator<(
-        &'a actix_web::http::header::HeaderName,
-        &'a actix_web::http::header::HeaderValue,
-    )> for HeaderMap
-{
-    fn from_iter<
-        T: IntoIterator<
-            Item = (
-                &'a actix_web::http::header::HeaderName,
-                &'a actix_web::http::header::HeaderValue,
-            ),
-        >,
-    >(
-        iter: T,
-    ) -> Self {
-        let mut headers = HeaderMap::new();
-        for (k, v) in iter {
-            headers.insert(k.as_str(), v.to_str().unwrap_or(""));
         }
 
         headers
