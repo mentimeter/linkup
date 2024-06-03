@@ -39,7 +39,8 @@ impl BackgroundServices for RealBackgroundServices {
 
         wait_till_ok(format!("{}linkup-check", local_url))?;
 
-        if state.should_use_tunnel() && !state.is_paid {
+        let should_run_free = state.linkup.is_paid.is_none() || !state.linkup.is_paid.unwrap();
+        if state.should_use_tunnel() && should_run_free {
             if is_tunnel_running().is_err() {
                 println!("Starting tunnel...");
                 let tunnel_manager = RealTunnelManager {};

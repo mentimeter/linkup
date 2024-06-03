@@ -17,7 +17,6 @@ pub struct LocalState {
     pub linkup: LinkupState,
     pub domains: Vec<StorableDomain>,
     pub services: Vec<LocalService>,
-    pub is_paid: bool,
 }
 
 impl LocalState {
@@ -90,6 +89,7 @@ pub struct LinkupState {
     pub config_path: String,
     pub remote: Url,
     pub tunnel: Option<Url>,
+    pub is_paid: Option<bool>,
     pub cache_routes: Option<Vec<String>>,
 }
 
@@ -201,6 +201,7 @@ pub fn config_to_state(
     };
 
     let linkup = LinkupState {
+        is_paid: Some(is_paid),
         session_name: String::new(),
         session_token: random_token,
         config_path,
@@ -235,7 +236,6 @@ pub fn config_to_state(
         linkup,
         domains,
         services,
-        is_paid,
     }
 }
 

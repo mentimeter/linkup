@@ -99,7 +99,7 @@ fn try_run_tunnel(state: &LocalState) -> Result<Url, CliError> {
         },
     }
 
-    let is_paid = state.is_paid;
+    let is_paid = state.linkup.is_paid.is_some() && state.linkup.is_paid.unwrap();
     let session_name = state.linkup.session_name.clone();
 
     let tunnel_url_re =
@@ -174,7 +174,8 @@ fn try_run_tunnel(state: &LocalState) -> Result<Url, CliError> {
 
 fn daemonized_tunnel_child(state: &LocalState) {
     let url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
-    let cmd_args: Vec<&str> = match state.is_paid {
+    let is_paid = state.linkup.is_paid.is_some() && state.linkup.is_paid.unwrap();
+    let cmd_args: Vec<&str> = match is_paid {
         true => vec!["tunnel", "run", state.linkup.session_name.as_str()],
         false => vec!["tunnel", "--url", url.as_str()],
     };
