@@ -1,4 +1,4 @@
-name = "linkup-worker-axum"
+name = "linkup-worker"
 main = "build/worker/shim.mjs"
 compatibility_date = "2024-05-30"
 
