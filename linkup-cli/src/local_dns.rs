@@ -34,6 +34,8 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
 
     ensure_resolver_dir()?;
     install_resolvers(&input_config.top_level_domains())?;
+
+    println!("Installing extra caddy packages, this could take a while...");
     services::caddy::install_cloudflare_package()?;
     services::caddy::install_redis_package()?;
 

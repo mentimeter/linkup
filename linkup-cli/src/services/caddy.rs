@@ -27,6 +27,15 @@ pub fn start(domains: Vec<String>) -> Result<()> {
 
     write_caddyfile(&domains_and_subdomains)?;
 
+    // Clear previous log file on startup
+    fs::write(linkup_file_path(LOG_FILE), "").map_err(|err| {
+        CliError::WriteFile(format!(
+            "Failed to clear log file at {}, error: {}",
+            linkup_file_path(LOG_FILE).display(),
+            err
+        ))
+    })?;
+
     Command::new("caddy")
         .current_dir(linkup_dir_path())
         .arg("start")
