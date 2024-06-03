@@ -143,7 +143,10 @@ async fn handle_http_req(
         Ok(resp) => resp,
         Err(e) => {
             return ApiError::new(
-                format!("Failed to proxy request: {}", e),
+                format!(
+                    "Failed to proxy request - are all your servers started? {}",
+                    e
+                ),
                 StatusCode::BAD_GATEWAY,
             )
             .into_response()
