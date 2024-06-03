@@ -18,6 +18,7 @@ struct GetTunnelApiResponse {
 struct TunnelResultItem {
     id: String,
     name: String,
+    deleted_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -138,13 +139,21 @@ impl PaidTunnelManager for RealPaidTunnelManager {
             account_id
         );
         let (client, headers) = prepare_client_and_headers(&RealSystem)?;
-        let query_url = format!("{}?name=tunnel-{}", url, tunnel_name);
+        let query_url = format!("{}?name={}", url, tunnel_name);
 
         let parsed: GetTunnelApiResponse = send_request(&client, &query_url, headers, None, "GET")?;
         if parsed.result.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(parsed.result[0].id.clone()))
+            // Check if there exists a tunnel with this name that hasn't been deleted
+            match parsed
+                .result
+                .iter()
+                .find(|tunnel| tunnel.deleted_at.is_none())
+            {
+                Some(tunnel) => Ok(Some(tunnel.id.clone())),
+                None => Ok(None),
+            }
         }
     }
 
@@ -158,7 +167,7 @@ impl PaidTunnelManager for RealPaidTunnelManager {
         );
         let (client, headers) = prepare_client_and_headers(&RealSystem)?;
         let body = serde_json::to_string(&CreateTunnelRequest {
-            name: format!("tunnel-{}", tunnel_name),
+            name: tunnel_name.to_string(),
             tunnel_secret: tunnel_secret.clone(),
         })
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
@@ -182,14 +191,12 @@ impl PaidTunnelManager for RealPaidTunnelManager {
         );
         let (client, headers) = prepare_client_and_headers(&RealSystem)?;
         let body = serde_json::to_string(&DNSRecord {
-            name: format!("tunnel-{}", tunnel_name),
+            name: tunnel_name.to_string(),
             content: format!("{}.cfargotunnel.com", tunnel_id),
             r#type: "CNAME".to_string(),
             proxied: true,
         })
         .map_err(|err| CliError::StatusErr(err.to_string()))?;
-
-        println!("{}", body);
 
         let _parsed: CreateDNSRecordResponse =
             send_request(&client, &url, headers, Some(body), "POST")?;
@@ -251,7 +258,7 @@ fn create_config_yml(sys: &dyn System, tunnel_id: &str) -> Result<(), CliError> 
 
     // Create the directory if it does not exist
     if !sys.file_exists(dir_path.as_path()) {
-        println!("Creating directory: {:?}", dir_path);
+        log::info!("Creating directory: {:?}", dir_path);
         sys.create_dir_all(&dir_path)
             .map_err(|err| CliError::StatusErr(err.to_string()))?;
     }
