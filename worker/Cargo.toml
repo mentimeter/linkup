@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-linkup = { path = "../linkup", features = ["worker"] }
+linkup = { path = "../linkup" }
 console_error_panic_hook = { version = "0.1.1" }
 worker = { version = "0.3.0", features = ["http", "axum"] }
 getrandom = { version = "0.2", features = ["js"] }
