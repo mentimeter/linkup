@@ -1,9 +1,9 @@
 use std::process::Command;
 
-use linkup::{CreatePreviewRequest, StorableDomain, StorableService, UpdateSessionRequest};
+use linkup::{StorableDomain, StorableService, UpdateSessionRequest};
 use linkup_local_server::linkup_router;
 use reqwest::Url;
-use tokio::{net::TcpListener, sync::OnceCell};
+use tokio::net::TcpListener;
 
 #[derive(Debug)]
 pub enum ServerKind {
@@ -65,26 +65,6 @@ pub fn create_session_request(name: String, fe_location: Option<String>) -> Stri
             rewrites: None,
         }],
         cache_routes: None,
-    };
-    serde_json::to_string(&req).unwrap()
-}
-
-pub fn create_preview_request(fe_location: Option<String>) -> String {
-    let location = match fe_location {
-        Some(location) => location,
-        None => "http://example.com".to_string(),
-    };
-    let req = CreatePreviewRequest {
-        domains: vec![StorableDomain {
-            domain: "example.com".to_string(),
-            default_service: "frontend".to_string(),
-            routes: None,
-        }],
-        services: vec![StorableService {
-            name: "frontend".to_string(),
-            location: Url::parse(&location).unwrap(),
-            rewrites: None,
-        }],
     };
     serde_json::to_string(&req).unwrap()
 }

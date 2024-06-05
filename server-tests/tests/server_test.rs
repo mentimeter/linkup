@@ -1,7 +1,9 @@
 use helpers::ServerKind;
+use linkup::{CreatePreviewRequest, StorableDomain, StorableService};
+use reqwest::Url;
 use rstest::rstest;
 
-use crate::helpers::{create_preview_request, create_session_request, post, setup_server};
+use crate::helpers::{create_session_request, post, setup_server};
 
 mod helpers;
 
@@ -72,4 +74,24 @@ pub async fn get(url: String) -> reqwest::Response {
         .send()
         .await
         .expect("Failed to send request")
+}
+
+pub fn create_preview_request(fe_location: Option<String>) -> String {
+    let location = match fe_location {
+        Some(location) => location,
+        None => "http://example.com".to_string(),
+    };
+    let req = CreatePreviewRequest {
+        domains: vec![StorableDomain {
+            domain: "example.com".to_string(),
+            default_service: "frontend".to_string(),
+            routes: None,
+        }],
+        services: vec![StorableService {
+            name: "frontend".to_string(),
+            location: Url::parse(&location).unwrap(),
+            rewrites: None,
+        }],
+    };
+    serde_json::to_string(&req).unwrap()
 }
