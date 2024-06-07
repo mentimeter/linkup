@@ -1157,6 +1157,7 @@ dependencies = [
  "rustls-native-certs",
  "thiserror",
  "tokio",
+ "tower",
  "tower-http",
 ]
 

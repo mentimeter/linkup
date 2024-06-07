@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::{Json, Request},
+    extract::{DefaultBodyLimit, Json, Request},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{any, get, post},
@@ -18,6 +18,7 @@ use linkup::{
     Session, SessionAllocator, TargetService, UpdateSessionRequest,
 };
 use tokio::signal;
+use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
@@ -60,9 +61,13 @@ pub fn linkup_router() -> Router {
         .layer(Extension(config_store))
         .layer(Extension(client))
         .layer(
-            TraceLayer::new_for_http()
-                .on_request(DefaultOnRequest::new()) // Log all incoming requests at INFO level
-                .on_response(DefaultOnResponse::new()), // Log all responses at INFO level
+            ServiceBuilder::new()
+                .layer(DefaultBodyLimit::max(1024 * 1024 * 100)) // Set max body size to 100MB
+                .layer(
+                    TraceLayer::new_for_http()
+                        .on_request(DefaultOnRequest::new()) // Log all incoming requests at INFO level
+                        .on_response(DefaultOnResponse::new()), // Log all responses at INFO level
+                ),
         )
 }
 
