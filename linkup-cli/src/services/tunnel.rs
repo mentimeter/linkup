@@ -22,17 +22,10 @@ const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";
 
 const TUNNEL_START_WAIT: u64 = 20;
 
-pub fn is_tunnel_running() -> Result<(), CheckErr> {
-    if !linkup_file_path(LINKUP_CLOUDFLARED_PID).exists() {
-        Err(CheckErr::TunnelNotRunning)
-    } else {
-        Ok(())
-    }
-}
-
 #[cfg_attr(test, mockall::automock)]
 pub trait TunnelManager {
     fn run_tunnel(&self, state: &LocalState) -> Result<Url, CliError>;
+    fn is_tunnel_running(&self) -> Result<(), CheckErr>;
 }
 
 pub struct RealTunnelManager;
@@ -59,6 +52,13 @@ impl TunnelManager for RealTunnelManager {
                     thread::sleep(Duration::from_secs(1));
                 }
             }
+        }
+    }
+    fn is_tunnel_running(&self) -> Result<(), CheckErr> {
+        if linkup_file_path(LINKUP_CLOUDFLARED_PID).exists() {
+            Ok(())
+        } else {
+            Err(CheckErr::TunnelNotRunning)
         }
     }
 }
@@ -179,7 +179,7 @@ fn daemonized_tunnel_child(state: &LocalState) {
         true => vec!["tunnel", "run", state.linkup.session_name.as_str()],
         false => vec!["tunnel", "--url", url.as_str()],
     };
-    println!("Starting cloudflared tunnel with args: {:?}", cmd_args);
+    log::info!("Starting cloudflared tunnel with args: {:?}", cmd_args);
     let mut child_cmd = Command::new("cloudflared")
         .args(cmd_args)
         .stdout(Stdio::inherit())
