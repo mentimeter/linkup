@@ -23,6 +23,7 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
     env_logger::init();
     let is_paid = use_paid_tunnels();
     let state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
+    set_linkup_env(state.clone())?;
     if is_paid {
         start_paid_tunnel(
             &RealSystem,
@@ -33,6 +34,17 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
         )?;
     } else {
         start_free_tunnel(state, no_tunnel)?;
+    }
+    Ok(())
+}
+
+fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
+    // Set env vars to linkup
+    for service in &state.services {
+        match &service.directory {
+            Some(d) => set_service_env(d.clone(), state.linkup.config_path.clone())?,
+            None => {}
+        }
     }
     Ok(())
 }
@@ -102,13 +114,6 @@ fn start_paid_tunnel(
 
 fn start_free_tunnel(state: LocalState, no_tunnel: bool) -> Result<(), CliError> {
     println!("Starting free tunnel");
-    // Set env vars to linkup
-    for service in &state.services {
-        match &service.directory {
-            Some(d) => set_service_env(d.clone(), state.linkup.config_path.clone())?,
-            None => {}
-        }
-    }
 
     if no_tunnel && !linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
         println!("Run `linkup local-dns install` before running without a tunnel");
