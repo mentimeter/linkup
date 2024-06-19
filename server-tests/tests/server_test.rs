@@ -92,6 +92,7 @@ pub fn create_preview_request(fe_location: Option<String>) -> String {
             location: Url::parse(&location).unwrap(),
             rewrites: None,
         }],
+        cache_routes: None,
     };
     serde_json::to_string(&req).unwrap()
 }
