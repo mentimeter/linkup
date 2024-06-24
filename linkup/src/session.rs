@@ -56,6 +56,7 @@ pub struct UpdateSessionRequest {
 pub struct CreatePreviewRequest {
     pub services: Vec<StorableService>,
     pub domains: Vec<StorableDomain>,
+    pub cache_routes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -134,7 +135,7 @@ impl From<CreatePreviewRequest> for StorableSession {
             session_token: PREVIEW_SESSION_TOKEN.to_string(),
             services: req.services,
             domains: req.domains,
-            cache_routes: None,
+            cache_routes: req.cache_routes,
         }
     }
 }

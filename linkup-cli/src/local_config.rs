@@ -164,6 +164,7 @@ impl YamlLocalConfig {
         CreatePreviewRequest {
             services,
             domains: self.domains.clone(),
+            cache_routes: self.linkup.cache_routes.clone(),
         }
     }
 }
@@ -213,20 +214,13 @@ pub fn config_to_state(
     let services = yaml_config
         .services
         .into_iter()
-        .map(|yaml_service| {
-            let rewrites = match yaml_service.rewrites {
-                Some(modifiers) => modifiers,
-                None => Vec::new(),
-            };
-
-            LocalService {
-                name: yaml_service.name,
-                remote: yaml_service.remote,
-                local: yaml_service.local,
-                current: ServiceTarget::Remote,
-                directory: yaml_service.directory,
-                rewrites,
-            }
+        .map(|yaml_service| LocalService {
+            name: yaml_service.name,
+            remote: yaml_service.remote,
+            local: yaml_service.local,
+            current: ServiceTarget::Remote,
+            directory: yaml_service.directory,
+            rewrites: yaml_service.rewrites.unwrap_or_default(),
         })
         .collect::<Vec<LocalService>>();
 
