@@ -120,6 +120,14 @@ pub enum CliError {
     RebootDNSMasq(String),
     #[error("--no-tunnel does not work without `local-dns`")]
     NoTunnelWithoutLocalDns,
+    #[error("could not get env var: {0}")]
+    GetEnvVar(String),
+    #[error("HTTP error: {0}")]
+    HttpErr(String),
+    #[error("could not parse: {0}. {1}")]
+    ParseErr(String, String),
+    #[error("{0}: {1}")]
+    FileErr(String, String),
 }
 
 #[derive(Error, Debug)]
