@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use base64::prelude::*;
 use rand::Rng;
 
+const TUNNEL_REQUEST_TIMEOUT: &str = "120s";
+
 #[derive(Serialize, Deserialize, Debug)]
 struct GetTunnelApiResponse {
     result: Vec<TunnelResultItem>,
@@ -55,6 +57,16 @@ struct Config {
     tunnel: String,
     #[serde(rename = "credentials-file")]
     credentials_file: String,
+    #[serde(rename = "originRequest")]
+    origin_request: OriginRequestConfig,
+}
+
+#[derive(Serialize, Deserialize)]
+struct OriginRequestConfig {
+    #[serde(rename = "connectTimeout")]
+    connect_timeout: String,
+    #[serde(rename = "tlsTimeout")]
+    tls_timeout: String,
 }
 
 // Helper to create an HTTP client and prepare headers
@@ -271,6 +283,10 @@ fn create_config_yml(sys: &dyn System, tunnel_id: &str) -> Result<(), CliError> 
         url: format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
         tunnel: tunnel_id.to_string(),
         credentials_file: file_path_str,
+        origin_request: OriginRequestConfig {
+            connect_timeout: TUNNEL_REQUEST_TIMEOUT.to_string(),
+            tls_timeout: TUNNEL_REQUEST_TIMEOUT.to_string(),
+        },
     };
 
     let serialized = serde_yaml::to_string(&config).expect("Failed to serialize config");
