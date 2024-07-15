@@ -69,7 +69,7 @@ fn prepare_client_and_headers(
     headers.insert(
         AUTHORIZATION,
         HeaderValue::from_str(&format!("Bearer {}", bearer_token))
-            .map_err(|err| CliError::StatusErr(err.to_string()))?,
+            .map_err(|_| CliError::GetEnvVar("LINKUP_CF_API_TOKEN".to_string()))?,
     );
 
     Ok((client, headers))
@@ -86,7 +86,12 @@ fn send_request<T: for<'de> serde::Deserialize<'de>>(
     let builder = match method {
         "GET" => client.get(url),
         "POST" => client.post(url),
-        _ => return Err(CliError::StatusErr("Unsupported HTTP method".to_string())),
+        _ => {
+            return Err(CliError::HttpErr(format!(
+                "Unsupported HTTP method: {}",
+                method
+            )))
+        }
     };
 
     let builder = builder.headers(headers);
@@ -96,25 +101,18 @@ fn send_request<T: for<'de> serde::Deserialize<'de>>(
         builder
     };
 
-    let response = builder.send().map_err(|err| {
-        CliError::StatusErr(format!("Failed to send request, {}", err).to_string())
-    })?;
+    let response = builder
+        .send()
+        .map_err(|err| CliError::HttpErr(format!("Failed to send request, {}", err).to_string()))?;
 
     if response.status().is_success() {
         let response_body = response.text().map_err(|err| {
-            CliError::StatusErr(format!("Could not read response body, {}", err).to_string())
+            CliError::HttpErr(format!("Could not read response body, {}", err).to_string())
         })?;
-        serde_json::from_str(&response_body).map_err(|err| {
-            CliError::StatusErr(
-                format!(
-                    "Could not parse JSON, {}. Response body: {}",
-                    err, response_body
-                )
-                .to_string(),
-            )
-        })
+        serde_json::from_str(&response_body)
+            .map_err(|err| CliError::ParseErr("from str to JSON".to_string(), err.to_string()))
     } else {
-        Err(CliError::StatusErr(format!(
+        Err(CliError::HttpErr(format!(
             "Failed to get a successful response: {}",
             response.status()
         )))
@@ -133,7 +131,7 @@ pub struct RealPaidTunnelManager;
 impl PaidTunnelManager for RealPaidTunnelManager {
     fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError> {
         let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
-            .map_err(|err| CliError::BadConfig(err.to_string()))?;
+            .map_err(|_| CliError::GetEnvVar("LINKUP_CLOUDFLARE_ACCOUNT_ID".to_string()))?;
         let url = format!(
             "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
             account_id
@@ -160,7 +158,7 @@ impl PaidTunnelManager for RealPaidTunnelManager {
     fn create_tunnel(&self, tunnel_name: &str) -> Result<String, CliError> {
         let tunnel_secret = generate_tunnel_secret();
         let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
-            .map_err(|err| CliError::BadConfig(err.to_string()))?;
+            .map_err(|_| CliError::GetEnvVar("LINKUP_CLOUDFLARE_ACCOUNT_ID".to_string()))?;
         let url = format!(
             "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
             account_id,
@@ -170,21 +168,26 @@ impl PaidTunnelManager for RealPaidTunnelManager {
             name: tunnel_name.to_string(),
             tunnel_secret: tunnel_secret.clone(),
         })
-        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        .map_err(|err| CliError::ParseErr("from JSON to String".to_string(), err.to_string()))?;
 
         let parsed: CreateTunnelResponse =
             send_request(&client, &url, headers, Some(body), "POST")?;
-        save_tunnel_credentials(&RealSystem, &parsed.result.id, &tunnel_secret)
-            .map_err(|err| CliError::StatusErr(err.to_string()))?;
-        create_config_yml(&RealSystem, &parsed.result.id)
-            .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        save_tunnel_credentials(&RealSystem, &parsed.result.id, &tunnel_secret).map_err(|err| {
+            CliError::FileErr(
+                "Failed to save tunnel credentials".to_string(),
+                err.to_string(),
+            )
+        })?;
+        create_config_yml(&RealSystem, &parsed.result.id).map_err(|err| {
+            CliError::FileErr("Failed to create config YML".to_string(), err.to_string())
+        })?;
 
         Ok(parsed.result.id)
     }
 
     fn create_dns_record(&self, tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError> {
         let zone_id = env::var("LINKUP_CLOUDFLARE_ZONE_ID")
-            .map_err(|err| CliError::BadConfig(err.to_string()))?;
+            .map_err(|_| CliError::GetEnvVar("LINKUP_CLOUDFLARE_ZONE_ID".to_string()))?;
         let url = format!(
             "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
             zone_id
@@ -196,7 +199,7 @@ impl PaidTunnelManager for RealPaidTunnelManager {
             r#type: "CNAME".to_string(),
             proxied: true,
         })
-        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        .map_err(|err| CliError::ParseErr("from JSON to String".to_string(), err.to_string()))?;
 
         let _parsed: CreateDNSRecordResponse =
             send_request(&client, &url, headers, Some(body), "POST")?;
@@ -217,7 +220,7 @@ fn save_tunnel_credentials(
 ) -> Result<(), CliError> {
     let account_id = sys
         .get_env("LINKUP_CLOUDFLARE_ACCOUNT_ID")
-        .map_err(|err| CliError::BadConfig(err.to_string()))?;
+        .map_err(|_| CliError::GetEnvVar("LINKUP_CLOUDFLARE_ACCOUNT_ID".to_string()))?;
     let data = serde_json::json!({
         "AccountTag": account_id,
         "TunnelID": tunnel_id,
@@ -227,12 +230,14 @@ fn save_tunnel_credentials(
     // Determine the directory path
     let home_dir = sys
         .get_env("HOME")
-        .map_err(|err| CliError::BadConfig(err.to_string()))?;
+        .map_err(|_| CliError::GetEnvVar("HOME".to_string()))?;
     let dir_path = Path::new(&home_dir).join(".cloudflared");
 
     // Create the directory if it does not exist
     if !dir_path.exists() {
-        fs::create_dir_all(&dir_path).map_err(|err| CliError::StatusErr(err.to_string()))?;
+        fs::create_dir_all(&dir_path).map_err(|err| {
+            CliError::FileErr("Could not create directory".to_string(), err.to_string())
+        })?
     }
 
     // Define the file path
@@ -241,10 +246,10 @@ fn save_tunnel_credentials(
     // Create and write to the file
     let mut file: Box<dyn FileLike> = sys
         .create_file(file_path)
-        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        .map_err(|err| CliError::FileErr("Could not create file".to_string(), err.to_string()))?;
     let data_string = data.to_string();
     sys.write_file(&mut file, &data_string)
-        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        .map_err(|err| CliError::FileErr("Could not write to file".to_string(), err.to_string()))?;
 
     Ok(())
 }
@@ -253,14 +258,15 @@ fn create_config_yml(sys: &dyn System, tunnel_id: &str) -> Result<(), CliError> 
     // Determine the directory path
     let home_dir = sys
         .get_env("HOME")
-        .map_err(|err| CliError::BadConfig(err.to_string()))?;
+        .map_err(|_| CliError::GetEnvVar("HOME".to_string()))?;
     let dir_path = Path::new(&home_dir).join(".cloudflared");
 
     // Create the directory if it does not exist
     if !sys.file_exists(dir_path.as_path()) {
         log::info!("Creating directory: {:?}", dir_path);
-        sys.create_dir_all(&dir_path)
-            .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        sys.create_dir_all(&dir_path).map_err(|err| {
+            CliError::FileErr("Could not create directory".to_string(), err.to_string())
+        })?;
     }
 
     // Define the file path
@@ -277,9 +283,9 @@ fn create_config_yml(sys: &dyn System, tunnel_id: &str) -> Result<(), CliError> 
 
     let mut file: Box<dyn FileLike> = sys
         .create_file(dir_path.join("config.yml"))
-        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        .map_err(|err| CliError::FileErr("Could not create file".to_string(), err.to_string()))?;
     sys.write_file(&mut file, &serialized)
-        .map_err(|err| CliError::StatusErr(err.to_string()))?;
+        .map_err(|err| CliError::FileErr("Could not write to file".to_string(), err.to_string()))?;
     Ok(())
 }
 
