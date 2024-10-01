@@ -15,7 +15,7 @@ Your linkup domains live on the public internet. If you're running heavy fronten
 
 Linkup comes with a public-internet-bypass mechanism called `local-dns`. This feature allows you to resolve your linkup domains to your local machine, bypassing the public internet. This will make your frontends serve assets from your local machine, and make your linkup session feel much faster.
 
-To use `local-dns`, run `linkup local-dns` in your terminal. This will install a local DNS server on your machine that will resolve your linkup domains to your local machine.
+To use `local-dns`, run `linkup local-dns install` in your terminal. This will install a local DNS server on your machine that will resolve your linkup domains to your local machine.
 
 ### Limitations of `local-dns`
 
