@@ -41,9 +41,8 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
 fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
     // Set env vars to linkup
     for service in &state.services {
-        match &service.directory {
-            Some(d) => set_service_env(d.clone(), state.linkup.config_path.clone())?,
-            None => {}
+        if let Some(d) = &service.directory {
+            set_service_env(d.clone(), state.linkup.config_path.clone())?
         }
     }
     Ok(())
@@ -202,7 +201,7 @@ fn check_local_not_started() -> Result<(), CliError> {
         if service.local == service.remote {
             continue;
         }
-        if server_status(service.local.to_string()) == ServerStatus::Ok {
+        if server_status(service.local.to_string(), None) == ServerStatus::Ok {
             println!("⚠️  Service {} is already running locally!! You need to restart it for linkup's environment variables to be loaded.", service.name);
         }
     }

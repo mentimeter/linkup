@@ -1,10 +1,10 @@
 use colored::{ColoredString, Colorize};
-use linkup::StorableDomain;
+use linkup::{get_additional_headers, HeaderMap, StorableDomain, TargetService};
 use serde::{Deserialize, Serialize};
 use std::{thread, time::Duration};
 
 use crate::{
-    local_config::{LocalState, ServiceTarget},
+    local_config::{LocalService, LocalState, ServiceTarget},
     CliError, LINKUP_LOCALSERVER_PORT,
 };
 
@@ -60,7 +60,7 @@ pub fn status(json: bool, all: bool) -> Result<(), CliError> {
 
     let (tx, rx) = std::sync::mpsc::channel();
     linkup_status(tx.clone(), &state);
-    service_status(tx.clone(), &state);
+    services_status(tx.clone(), &state);
 
     drop(tx);
 
@@ -170,7 +170,7 @@ fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState)
             name: "local_server".to_string(),
             component_kind: "linkup".to_string(),
             location: local_url.clone(),
-            status: server_status(local_url),
+            status: server_status(local_url, None),
         };
 
         local_tx
@@ -186,7 +186,7 @@ fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState)
             name: "remote_server".to_string(),
             component_kind: "linkup".to_string(),
             location: remote.clone(),
-            status: server_status(remote),
+            status: server_status(remote, None),
         };
 
         remote_tx
@@ -202,7 +202,7 @@ fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState)
             name: "tunnel".to_string(),
             component_kind: "linkup".to_string(),
             location: tunnel.clone(),
-            status: server_status(tunnel),
+            status: server_status(tunnel, None),
         };
 
         tunnel_tx
@@ -211,9 +211,10 @@ fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState)
     });
 }
 
-fn service_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState) {
+fn services_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState) {
     for service in state.services.iter().cloned() {
         let tx = tx.clone();
+        let session_name = state.linkup.session_name.clone();
 
         thread::spawn(move || {
             let url = match service.current {
@@ -222,10 +223,10 @@ fn service_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState
             };
 
             let service_status = ServiceStatus {
-                name: service.name,
+                name: service.name.clone(),
                 location: url.to_string(),
                 component_kind: service.current.to_string(),
-                status: server_status(url.to_string()),
+                status: service_status(&service, &session_name),
             };
 
             tx.send(service_status)
@@ -234,13 +235,40 @@ fn service_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState
     }
 }
 
-pub fn server_status(url: String) -> ServerStatus {
+fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
+    let url = match service.current {
+        ServiceTarget::Local => service.local.clone(),
+        ServiceTarget::Remote => service.remote.clone(),
+    };
+
+    let headers = get_additional_headers(
+        url.as_ref(),
+        &HeaderMap::new(),
+        session_name,
+        &TargetService {
+            name: service.name.clone(),
+            url: url.to_string(),
+        },
+    );
+
+    server_status(url.to_string(), Some(headers))
+}
+
+pub fn server_status(url: String, extra_headers: Option<HeaderMap>) -> ServerStatus {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))
         .build();
 
     match client {
-        Ok(client) => client.get(url).send().into(),
+        Ok(client) => {
+            let mut request = client.get(url);
+
+            if let Some(extra_headers) = extra_headers {
+                request = request.headers(extra_headers.into());
+            }
+
+            request.send().into()
+        }
         Err(_) => ServerStatus::Error,
     }
 }
