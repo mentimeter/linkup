@@ -10,12 +10,10 @@ crate-type = ["cdylib"]
 linkup = { path = "../linkup" }
 console_error_panic_hook = { version = "0.1.1" }
 worker = { version = "0.3.0", features = ["http", "axum"] }
-getrandom = { version = "0.2", features = ["js"] }
-axum = { version = "0.7", features = [
-    "json",
-], default_features = false }
-tower-service = "0.3"
-http = "1.1"
-futures = "0.3"
-regex = "1.10"
-wasm-bindgen-futures = "0.4"
+getrandom = { version = "0.2.15", features = ["js"] }
+axum = { version = "0.7.5", features = ["json"], default_features = false }
+tower-service = "0.3.2"
+http = "1.1.0"
+futures = "0.3.30"
+regex = "1.10.4"
+wasm-bindgen-futures = "0.4.42"
