@@ -7,13 +7,12 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-linkup = { path = "../linkup" }
-console_error_panic_hook = { version = "0.1.1" }
-worker = { version = "0.3.0", features = ["http", "axum"] }
-getrandom = { version = "0.2.15", features = ["js"] }
 axum = { version = "0.7.5", features = ["json"], default_features = false }
-tower-service = "0.3.2"
+console_error_panic_hook = { version = "0.1.7" }
+futures = "0.3.31"
+getrandom = { version = "0.2.15", features = ["js"] }
 http = "1.1.0"
-futures = "0.3.30"
-regex = "1.10.4"
-wasm-bindgen-futures = "0.4.42"
+linkup = { path = "../linkup" }
+regex = "1.11.0"
+tower-service = "0.3.3"
+worker = { version = "0.3.0", features = ["http", "axum"] }
