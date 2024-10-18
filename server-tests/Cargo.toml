@@ -7,7 +7,10 @@ edition = "2021"
 linkup = { path = "../linkup" }
 linkup-local-server = { path = "../local-server" }
 http = "1.1.0"
-reqwest = { version = "0.12.4", features = ["blocking"] }
+reqwest = { version = "0.12.4", default-features = false, features = [
+    "blocking",
+    "rustls-tls",
+] }
 anyhow = "1.0.89"
 futures = "0.3.31"
 axum = { version = "0.7.7", features = ["ws"] }
