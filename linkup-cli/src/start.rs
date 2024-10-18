@@ -202,7 +202,7 @@ fn check_local_not_started() -> Result<(), CliError> {
         if service.local == service.remote {
             continue;
         }
-        if server_status(service.local.to_string()) == ServerStatus::Ok {
+        if server_status(service.local.to_string(), None) == ServerStatus::Ok {
             println!("⚠️  Service {} is already running locally!! You need to restart it for linkup's environment variables to be loaded.", service.name);
         }
     }
