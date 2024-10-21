@@ -37,7 +37,7 @@ pub async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse 
     };
     let source_ws_server = source_ws.server;
 
-    wasm_bindgen_futures::spawn_local(async move {
+    worker::wasm_bindgen_futures::spawn_local(async move {
         let mut dest_events = dest_ws.events().expect("could not open dest event stream");
         let mut source_events = source_ws_server
             .events()
