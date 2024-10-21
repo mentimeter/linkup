@@ -185,7 +185,16 @@ enum Commands {
     Local { service_names: Vec<String> },
 
     #[clap(about = "Route session traffic to a remote service")]
-    Remote { service_names: Vec<String> },
+    Remote {
+        service_names: Vec<String>,
+        #[arg(
+            short,
+            long,
+            help = "Route all the services to remote. Cannot be used with SERVICE_NAMES.",
+            conflicts_with = "service_names"
+        )]
+        all: bool,
+    },
 
     #[clap(about = "View linkup component and service status")]
     Status {
@@ -233,7 +242,7 @@ fn main() -> Result<()> {
         Commands::Stop => stop(),
         Commands::Reset => reset(),
         Commands::Local { service_names } => local(service_names),
-        Commands::Remote { service_names } => remote(service_names),
+        Commands::Remote { service_names, all } => remote(service_names, *all),
         Commands::Status { json, all } => status(*json, *all),
         Commands::LocalDNS { subcommand } => match subcommand {
             LocalDNSSubcommand::Install => local_dns::install(&cli.config),
