@@ -321,6 +321,8 @@ async fn shutdown_signal() {
 }
 
 fn https_client() -> HttpsClient {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let mut roots = rustls::RootCertStore::empty();
     for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
         roots.add(cert).unwrap();

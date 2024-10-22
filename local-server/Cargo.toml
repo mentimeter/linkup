@@ -15,7 +15,7 @@ hyper-rustls = "0.27.3"
 hyper-util = { version = "0.1.9", features = ["client-legacy"] }
 futures = "0.3.31"
 linkup = { path = "../linkup" }
-rustls = "0.23.15"
+rustls = { version = "0.23.15", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.8.0"
 thiserror = "1.0.64"
 tokio = { version = "1.40.0", features = ["macros", "signal"] }
