@@ -26,7 +26,7 @@ reqwest = { version = "0.12.4", default-features = false, features = [
 ] }
 serde = "1.0.210"
 serde_json = "1.0.129"
-serde_yaml = "0.9.34+deprecated"
+serde_yaml = "0.9.34"
 thiserror = "1.0.64"
 url = { version = "2.5.2", features = ["serde"] }
 base64 = "0.22.1"
