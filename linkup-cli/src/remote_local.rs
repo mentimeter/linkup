@@ -6,36 +6,45 @@ use crate::{
     CliError, LINKUP_LOCALSERVER_PORT,
 };
 
-pub fn remote(service_names: &[String]) -> Result<(), CliError> {
-    if service_names.is_empty() {
+pub fn remote(service_names: &[String], all: bool) -> Result<(), CliError> {
+    if service_names.is_empty() && !all {
         return Err(CliError::NoSuchService(
             "No service names provided".to_string(),
         ));
     }
+
     let mut state = LocalState::load()?;
 
-    for service_name in service_names {
-        let service = state
-            .services
-            .iter_mut()
-            .find(|s| s.name.as_str() == service_name)
-            .ok_or_else(|| CliError::NoSuchService(service_name.to_string()))?;
-        service.current = ServiceTarget::Remote;
+    for service in state.services.iter_mut() {
+        if all {
+            service.current = ServiceTarget::Remote;
+            continue;
+        }
+
+        if service_names.contains(&service.name) {
+            service.current = ServiceTarget::Remote;
+        } else {
+            return Err(CliError::NoSuchService(service.name.clone()));
+        }
     }
 
     state.save()?;
     load_server_states(state)?;
 
-    println!(
-        "Linkup is routing {} traffic to the remote server",
-        service_names.join(", ")
-    );
+    if all {
+        println!("Linkup is routing all traffic to the remote servers");
+    } else {
+        println!(
+            "Linkup is routing {} traffic to the remote server",
+            service_names.join(", ")
+        );
+    }
 
     Ok(())
 }
 
-pub fn local(service_names: &[String]) -> Result<(), CliError> {
-    if service_names.is_empty() {
+pub fn local(service_names: &[String], all: bool) -> Result<(), CliError> {
+    if service_names.is_empty() && !all {
         return Err(CliError::NoSuchService(
             "No service names provided".to_string(),
         ));
@@ -43,22 +52,30 @@ pub fn local(service_names: &[String]) -> Result<(), CliError> {
 
     let mut state = LocalState::load()?;
 
-    for service_name in service_names {
-        let service = state
-            .services
-            .iter_mut()
-            .find(|s| s.name.as_str() == service_name)
-            .ok_or_else(|| CliError::NoSuchService(service_name.to_string()))?;
-        service.current = ServiceTarget::Local;
+    for service in state.services.iter_mut() {
+        if all {
+            service.current = ServiceTarget::Local;
+            continue;
+        }
+
+        if service_names.contains(&service.name) {
+            service.current = ServiceTarget::Local;
+        } else {
+            return Err(CliError::NoSuchService(service.name.clone()));
+        }
     }
 
     state.save()?;
     load_server_states(state)?;
 
-    println!(
-        "Linkup is routing {} traffic to the local server",
-        service_names.join(", ")
-    );
+    if all {
+        println!("Linkup is routing all traffic to the local servers");
+    } else {
+        println!(
+            "Linkup is routing {} traffic to the local server",
+            service_names.join(", ")
+        );
+    }
 
     Ok(())
 }
