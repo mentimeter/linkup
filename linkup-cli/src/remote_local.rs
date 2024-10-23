@@ -15,16 +15,18 @@ pub fn remote(service_names: &[String], all: bool) -> Result<(), CliError> {
 
     let mut state = LocalState::load()?;
 
-    for service in state.services.iter_mut() {
-        if all {
+    if all {
+        for service in state.services.iter_mut() {
             service.current = ServiceTarget::Remote;
-            continue;
         }
-
-        if service_names.contains(&service.name) {
+    } else {
+        for service_name in service_names {
+            let service = state
+                .services
+                .iter_mut()
+                .find(|s| s.name.as_str() == service_name)
+                .ok_or_else(|| CliError::NoSuchService(service_name.to_string()))?;
             service.current = ServiceTarget::Remote;
-        } else {
-            return Err(CliError::NoSuchService(service.name.clone()));
         }
     }
 
@@ -52,16 +54,18 @@ pub fn local(service_names: &[String], all: bool) -> Result<(), CliError> {
 
     let mut state = LocalState::load()?;
 
-    for service in state.services.iter_mut() {
-        if all {
+    if all {
+        for service in state.services.iter_mut() {
             service.current = ServiceTarget::Local;
-            continue;
         }
-
-        if service_names.contains(&service.name) {
+    } else {
+        for service_name in service_names {
+            let service = state
+                .services
+                .iter_mut()
+                .find(|s| s.name.as_str() == service_name)
+                .ok_or_else(|| CliError::NoSuchService(service_name.to_string()))?;
             service.current = ServiceTarget::Local;
-        } else {
-            return Err(CliError::NoSuchService(service.name.clone()));
         }
     }
 
