@@ -210,8 +210,6 @@ enum Commands {
         // Output status in JSON format
         #[arg(long)]
         json: bool,
-        #[arg(short, long)]
-        all: bool,
     },
 
     #[clap(about = "Speed up your local environment by routing traffic locally when possible")]
@@ -252,7 +250,7 @@ fn main() -> Result<()> {
         Commands::Reset => reset(),
         Commands::Local { service_names, all } => local(service_names, *all),
         Commands::Remote { service_names, all } => remote(service_names, *all),
-        Commands::Status { json, all } => status(*json, *all),
+        Commands::Status { json } => status(*json),
         Commands::LocalDNS { subcommand } => match subcommand {
             LocalDNSSubcommand::Install => local_dns::install(&cli.config),
             LocalDNSSubcommand::Uninstall => local_dns::uninstall(&cli.config),
