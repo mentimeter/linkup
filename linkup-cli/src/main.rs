@@ -2,6 +2,7 @@ use std::{env, fs, io::ErrorKind, path::PathBuf};
 
 use clap::{builder::ValueParser, Parser, Subcommand};
 use clap_complete::Shell;
+use colored::Colorize;
 use thiserror::Error;
 
 mod background_booting;
@@ -210,6 +211,8 @@ enum Commands {
         // Output status in JSON format
         #[arg(long)]
         json: bool,
+        #[arg(short, long)]
+        all: bool,
     },
 
     #[clap(about = "Speed up your local environment by routing traffic locally when possible")]
@@ -250,7 +253,17 @@ fn main() -> Result<()> {
         Commands::Reset => reset(),
         Commands::Local { service_names, all } => local(service_names, *all),
         Commands::Remote { service_names, all } => remote(service_names, *all),
-        Commands::Status { json } => status(*json),
+        Commands::Status { json, all } => {
+            // TODO(augustocesar)[2024-10-28]: Remove --all/-a in a future release.
+            // Do not print the warning in case of JSON so it doesn't break any usage if the result of the command
+            // is passed on to somewhere else.
+            if *all && !*json {
+                let warning = format!("⚠ --all/-a is a noop now. All services statuses will always be shown.\nThis arg will be removed in a future release.\n").yellow();
+                println!("{}", warning);
+            }
+
+            status(*json)
+        }
         Commands::LocalDNS { subcommand } => match subcommand {
             LocalDNSSubcommand::Install => local_dns::install(&cli.config),
             LocalDNSSubcommand::Uninstall => local_dns::uninstall(&cli.config),
