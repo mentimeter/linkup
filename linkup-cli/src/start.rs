@@ -108,6 +108,8 @@ fn start_paid_tunnel(
         boot.boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
     }
 
+    check_local_not_started()?;
+
     Ok(())
 }
 
