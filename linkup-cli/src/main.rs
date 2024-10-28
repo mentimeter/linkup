@@ -258,8 +258,10 @@ fn main() -> Result<()> {
             // Do not print the warning in case of JSON so it doesn't break any usage if the result of the command
             // is passed on to somewhere else.
             if *all && !*json {
-                let warning = format!("⚠ --all/-a is a noop now. All services statuses will always be shown.\nThis arg will be removed in a future release.\n").yellow();
-                println!("{}", warning);
+                let warning =
+                    "--all/-a is a noop now. All services statuses will always be shown. \
+                    This arg will be removed in a future release.\n";
+                println!("{}", warning.yellow());
             }
 
             status(*json)
