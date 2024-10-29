@@ -26,7 +26,7 @@ pub fn preview(
         .preview(&create_preview_request)
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
-    print_session_status(SessionStatus {
+    print_session_status(&SessionStatus {
         name: preview_name.clone(),
         domains: format_state_domains(&preview_name, &input_config.domains),
     });

@@ -1,38 +1,50 @@
 use colored::{ColoredString, Colorize};
+use crossterm::{cursor, execute, style::Print, ExecutableCommand};
 use linkup::{get_additional_headers, HeaderMap, StorableDomain, TargetService};
 use serde::{Deserialize, Serialize};
-use std::{thread, time::Duration};
+use std::{
+    io::stdout,
+    sync::mpsc::Receiver,
+    thread::{self, sleep},
+    time::Duration,
+};
+use url::Url;
 
 use crate::{
     local_config::{LocalService, LocalState, ServiceTarget},
     CliError, LINKUP_LOCALSERVER_PORT,
 };
 
-#[derive(Deserialize, Serialize)]
+const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct Status {
     session: SessionStatus,
     services: Vec<ServiceStatus>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SessionStatus {
     pub name: String,
     pub domains: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct ServiceStatus {
     name: String,
     status: ServerStatus,
     component_kind: String,
     location: String,
+    service: LocalService,
+    priority: i8,
 }
 
-#[derive(Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum ServerStatus {
     Ok,
     Error,
     Timeout,
+    Loading,
 }
 
 impl ServerStatus {
@@ -41,6 +53,7 @@ impl ServerStatus {
             ServerStatus::Ok => "ok".blue(),
             ServerStatus::Error => "error".yellow(),
             ServerStatus::Timeout => "timeout".yellow(),
+            ServerStatus::Loading => "loading".normal(),
         }
     }
 }
@@ -55,78 +68,106 @@ impl From<Result<reqwest::blocking::Response, reqwest::Error>> for ServerStatus 
     }
 }
 
-pub fn status(json: bool, all: bool) -> Result<(), CliError> {
+pub fn status(json: bool) -> Result<(), CliError> {
     let state = LocalState::load()?;
+    let linkup_services = linkup_services(&state);
+    let all_services = state.services.into_iter().chain(linkup_services);
 
-    let (tx, rx) = std::sync::mpsc::channel();
-    linkup_status(tx.clone(), &state);
-    services_status(tx.clone(), &state);
-
-    drop(tx);
-
-    let mut services = rx.iter().collect::<Vec<ServiceStatus>>();
-    services.sort_by(|a, b| {
-        a.component_kind
-            .cmp(&b.component_kind)
-            .then(a.name.cmp(&b.name))
-    });
+    let (services_statuses, status_receiver) =
+        prepare_services_statuses(&state.linkup.session_name, all_services);
 
     let mut status = Status {
         session: SessionStatus {
             name: state.linkup.session_name.clone(),
             domains: format_state_domains(&state.linkup.session_name, &state.domains),
         },
-        services,
+        services: services_statuses,
     };
 
-    if !all && !json {
-        status
-            .services
-            .retain(|s| s.status != ServerStatus::Ok || s.component_kind == "local");
-    }
+    status.services.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then(a.component_kind.cmp(&b.component_kind))
+            .then(a.name.cmp(&b.name))
+    });
 
     if json {
+        status_receiver.iter().for_each(|(name, server_status)| {
+            for service_status in status.services.iter_mut() {
+                if service_status.name == name {
+                    service_status.status = server_status.clone();
+                }
+            }
+        });
+
         println!(
             "{}",
             serde_json::to_string_pretty(&status).expect("Failed to serialize status")
         );
     } else {
-        print_session_status(status.session);
-
-        // Display services information
-        println!("Service Information:");
+        print_session_status(&status.session);
         println!(
-            "{:<15} {:<15} {:<15} {:<15}",
-            "Service Name", "Component Kind", "Status", "Location"
+            "{:<20} {:<20} {:<20} {:<20}",
+            "SERVICE NAME", "COMPONENT KIND", "STATUS", "LOCATION"
         );
-        for status in &status.services {
-            println!(
-                "{:<15} {:<15} {:<15} {:<15}",
-                status.name,
-                status.component_kind,
-                status.status.colored(),
-                status.location
-            );
-        }
-        println!();
-    }
 
-    if status
-        .services
-        .iter()
-        .any(|s| s.component_kind == "linkup" && s.status != ServerStatus::Ok)
-    {
-        if !json {
-            println!("{}", "Some linkup services are not running correctly. Please check the status of the services.".yellow());
+        stdout().execute(cursor::Hide).unwrap();
+
+        let mut iteration = 0;
+        let mut loading_char_iteration = 0;
+        let mut updated_services = 0;
+        loop {
+            while let Some((name, server_status)) = status_receiver.try_iter().next() {
+                for service_status in status.services.iter_mut() {
+                    if service_status.name == name {
+                        service_status.status = server_status.clone();
+                        updated_services += 1;
+                    }
+                }
+            }
+
+            // It has to print the services statuses at least once before we can move the cursor
+            // to the start of the stuses section.
+            if iteration > 0 {
+                execute!(stdout(), cursor::MoveUp(status.services.len() as u16)).unwrap();
+            }
+
+            for i in 0..status.services.len() {
+                let status = &status.services[i];
+
+                let display_status = match &status.status {
+                    ServerStatus::Loading => {
+                        LOADING_CHARS[loading_char_iteration].to_string().normal()
+                    }
+                    status => status.colored(),
+                };
+
+                let display_status = &format!(
+                    "{:<20} {:<20} {:<20} {:<20}\n",
+                    status.name, status.component_kind, display_status, status.location
+                );
+
+                execute!(stdout(), Print(display_status),).unwrap();
+            }
+
+            if updated_services == status.services.len() {
+                break;
+            }
+
+            loading_char_iteration = (iteration + 1) % LOADING_CHARS.len();
+            iteration += 1;
+
+            sleep(Duration::from_millis(50));
         }
-        std::process::exit(1);
+
+        stdout().execute(cursor::Show).unwrap();
     }
 
     Ok(())
 }
 
 pub fn print_session_names(state: &LocalState) {
-    print_session_status(SessionStatus {
+    print_session_status(&SessionStatus {
         name: state.linkup.session_name.clone(),
         domains: format_state_domains(&state.linkup.session_name, &state.domains),
     });
@@ -150,89 +191,44 @@ pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> V
         .collect();
 }
 
-pub fn print_session_status(session: SessionStatus) {
-    // Display session information
-    println!("Session Information:");
-    println!("  Session Name: {}", session.name);
-    println!("  Domains: ");
-    for domain in session.domains {
+pub fn print_session_status(session: &SessionStatus) {
+    println!("Session Name: {}", session.name);
+    println!("Domains: ");
+    for domain in &session.domains {
         println!("    {}", domain);
     }
     println!();
 }
 
-fn linkup_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState) {
-    let local_url = format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT);
+fn linkup_services(state: &LocalState) -> Vec<LocalService> {
+    let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT)).unwrap();
 
-    let local_tx = tx.clone();
-    thread::spawn(move || {
-        let service_status = ServiceStatus {
-            name: "local_server".to_string(),
-            component_kind: "linkup".to_string(),
-            location: local_url.clone(),
-            status: server_status(local_url, None),
-        };
-
-        local_tx
-            .send(service_status)
-            .expect("Failed to send linkup local server status")
-    });
-
-    let remote_tx = tx.clone();
-    // TODO(augustoccesar): having to clone this remote on the ServiceStatus feels unnecessary. Look if it can be reference
-    let remote = state.linkup.remote.to_string();
-    thread::spawn(move || {
-        let service_status = ServiceStatus {
-            name: "remote_server".to_string(),
-            component_kind: "linkup".to_string(),
-            location: remote.clone(),
-            status: server_status(remote, None),
-        };
-
-        remote_tx
-            .send(service_status)
-            .expect("Failed to send linkup remote server status");
-    });
-
-    // NOTE(augustoccesar): last usage of tx on this context, no need to clone it
-    let tunnel_tx = tx;
-    let tunnel = state.get_tunnel_url().to_string();
-    thread::spawn(move || {
-        let service_status = ServiceStatus {
+    vec![
+        LocalService {
+            name: "linkup_local_server".to_string(),
+            remote: local_url.clone(),
+            local: local_url.clone(),
+            current: ServiceTarget::Local,
+            directory: None,
+            rewrites: vec![],
+        },
+        LocalService {
+            name: "linkup_remote_server".to_string(),
+            remote: state.linkup.remote.clone(),
+            local: state.linkup.remote.clone(),
+            current: ServiceTarget::Remote,
+            directory: None,
+            rewrites: vec![],
+        },
+        LocalService {
             name: "tunnel".to_string(),
-            component_kind: "linkup".to_string(),
-            location: tunnel.clone(),
-            status: server_status(tunnel, None),
-        };
-
-        tunnel_tx
-            .send(service_status)
-            .expect("Failed to send linkup tunnel status");
-    });
-}
-
-fn services_status(tx: std::sync::mpsc::Sender<ServiceStatus>, state: &LocalState) {
-    for service in state.services.iter().cloned() {
-        let tx = tx.clone();
-        let session_name = state.linkup.session_name.clone();
-
-        thread::spawn(move || {
-            let url = match service.current {
-                ServiceTarget::Local => service.local.clone(),
-                ServiceTarget::Remote => service.remote.clone(),
-            };
-
-            let service_status = ServiceStatus {
-                name: service.name.clone(),
-                location: url.to_string(),
-                component_kind: service.current.to_string(),
-                status: service_status(&service, &session_name),
-            };
-
-            tx.send(service_status)
-                .expect("Failed to send service status");
-        });
-    }
+            remote: state.get_tunnel_url(),
+            local: state.get_tunnel_url(),
+            current: ServiceTarget::Remote,
+            directory: None,
+            rewrites: vec![],
+        },
+    ]
 }
 
 fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
@@ -270,5 +266,67 @@ pub fn server_status(url: String, extra_headers: Option<HeaderMap>) -> ServerSta
             request.send().into()
         }
         Err(_) => ServerStatus::Error,
+    }
+}
+
+fn prepare_services_statuses<I>(
+    session_name: &str,
+    services: I,
+) -> (Vec<ServiceStatus>, Receiver<(String, ServerStatus)>)
+where
+    I: Iterator<Item = LocalService> + Clone,
+{
+    let services_statuses: Vec<ServiceStatus> = services
+        .clone()
+        .map(|service| {
+            let url = match service.current {
+                ServiceTarget::Local => service.local.clone(),
+                ServiceTarget::Remote => service.remote.clone(),
+            };
+
+            let priority = service_priority(&service);
+
+            ServiceStatus {
+                name: service.name.clone(),
+                location: url.to_string(),
+                component_kind: service.current.to_string(),
+                status: ServerStatus::Loading,
+                service,
+                priority,
+            }
+        })
+        .collect();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    for service in services {
+        let tx = tx.clone();
+        let service_clone = service.clone();
+        let session_name = session_name.to_string();
+
+        thread::spawn(move || {
+            let status = service_status(&service_clone, &session_name);
+
+            tx.send((service_clone.name.clone(), status))
+                .expect("Failed to send service status");
+        });
+    }
+
+    drop(tx);
+
+    (services_statuses, rx)
+}
+
+fn is_internal_service(service: &LocalService) -> bool {
+    service.name == "linkup_local_server"
+        || service.name == "linkup_remote_server"
+        || service.name == "tunnel"
+}
+
+fn service_priority(service: &LocalService) -> i8 {
+    if is_internal_service(service) {
+        1
+    } else {
+        2
     }
 }
