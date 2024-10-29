@@ -325,8 +325,8 @@ fn is_internal_service(service: &LocalService) -> bool {
 
 fn service_priority(service: &LocalService) -> i8 {
     if is_internal_service(service) {
-        -1
+        1
     } else {
-        10
+        2
     }
 }
