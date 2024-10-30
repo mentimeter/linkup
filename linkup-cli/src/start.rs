@@ -3,6 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use colored::Colorize;
+
 use crate::{
     background_booting::{BackgroundServices, RealBackgroundServices},
     env_files::write_to_env_file,
@@ -108,6 +110,8 @@ fn start_paid_tunnel(
         boot.boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
     }
 
+    check_local_not_started(&state)?;
+
     Ok(())
 }
 
@@ -121,9 +125,10 @@ fn start_free_tunnel(state: LocalState, no_tunnel: bool) -> Result<(), CliError>
     }
 
     let background_service = RealBackgroundServices {};
-    background_service.boot_background_services(state)?;
+    let state = background_service.boot_background_services(state)?;
 
-    check_local_not_started()?;
+    check_local_not_started(&state)?;
+
     Ok(())
 }
 
@@ -195,14 +200,19 @@ fn set_service_env(directory: String, config_path: String) -> Result<(), CliErro
     Ok(())
 }
 
-fn check_local_not_started() -> Result<(), CliError> {
-    let state = LocalState::load()?;
-    for service in state.services {
+fn check_local_not_started(state: &LocalState) -> Result<(), CliError> {
+    for service in &state.services {
         if service.local == service.remote {
             continue;
         }
+
         if server_status(service.local.to_string(), None) == ServerStatus::Ok {
-            println!("⚠️  Service {} is already running locally!! You need to restart it for linkup's environment variables to be loaded.", service.name);
+            let warning = format!(
+                "⚠️  Service {} is already running locally!! You need to restart it for linkup's environment variables to be loaded.",
+                service.name
+            ).yellow();
+
+            println!("{}", warning);
         }
     }
     Ok(())
