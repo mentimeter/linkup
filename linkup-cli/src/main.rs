@@ -3,11 +3,13 @@ use std::{env, fs, io::ErrorKind, path::PathBuf};
 use clap::{builder::ValueParser, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::Colorize;
+use health::health;
 use thiserror::Error;
 
 mod background_booting;
 mod completion;
 mod env_files;
+mod health;
 mod local_config;
 mod local_dns;
 mod paid_tunnel;
@@ -129,6 +131,8 @@ pub enum CliError {
     ParseErr(String, String),
     #[error("{0}: {1}")]
     FileErr(String, String),
+    #[error("{0}")]
+    IOError(#[from] std::io::Error),
 }
 
 #[derive(Error, Debug)]
@@ -166,6 +170,9 @@ enum LocalDNSSubcommand {
 
 #[derive(Subcommand)]
 enum Commands {
+    #[clap(about = "Output the health of the CLI service")]
+    Health {},
+
     #[clap(about = "Start a new linkup session")]
     Start {
         #[clap(
@@ -248,6 +255,7 @@ fn main() -> Result<()> {
     ensure_linkup_dir()?;
 
     match &cli.command {
+        Commands::Health {} => health(),
         Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel),
         Commands::Stop => stop(),
         Commands::Reset => reset(),
