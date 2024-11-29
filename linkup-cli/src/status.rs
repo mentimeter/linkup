@@ -4,6 +4,7 @@ use linkup::{get_additional_headers, HeaderMap, StorableDomain, TargetService};
 use serde::{Deserialize, Serialize};
 use std::{
     io::stdout,
+    ops::Deref,
     sync::mpsc::Receiver,
     thread::{self, sleep},
     time::Duration,
@@ -142,9 +143,19 @@ pub fn status(json: bool) -> Result<(), CliError> {
                     status => status.colored(),
                 };
 
+                let mut status_name = ColoredString::from(status.name.clone());
+                let mut status_component_kind = ColoredString::from(status.component_kind.clone());
+                let mut status_location = ColoredString::from(status.location.clone());
+
+                if status_component_kind.deref() == "local" {
+                    status_name = status_name.bright_magenta();
+                    status_component_kind = status_component_kind.bright_magenta();
+                    status_location = status_location.bright_magenta();
+                };
+
                 let display_status = &format!(
                     "{:<20} {:<20} {:<20} {:<20}\n",
-                    status.name, status.component_kind, display_status, status.location
+                    status_name, status_component_kind, display_status, status_location
                 );
 
                 execute!(stdout(), Print(display_status),).unwrap();
