@@ -116,12 +116,28 @@ impl Linkup {
 }
 
 #[derive(Debug, Serialize)]
+struct LocalDNS {
+    resolvers: Vec<String>,
+}
+
+impl LocalDNS {
+    fn load() -> Result<Self, CliError> {
+        Ok(Self {
+            resolvers: fs::read_dir("/etc/resolver/")?
+                .map(|f| f.unwrap().file_name().into_string().unwrap())
+                .collect(),
+        })
+    }
+}
+
+#[derive(Debug, Serialize)]
 struct Health {
     system: System,
     session: Session,
     environment_variables: EnvironmentVariables,
     background_services: BackgroudServices,
     linkup: Linkup,
+    local_dns: LocalDNS,
 }
 
 impl Health {
@@ -132,6 +148,7 @@ impl Health {
             environment_variables: EnvironmentVariables::load(),
             background_services: BackgroudServices::load(),
             linkup: Linkup::load()?,
+            local_dns: LocalDNS::load()?,
         })
     }
 }
@@ -213,6 +230,11 @@ impl Display for Health {
         writeln!(f, "  Config location: {}", self.linkup.config_location)?;
         writeln!(f, "  Config contents:")?;
         for file in &self.linkup.config_content {
+            writeln!(f, "    - {}", file)?;
+        }
+
+        writeln!(f, "{}", "Local DNS resolvers:".bold().italic())?;
+        for file in &self.local_dns.resolvers {
             writeln!(f, "    - {}", file)?;
         }
 
