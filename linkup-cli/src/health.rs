@@ -4,6 +4,7 @@ use std::{
     fs::{self},
 };
 
+use clap::crate_version;
 use colored::Colorize;
 use serde::Serialize;
 
@@ -93,12 +94,13 @@ impl BackgroudServices {
 }
 
 #[derive(Debug, Serialize)]
-struct LinkupDir {
-    location: String,
-    content: Vec<String>,
+struct Linkup {
+    version: String,
+    config_location: String,
+    config_content: Vec<String>,
 }
 
-impl LinkupDir {
+impl Linkup {
     fn load() -> Result<Self, CliError> {
         let dir_path = linkup_dir_path();
         let files: Vec<String> = fs::read_dir(&dir_path)?
@@ -106,8 +108,9 @@ impl LinkupDir {
             .collect();
 
         Ok(Self {
-            location: dir_path.to_str().unwrap_or_default().to_string(),
-            content: files,
+            version: crate_version!().to_string(),
+            config_location: dir_path.to_str().unwrap_or_default().to_string(),
+            config_content: files,
         })
     }
 }
@@ -118,7 +121,7 @@ struct Health {
     session: Session,
     environment_variables: EnvironmentVariables,
     background_services: BackgroudServices,
-    linkup_dir: LinkupDir,
+    linkup: Linkup,
 }
 
 impl Health {
@@ -128,7 +131,7 @@ impl Health {
             session: Session::load()?,
             environment_variables: EnvironmentVariables::load(),
             background_services: BackgroudServices::load(),
-            linkup_dir: LinkupDir::load()?,
+            linkup: Linkup::load()?,
         })
     }
 }
@@ -205,10 +208,11 @@ impl Display for Health {
             writeln!(f, "{}", "MISSING".yellow())?;
         }
 
-        writeln!(f, "{}", "Linkup dir:".bold().italic())?;
-        writeln!(f, "  Location: {}", self.linkup_dir.location)?;
-        writeln!(f, "  Content:")?;
-        for file in &self.linkup_dir.content {
+        writeln!(f, "{}", "Linkup:".bold().italic())?;
+        writeln!(f, "  Version: {}", self.linkup.version)?;
+        writeln!(f, "  Config location: {}", self.linkup.config_location)?;
+        writeln!(f, "  Config contents:")?;
+        for file in &self.linkup.config_content {
             writeln!(f, "    - {}", file)?;
         }
 
