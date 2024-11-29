@@ -239,7 +239,7 @@ mod tests {
     }
 
     fn make_state(session_name: &str) -> LocalState {
-        return LocalState {
+        LocalState {
             linkup: {
                 LinkupState {
                     session_name: session_name.to_string(),
@@ -253,7 +253,7 @@ mod tests {
             },
             services: vec![],
             domains: vec![],
-        };
+        }
     }
 
     #[test]
