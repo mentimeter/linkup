@@ -104,7 +104,7 @@ impl Linkup {
     fn load() -> Result<Self, CliError> {
         let dir_path = linkup_dir_path();
         let files: Vec<String> = fs::read_dir(&dir_path)?
-            .map(|f| f.unwrap().file_name().to_str().unwrap().to_string())
+            .map(|f| f.unwrap().file_name().into_string().unwrap())
             .collect();
 
         Ok(Self {
