@@ -171,7 +171,11 @@ enum LocalDNSSubcommand {
 #[derive(Subcommand)]
 enum Commands {
     #[clap(about = "Output the health of the CLI service")]
-    Health {},
+    Health {
+        // Output status in JSON format
+        #[arg(long)]
+        json: bool,
+    },
 
     #[clap(about = "Start a new linkup session")]
     Start {
@@ -255,7 +259,7 @@ fn main() -> Result<()> {
     ensure_linkup_dir()?;
 
     match &cli.command {
-        Commands::Health {} => health(),
+        Commands::Health { json } => health(*json),
         Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel),
         Commands::Stop => stop(),
         Commands::Reset => reset(),

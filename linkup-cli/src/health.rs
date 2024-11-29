@@ -5,10 +5,11 @@ use std::{
 };
 
 use colored::Colorize;
+use serde::Serialize;
 
 use crate::{linkup_dir_path, local_config::LocalState, CliError};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct System {
     os_name: String,
     os_version: String,
@@ -23,7 +24,7 @@ impl System {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct Session {
     name: String,
 }
@@ -38,7 +39,7 @@ impl Session {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct EnvironmentVariables {
     cf_api_token: bool,
     cf_zone_id: bool,
@@ -55,7 +56,7 @@ impl EnvironmentVariables {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct BackgroudServices {
     caddy_pids: Vec<String>,
     dnsmasq_pids: Vec<String>,
@@ -91,7 +92,7 @@ impl BackgroudServices {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct LinkupDir {
     location: String,
     content: Vec<String>,
@@ -111,7 +112,7 @@ impl LinkupDir {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct Health {
     system: System,
     session: Session,
@@ -215,8 +216,15 @@ impl Display for Health {
     }
 }
 
-pub fn health() -> Result<(), CliError> {
+pub fn health(json: bool) -> Result<(), CliError> {
     let health = Health::load()?;
+
+    let health = if json {
+        serde_json::to_string_pretty(&health).unwrap()
+    } else {
+        format!("{}", health)
+    };
+
     println!("{}", health);
 
     Ok(())
