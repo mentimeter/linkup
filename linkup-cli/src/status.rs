@@ -113,6 +113,11 @@ pub fn status(json: bool) -> Result<(), CliError> {
         );
 
         stdout().execute(cursor::Hide).unwrap();
+        ctrlc::set_handler(move || {
+            stdout().execute(cursor::Show).unwrap();
+            std::process::exit(130);
+        })
+        .expect("Failed to set CTRL+C handler");
 
         let mut iteration = 0;
         let mut loading_char_iteration = 0;
