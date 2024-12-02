@@ -108,11 +108,16 @@ pub fn status(json: bool) -> Result<(), CliError> {
     } else {
         print_session_status(&status.session);
         println!(
-            "{:<20} {:<20} {:<20} {:<20}",
-            "SERVICE NAME", "COMPONENT KIND", "STATUS", "LOCATION"
+            "{:<20} {:<15} {:<8} LOCATION",
+            "SERVICE NAME", "COMPONENT KIND", "STATUS",
         );
 
         stdout().execute(cursor::Hide).unwrap();
+        ctrlc::set_handler(move || {
+            stdout().execute(cursor::Show).unwrap();
+            std::process::exit(130);
+        })
+        .expect("Failed to set CTRL+C handler");
 
         let mut iteration = 0;
         let mut loading_char_iteration = 0;
@@ -154,7 +159,7 @@ pub fn status(json: bool) -> Result<(), CliError> {
                 };
 
                 let display_status = &format!(
-                    "{:<20} {:<20} {:<20} {:<20}\n",
+                    "{:<20} {:<15} {:<8} {}\n",
                     status_name, status_component_kind, display_status, status_location
                 );
 
