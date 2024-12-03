@@ -11,7 +11,7 @@ pub fn reset() -> Result<(), CliError> {
 
     shutdown()?;
     let background_service = LocalBackgroundServices;
-    let _ = background_service.boot_background_services(state);
+    let _ = background_service.boot_linkup_server(state);
 
     Ok(())
 }
