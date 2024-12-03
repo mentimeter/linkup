@@ -126,9 +126,9 @@ pub trait PaidTunnelManager {
     fn create_dns_record(&self, tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError>;
 }
 
-pub struct RealPaidTunnelManager;
+pub struct CfPaidTunnelManager;
 
-impl PaidTunnelManager for RealPaidTunnelManager {
+impl PaidTunnelManager for CfPaidTunnelManager {
     fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError> {
         let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
             .map_err(|_| CliError::GetEnvVar("LINKUP_CLOUDFLARE_ACCOUNT_ID".to_string()))?;

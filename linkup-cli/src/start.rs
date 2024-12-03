@@ -6,12 +6,12 @@ use std::{
 use colored::Colorize;
 
 use crate::{
-    background_booting::{BackgroundServices, RealBackgroundServices},
+    background_booting::{BackgroundServices, LocalBackgroundServices},
     env_files::write_to_env_file,
     linkup_file_path,
     local_config::{config_path, config_to_state, get_config},
-    paid_tunnel::{PaidTunnelManager, RealPaidTunnelManager},
-    services::tunnel::{RealTunnelManager, TunnelManager},
+    paid_tunnel::{CfPaidTunnelManager, PaidTunnelManager},
+    services::tunnel::{CfTunnelManager, TunnelManager},
     system::{RealSystem, System},
     LINKUP_LOCALDNS_INSTALL,
 };
@@ -29,9 +29,9 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
     if is_paid {
         start_paid_tunnel(
             &RealSystem,
-            &RealPaidTunnelManager,
-            &RealBackgroundServices,
-            &RealTunnelManager,
+            &CfPaidTunnelManager,
+            &LocalBackgroundServices,
+            &CfTunnelManager,
             state,
         )?;
     } else {
@@ -124,7 +124,7 @@ fn start_free_tunnel(state: LocalState, no_tunnel: bool) -> Result<(), CliError>
         return Err(CliError::NoTunnelWithoutLocalDns);
     }
 
-    let background_service = RealBackgroundServices {};
+    let background_service = LocalBackgroundServices {};
     let state = background_service.boot_background_services(state)?;
 
     check_local_not_started(&state)?;
