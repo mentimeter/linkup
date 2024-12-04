@@ -1,5 +1,5 @@
 use crate::{
-    background_booting::{BackgroundServices, RealBackgroundServices},
+    background_booting::{BackgroundServices, LocalBackgroundServices},
     local_config::LocalState,
     stop::shutdown,
     CliError,
@@ -10,8 +10,8 @@ pub fn reset() -> Result<(), CliError> {
     let state = LocalState::load()?;
 
     shutdown()?;
-    let background_service = RealBackgroundServices;
-    let _ = background_service.boot_background_services(state);
+    let background_service = LocalBackgroundServices;
+    let _ = background_service.boot_linkup_server(state);
 
     Ok(())
 }

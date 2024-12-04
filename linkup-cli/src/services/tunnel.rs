@@ -28,9 +28,9 @@ pub trait TunnelManager {
     fn is_tunnel_running(&self) -> Result<(), CheckErr>;
 }
 
-pub struct RealTunnelManager;
+pub struct CfTunnelManager;
 
-impl TunnelManager for RealTunnelManager {
+impl TunnelManager for CfTunnelManager {
     fn run_tunnel(&self, state: &LocalState) -> Result<Url, CliError> {
         let mut attempt = 0;
         loop {

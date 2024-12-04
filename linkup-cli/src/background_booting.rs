@@ -12,22 +12,20 @@ use url::Url;
 
 use crate::local_config::{LocalState, ServiceTarget};
 use crate::services::local_server::{is_local_server_started, start_local_server};
-use crate::services::tunnel::{RealTunnelManager, TunnelManager};
-use crate::status::print_session_names;
 use crate::worker_client::WorkerClient;
-use crate::{linkup_file_path, services, LINKUP_LOCALSERVER_PORT};
-use crate::{CliError, LINKUP_LOCALDNS_INSTALL};
+use crate::CliError;
+use crate::{services, LINKUP_LOCALSERVER_PORT};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait BackgroundServices {
-    fn boot_background_services(&self, state: LocalState) -> Result<LocalState, CliError>;
+    fn boot_linkup_server(&self, state: LocalState) -> Result<LocalState, CliError>;
     fn boot_local_dns(&self, domains: Vec<String>, session_name: String) -> Result<(), CliError>;
 }
 
-pub struct RealBackgroundServices;
+pub struct LocalBackgroundServices;
 
-impl BackgroundServices for RealBackgroundServices {
-    fn boot_background_services(&self, mut state: LocalState) -> Result<LocalState, CliError> {
+impl BackgroundServices for LocalBackgroundServices {
+    fn boot_linkup_server(&self, mut state: LocalState) -> Result<LocalState, CliError> {
         let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
             .expect("linkup url invalid");
 
@@ -39,24 +37,6 @@ impl BackgroundServices for RealBackgroundServices {
         }
 
         wait_till_ok(format!("{}linkup-check", local_url))?;
-
-        let should_run_free = state.linkup.is_paid.is_none() || !state.linkup.is_paid.unwrap();
-        if should_run_free {
-            if state.should_use_tunnel() {
-                let tunnel_manager = RealTunnelManager {};
-                if tunnel_manager.is_tunnel_running().is_err() {
-                    println!("Starting tunnel...");
-                    let tunnel = tunnel_manager.run_tunnel(&state)?;
-                    state.linkup.tunnel = Some(tunnel);
-                } else {
-                    println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
-                }
-            } else {
-                println!(
-                "Skipping tunnel start... WARNING: not all kinds of requests will work in this mode."
-            );
-            }
-        }
 
         let server_config = ServerConfig::from(&state);
 
@@ -74,22 +54,6 @@ impl BackgroundServices for RealBackgroundServices {
 
         state.linkup.session_name = server_session_name;
         state.save()?;
-
-        if should_run_free {
-            if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
-                self.boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
-            }
-
-            if let Some(tunnel) = &state.linkup.tunnel {
-                println!("Waiting for tunnel DNS to propagate at {}...", tunnel);
-
-                wait_for_dns_ok(tunnel.clone())?;
-
-                println!();
-            }
-        }
-
-        print_session_names(&state);
 
         Ok(state)
     }

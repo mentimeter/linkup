@@ -6,12 +6,13 @@ use std::{
 use colored::Colorize;
 
 use crate::{
-    background_booting::{BackgroundServices, RealBackgroundServices},
+    background_booting::{wait_for_dns_ok, BackgroundServices, LocalBackgroundServices},
     env_files::write_to_env_file,
     linkup_file_path,
     local_config::{config_path, config_to_state, get_config},
-    paid_tunnel::{PaidTunnelManager, RealPaidTunnelManager},
-    services::tunnel::{RealTunnelManager, TunnelManager},
+    paid_tunnel::{CfPaidTunnelManager, PaidTunnelManager},
+    services::tunnel::{CfTunnelManager, TunnelManager},
+    status::print_session_names,
     system::{RealSystem, System},
     LINKUP_LOCALDNS_INSTALL,
 };
@@ -29,9 +30,9 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
     if is_paid {
         start_paid_tunnel(
             &RealSystem,
-            &RealPaidTunnelManager,
-            &RealBackgroundServices,
-            &RealTunnelManager,
+            &CfPaidTunnelManager,
+            &LocalBackgroundServices,
+            &CfTunnelManager,
             state,
         )?;
     } else {
@@ -63,7 +64,7 @@ fn start_paid_tunnel(
     tunnel_manager: &dyn TunnelManager,
     mut state: LocalState,
 ) -> Result<(), CliError> {
-    state = boot.boot_background_services(state.clone())?;
+    state = boot.boot_linkup_server(state.clone())?;
 
     log::info!(
         "Starting paid tunnel with session name: {}",
@@ -110,6 +111,7 @@ fn start_paid_tunnel(
         boot.boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
     }
 
+    print_session_names(&state);
     check_local_not_started(&state)?;
 
     Ok(())
@@ -124,9 +126,38 @@ fn start_free_tunnel(state: LocalState, no_tunnel: bool) -> Result<(), CliError>
         return Err(CliError::NoTunnelWithoutLocalDns);
     }
 
-    let background_service = RealBackgroundServices {};
-    let state = background_service.boot_background_services(state)?;
+    let background_service = LocalBackgroundServices {};
+    let mut state = background_service.boot_linkup_server(state)?;
 
+    if state.should_use_tunnel() {
+        let tunnel_manager = CfTunnelManager {};
+        if tunnel_manager.is_tunnel_running().is_err() {
+            println!("Starting tunnel...");
+            let tunnel = tunnel_manager.run_tunnel(&state)?;
+            state.linkup.tunnel = Some(tunnel);
+        } else {
+            println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
+        }
+    } else {
+        println!(
+            "Skipping tunnel start... WARNING: not all kinds of requests will work in this mode."
+        );
+    }
+
+    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
+        background_service
+            .boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
+    }
+
+    if let Some(tunnel) = &state.linkup.tunnel {
+        println!("Waiting for tunnel DNS to propagate at {}...", tunnel);
+
+        wait_for_dns_ok(tunnel.clone())?;
+
+        println!();
+    }
+
+    print_session_names(&state);
     check_local_not_started(&state)?;
 
     Ok(())
@@ -265,7 +296,7 @@ mod tests {
 
         // Start background services
         mock_boot_bg_services
-            .expect_boot_background_services()
+            .expect_boot_linkup_server()
             .once()
             .returning(|_| Ok(make_state("test_session")));
 
@@ -333,7 +364,7 @@ mod tests {
 
         // Start background services
         mock_boot_bg_services
-            .expect_boot_background_services()
+            .expect_boot_linkup_server()
             .once()
             .returning(|_| Ok(make_state("test_session")));
 
@@ -406,7 +437,7 @@ mod tests {
 
         // Start background services
         mock_boot_bg_services
-            .expect_boot_background_services()
+            .expect_boot_linkup_server()
             .once()
             .returning(|_| Ok(make_state("test_session")));
 
@@ -488,7 +519,7 @@ mod tests {
 
         // Start background services
         mock_boot_bg_services
-            .expect_boot_background_services()
+            .expect_boot_linkup_server()
             .once()
             .returning(|_| Ok(make_state("test_session")));
 
