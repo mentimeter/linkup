@@ -54,6 +54,7 @@ impl TunnelManager for CfTunnelManager {
             }
         }
     }
+
     fn is_tunnel_running(&self) -> Result<(), CheckErr> {
         if linkup_file_path(LINKUP_CLOUDFLARED_PID).exists() {
             Ok(())
@@ -194,7 +195,7 @@ fn daemonized_tunnel_child(state: &LocalState) {
     ONCE.call_once(|| {
         ctrlc::set_handler(move || {
             println!("Killing child process {}", pid);
-            let kill_res = send_signal(pid.to_string().as_str(), Signal::SIGINT);
+            let kill_res = send_signal(pid.to_string().as_str(), Some(Signal::SIGINT));
             println!("Kill result: {:?}", kill_res);
 
             let _ = remove_file(linkup_file_path(LINKUP_CLOUDFLARED_PID));

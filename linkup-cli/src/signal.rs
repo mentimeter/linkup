@@ -17,14 +17,14 @@ pub enum PidError {
     NoSuchProcess(String),
 }
 
-pub fn send_signal(pid_str: &str, signal: Signal) -> Result<(), PidError> {
+pub fn send_signal(pid_str: &str, signal: Option<Signal>) -> Result<(), PidError> {
     // Parse the PID string to a i32
     let pid_num = i32::from_str(pid_str).map_err(|e| PidError::BadPidFile(e.to_string()))?;
 
     // Create a Pid from the i32
     let pid = Pid::from_raw(pid_num);
 
-    match kill(pid, Some(signal)) {
+    match kill(pid, signal) {
         Ok(_) => Ok(()),
         Err(nix::Error::ESRCH) => Err(PidError::NoSuchProcess(pid_str.to_string())),
         Err(e) => Err(PidError::SignalErr(e.to_string())),

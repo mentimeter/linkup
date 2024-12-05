@@ -11,7 +11,10 @@ use crate::{
     linkup_file_path,
     local_config::{config_path, config_to_state, get_config},
     paid_tunnel::{CfPaidTunnelManager, PaidTunnelManager},
-    services::tunnel::{CfTunnelManager, TunnelManager},
+    services::{
+        tunnel::{CfTunnelManager, TunnelManager},
+        BackgroudService, BackgroundServiceError, FreeCloudflareTunnel,
+    },
     status::print_session_names,
     system::{RealSystem, System},
     LINKUP_LOCALDNS_INSTALL,
@@ -25,8 +28,30 @@ use crate::{
 pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
     env_logger::init();
     let is_paid = use_paid_tunnels();
-    let state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
+    let mut state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
     set_linkup_env(state.clone())?;
+
+    let free_cloudflare_tunnel = FreeCloudflareTunnel::load(state.clone());
+    let services: Vec<&dyn BackgroudService<BackgroundServiceError>> =
+        vec![&free_cloudflare_tunnel];
+    for service in services {
+        if service.should_boot() {
+            match service.running_pid() {
+                Some(_) => todo!("report"),
+                None => {
+                    service.setup().unwrap();
+                    service.start().unwrap();
+                }
+            }
+            if service.running_pid().is_some() {}
+        }
+    }
+
+    if free_cloudflare_tunnel.should_boot() {
+        state.linkup.tunnel = free_cloudflare_tunnel.tunnel_url().ok();
+        state.save().unwrap();
+    }
+
     if is_paid {
         start_paid_tunnel(
             &RealSystem,
@@ -38,6 +63,7 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
     } else {
         start_free_tunnel(state, no_tunnel)?;
     }
+
     Ok(())
 }
 
@@ -130,14 +156,14 @@ fn start_free_tunnel(state: LocalState, no_tunnel: bool) -> Result<(), CliError>
     let mut state = background_service.boot_linkup_server(state)?;
 
     if state.should_use_tunnel() {
-        let tunnel_manager = CfTunnelManager {};
-        if tunnel_manager.is_tunnel_running().is_err() {
-            println!("Starting tunnel...");
-            let tunnel = tunnel_manager.run_tunnel(&state)?;
-            state.linkup.tunnel = Some(tunnel);
-        } else {
-            println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
-        }
+        // let tunnel_manager = CfTunnelManager {};
+        // if tunnel_manager.is_tunnel_running().is_err() {
+        //     println!("Starting tunnel...");
+        //     let tunnel = tunnel_manager.run_tunnel(&state)?;
+        //     state.linkup.tunnel = Some(tunnel);
+        // } else {
+        //     println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
+        // }
     } else {
         println!(
             "Skipping tunnel start... WARNING: not all kinds of requests will work in this mode."
