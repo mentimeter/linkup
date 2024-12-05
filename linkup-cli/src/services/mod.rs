@@ -26,6 +26,7 @@ pub mod local_server;
 pub mod tunnel;
 
 pub trait BackgroudService<E> {
+    fn name(&self) -> String;
     fn should_boot(&self) -> bool;
     fn running_pid(&self) -> Option<String>;
     fn healthy(&self) -> bool;
@@ -39,6 +40,9 @@ pub enum BackgroundServiceError {
     #[error("No tunnel URL found")]
     NoUrlFound,
 }
+
+const LINKUP_CLOUDFLARED_STDOUT: &str = "cloudflared-stdout";
+const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";
 
 pub struct FreeCloudflareTunnel {
     state: LocalState,
@@ -65,10 +69,11 @@ impl FreeCloudflareTunnel {
     }
 }
 
-const LINKUP_CLOUDFLARED_STDOUT: &str = "cloudflared-stdout";
-const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";
-
 impl BackgroudService<BackgroundServiceError> for FreeCloudflareTunnel {
+    fn name(&self) -> String {
+        String::from("Cloudflare free tunnel")
+    }
+
     fn should_boot(&self) -> bool {
         !(env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
             && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
