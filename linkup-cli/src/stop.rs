@@ -52,7 +52,7 @@ pub fn shutdown() -> Result<(), CliError> {
 
 pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), CliError> {
     let stopped = match get_pid(pid_file) {
-        Ok(pid) => match send_signal(&pid, Some(signal)) {
+        Ok(pid) => match send_signal(&pid, signal) {
             Ok(_) => Ok(()),
             Err(PidError::NoSuchProcess(_)) => Ok(()),
             Err(e) => Err(CliError::StopErr(format!(
