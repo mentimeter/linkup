@@ -12,7 +12,6 @@ use crate::{
     local_config::{config_path, config_to_state, get_config},
     paid_tunnel::{CfPaidTunnelManager, PaidTunnelManager},
     services::{
-        local_server::LinkupServer,
         tunnel::{CfTunnelManager, TunnelManager},
         BackgroudService, BackgroundServiceError, FreeCloudflareTunnel,
     },
@@ -32,45 +31,38 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
     let mut state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
     set_linkup_env(state.clone())?;
 
-    let local_server = LinkupServer::new();
     let free_cloudflare_tunnel = FreeCloudflareTunnel::load(state.clone());
     let services: Vec<&dyn BackgroudService<BackgroundServiceError>> =
-        vec![&local_server, &free_cloudflare_tunnel];
-
-    for i in 0..services.len() {
-        let service = services[i];
-
+        vec![&free_cloudflare_tunnel];
+    for service in services {
         if service.should_boot() {
             match service.running_pid() {
                 Some(_) => todo!("report"),
                 None => {
                     service.setup().unwrap();
                     service.start().unwrap();
-                    println!("Started {}", service.name());
                 }
             }
             if service.running_pid().is_some() {}
         }
     }
 
-    let mut state = local_server.update_state(state);
-
     if free_cloudflare_tunnel.should_boot() {
         state.linkup.tunnel = free_cloudflare_tunnel.tunnel_url().ok();
         state.save().unwrap();
     }
 
-    // if is_paid {
-    //     start_paid_tunnel(
-    //         &RealSystem,
-    //         &CfPaidTunnelManager,
-    //         &LocalBackgroundServices,
-    //         &CfTunnelManager,
-    //         state,
-    //     )?;
-    // } else {
-    //     start_free_tunnel(state, no_tunnel)?;
-    // }
+    if is_paid {
+        start_paid_tunnel(
+            &RealSystem,
+            &CfPaidTunnelManager,
+            &LocalBackgroundServices,
+            &CfTunnelManager,
+            state,
+        )?;
+    } else {
+        start_free_tunnel(state, no_tunnel)?;
+    }
 
     Ok(())
 }
@@ -161,7 +153,7 @@ fn start_free_tunnel(state: LocalState, no_tunnel: bool) -> Result<(), CliError>
     }
 
     let background_service = LocalBackgroundServices {};
-    // let mut state = background_service.boot_linkup_server(state)?;
+    let mut state = background_service.boot_linkup_server(state)?;
 
     if state.should_use_tunnel() {
         // let tunnel_manager = CfTunnelManager {};
@@ -283,293 +275,293 @@ fn check_local_not_started(state: &LocalState) -> Result<(), CliError> {
     Ok(())
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use mockall::{mock, predicate};
+#[cfg(test)]
+mod tests {
+    use mockall::{mock, predicate};
 
-//     use crate::{
-//         background_booting::MockBackgroundServices, local_config::LinkupState,
-//         paid_tunnel::MockPaidTunnelManager, services::tunnel::MockTunnelManager,
-//         system::MockSystem, CheckErr,
-//     };
+    use crate::{
+        background_booting::MockBackgroundServices, local_config::LinkupState,
+        paid_tunnel::MockPaidTunnelManager, services::tunnel::MockTunnelManager,
+        system::MockSystem, CheckErr,
+    };
 
-//     use url::Url;
+    use url::Url;
 
-//     use super::*;
+    use super::*;
 
-//     mock! {
-//         pub LocalState {
-//             pub fn save(&self) -> Result<(), CliError>;
-//         }
-//     }
+    mock! {
+        pub LocalState {
+            pub fn save(&self) -> Result<(), CliError>;
+        }
+    }
 
-//     fn make_state(session_name: &str) -> LocalState {
-//         LocalState {
-//             linkup: {
-//                 LinkupState {
-//                     session_name: session_name.to_string(),
-//                     session_token: "test_token".to_string(),
-//                     config_path: "/tmp/home/.linkup/config".to_string(),
-//                     remote: Url::parse("http://localhost:9066").unwrap(),
-//                     is_paid: Some(true),
-//                     tunnel: Some(Url::parse("http://localhost:9066").unwrap()),
-//                     cache_routes: None,
-//                 }
-//             },
-//             services: vec![],
-//             domains: vec![],
-//         }
-//     }
+    fn make_state(session_name: &str) -> LocalState {
+        LocalState {
+            linkup: {
+                LinkupState {
+                    session_name: session_name.to_string(),
+                    session_token: "test_token".to_string(),
+                    config_path: "/tmp/home/.linkup/config".to_string(),
+                    remote: Url::parse("http://localhost:9066").unwrap(),
+                    is_paid: Some(true),
+                    tunnel: Some(Url::parse("http://localhost:9066").unwrap()),
+                    cache_routes: None,
+                }
+            },
+            services: vec![],
+            domains: vec![],
+        }
+    }
 
-//     #[test]
-//     fn test_start_paid_tunnel_tunnel_exists() {
-//         let mut mock_boot_bg_services = MockBackgroundServices::new();
-//         let mut mock_paid_manager = MockPaidTunnelManager::new();
-//         let mut mock_sys = MockSystem::new();
-//         let mut mock_tunnel_manager = MockTunnelManager::new();
+    #[test]
+    fn test_start_paid_tunnel_tunnel_exists() {
+        let mut mock_boot_bg_services = MockBackgroundServices::new();
+        let mut mock_paid_manager = MockPaidTunnelManager::new();
+        let mut mock_sys = MockSystem::new();
+        let mut mock_tunnel_manager = MockTunnelManager::new();
 
-//         // Start background services
-//         mock_boot_bg_services
-//             .expect_boot_linkup_server()
-//             .once()
-//             .returning(|_| Ok(make_state("test_session")));
+        // Start background services
+        mock_boot_bg_services
+            .expect_boot_linkup_server()
+            .once()
+            .returning(|_| Ok(make_state("test_session")));
 
-//         // Check if tunnel exists -> Yes
-//         mock_paid_manager
-//             .expect_get_tunnel_id()
-//             .with(predicate::eq("tunnel-test_session"))
-//             .returning(|_| Ok(Some("test_tunnel_id".to_string())));
+        // Check if tunnel exists -> Yes
+        mock_paid_manager
+            .expect_get_tunnel_id()
+            .with(predicate::eq("tunnel-test_session"))
+            .returning(|_| Ok(Some("test_tunnel_id".to_string())));
 
-//         // Mock HOME env var
-//         mock_sys
-//             .expect_get_env()
-//             .with(predicate::eq("HOME"))
-//             .returning(|_| Ok("/tmp/home".to_string()));
+        // Mock HOME env var
+        mock_sys
+            .expect_get_env()
+            .with(predicate::eq("HOME"))
+            .returning(|_| Ok("/tmp/home".to_string()));
 
-//         // Check if config file exists -> Yes
-//         mock_sys
-//             .expect_file_exists()
-//             .with(predicate::eq(Path::new(
-//                 "/tmp/home/.cloudflared/test_tunnel_id.json",
-//             )))
-//             .returning(|_| true);
+        // Check if config file exists -> Yes
+        mock_sys
+            .expect_file_exists()
+            .with(predicate::eq(Path::new(
+                "/tmp/home/.cloudflared/test_tunnel_id.json",
+            )))
+            .returning(|_| true);
 
-//         mock_tunnel_manager
-//             .expect_is_tunnel_running()
-//             .once()
-//             .returning(|| Err(CheckErr::TunnelNotRunning));
+        mock_tunnel_manager
+            .expect_is_tunnel_running()
+            .once()
+            .returning(|| Err(CheckErr::TunnelNotRunning));
 
-//         // Run tunnel
-//         mock_tunnel_manager
-//             .expect_run_tunnel()
-//             .once()
-//             .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
+        // Run tunnel
+        mock_tunnel_manager
+            .expect_run_tunnel()
+            .once()
+            .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
 
-//         mock_sys
-//             .expect_file_exists()
-//             .with(predicate::eq(linkup_file_path(LINKUP_LOCALDNS_INSTALL)))
-//             .returning(|_| true);
+        mock_sys
+            .expect_file_exists()
+            .with(predicate::eq(linkup_file_path(LINKUP_LOCALDNS_INSTALL)))
+            .returning(|_| true);
 
-//         mock_boot_bg_services
-//             .expect_boot_local_dns()
-//             .once()
-//             .returning(|_, _| Ok(()));
+        mock_boot_bg_services
+            .expect_boot_local_dns()
+            .once()
+            .returning(|_, _| Ok(()));
 
-//         // Don't create tunnel or DNS record
-//         mock_paid_manager.expect_create_tunnel().never();
-//         mock_paid_manager.expect_create_dns_record().never();
+        // Don't create tunnel or DNS record
+        mock_paid_manager.expect_create_tunnel().never();
+        mock_paid_manager.expect_create_dns_record().never();
 
-//         let result = start_paid_tunnel(
-//             &mock_sys,
-//             &mock_paid_manager,
-//             &mock_boot_bg_services,
-//             &mock_tunnel_manager,
-//             make_state("test_session"),
-//         );
-//         assert!(result.is_ok());
-//     }
+        let result = start_paid_tunnel(
+            &mock_sys,
+            &mock_paid_manager,
+            &mock_boot_bg_services,
+            &mock_tunnel_manager,
+            make_state("test_session"),
+        );
+        assert!(result.is_ok());
+    }
 
-//     #[test]
-//     fn test_start_paid_tunnel_no_tunnel_exists() {
-//         let mut mock_boot_bg_services = MockBackgroundServices::new();
-//         let mut mock_paid_manager = MockPaidTunnelManager::new();
-//         let mut mock_sys = MockSystem::new();
-//         let mut mock_tunnel_manager = MockTunnelManager::new();
+    #[test]
+    fn test_start_paid_tunnel_no_tunnel_exists() {
+        let mut mock_boot_bg_services = MockBackgroundServices::new();
+        let mut mock_paid_manager = MockPaidTunnelManager::new();
+        let mut mock_sys = MockSystem::new();
+        let mut mock_tunnel_manager = MockTunnelManager::new();
 
-//         // Start background services
-//         mock_boot_bg_services
-//             .expect_boot_linkup_server()
-//             .once()
-//             .returning(|_| Ok(make_state("test_session")));
+        // Start background services
+        mock_boot_bg_services
+            .expect_boot_linkup_server()
+            .once()
+            .returning(|_| Ok(make_state("test_session")));
 
-//         // Check if tunnel exists -> No
-//         mock_paid_manager
-//             .expect_get_tunnel_id()
-//             .returning(|_| Ok(None));
+        // Check if tunnel exists -> No
+        mock_paid_manager
+            .expect_get_tunnel_id()
+            .returning(|_| Ok(None));
 
-//         // Don't read config file
-//         mock_sys
-//             .expect_file_exists()
-//             .with(predicate::eq(Path::new("/tmp/home/.cloudflared/.json")))
-//             .never();
+        // Don't read config file
+        mock_sys
+            .expect_file_exists()
+            .with(predicate::eq(Path::new("/tmp/home/.cloudflared/.json")))
+            .never();
 
-//         // Create tunnel
-//         mock_paid_manager
-//             .expect_create_tunnel()
-//             .once()
-//             .with(predicate::eq("tunnel-test_session"))
-//             .returning(|_| Ok("tunnel-id".to_string()));
+        // Create tunnel
+        mock_paid_manager
+            .expect_create_tunnel()
+            .once()
+            .with(predicate::eq("tunnel-test_session"))
+            .returning(|_| Ok("tunnel-id".to_string()));
 
-//         // Create DNS record
-//         mock_paid_manager
-//             .expect_create_dns_record()
-//             .once()
-//             .with(
-//                 predicate::eq("tunnel-id"),
-//                 predicate::eq("tunnel-test_session"),
-//             )
-//             .returning(|_, _| Ok(()));
+        // Create DNS record
+        mock_paid_manager
+            .expect_create_dns_record()
+            .once()
+            .with(
+                predicate::eq("tunnel-id"),
+                predicate::eq("tunnel-test_session"),
+            )
+            .returning(|_, _| Ok(()));
 
-//         mock_tunnel_manager
-//             .expect_is_tunnel_running()
-//             .once()
-//             .returning(|| Err(CheckErr::TunnelNotRunning));
+        mock_tunnel_manager
+            .expect_is_tunnel_running()
+            .once()
+            .returning(|| Err(CheckErr::TunnelNotRunning));
 
-//         // Run tunnel
-//         mock_tunnel_manager
-//             .expect_run_tunnel()
-//             .once()
-//             .with(predicate::eq(make_state("test_session")))
-//             .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
+        // Run tunnel
+        mock_tunnel_manager
+            .expect_run_tunnel()
+            .once()
+            .with(predicate::eq(make_state("test_session")))
+            .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
 
-//         mock_sys
-//             .expect_file_exists()
-//             .with(predicate::eq(linkup_file_path(LINKUP_LOCALDNS_INSTALL)))
-//             .returning(|_| true);
+        mock_sys
+            .expect_file_exists()
+            .with(predicate::eq(linkup_file_path(LINKUP_LOCALDNS_INSTALL)))
+            .returning(|_| true);
 
-//         mock_boot_bg_services
-//             .expect_boot_local_dns()
-//             .once()
-//             .returning(|_, _| Ok(()));
+        mock_boot_bg_services
+            .expect_boot_local_dns()
+            .once()
+            .returning(|_, _| Ok(()));
 
-//         let result = start_paid_tunnel(
-//             &mock_sys,
-//             &mock_paid_manager,
-//             &mock_boot_bg_services,
-//             &mock_tunnel_manager,
-//             make_state("test_session"),
-//         );
-//         assert!(result.is_ok());
-//     }
+        let result = start_paid_tunnel(
+            &mock_sys,
+            &mock_paid_manager,
+            &mock_boot_bg_services,
+            &mock_tunnel_manager,
+            make_state("test_session"),
+        );
+        assert!(result.is_ok());
+    }
 
-//     #[test]
-//     fn test_start_paid_tunnel_tunnel_exists_but_not_config() {
-//         let mut mock_boot_bg_services = MockBackgroundServices::new();
-//         let mut mock_paid_manager = MockPaidTunnelManager::new();
-//         let mut mock_sys = MockSystem::new();
-//         let mut mock_tunnel_manager = MockTunnelManager::new();
+    #[test]
+    fn test_start_paid_tunnel_tunnel_exists_but_not_config() {
+        let mut mock_boot_bg_services = MockBackgroundServices::new();
+        let mut mock_paid_manager = MockPaidTunnelManager::new();
+        let mut mock_sys = MockSystem::new();
+        let mut mock_tunnel_manager = MockTunnelManager::new();
 
-//         // Start background services
-//         mock_boot_bg_services
-//             .expect_boot_linkup_server()
-//             .once()
-//             .returning(|_| Ok(make_state("test_session")));
+        // Start background services
+        mock_boot_bg_services
+            .expect_boot_linkup_server()
+            .once()
+            .returning(|_| Ok(make_state("test_session")));
 
-//         // Check if tunnel exists -> Yes
-//         mock_paid_manager
-//             .expect_get_tunnel_id()
-//             .with(predicate::eq("tunnel-test_session"))
-//             .returning(|_| Ok(Some("tunnel_id".to_string())));
+        // Check if tunnel exists -> Yes
+        mock_paid_manager
+            .expect_get_tunnel_id()
+            .with(predicate::eq("tunnel-test_session"))
+            .returning(|_| Ok(Some("tunnel_id".to_string())));
 
-//         // Mock HOME env var
-//         mock_sys
-//             .expect_get_env()
-//             .with(predicate::eq("HOME"))
-//             .returning(|_| Ok("/tmp/home".to_string()));
+        // Mock HOME env var
+        mock_sys
+            .expect_get_env()
+            .with(predicate::eq("HOME"))
+            .returning(|_| Ok("/tmp/home".to_string()));
 
-//         // Check if config file exists -> No
-//         mock_sys
-//             .expect_file_exists()
-//             .with(predicate::eq(Path::new(
-//                 "/tmp/home/.cloudflared/tunnel_id.json",
-//             )))
-//             .returning(|_| false);
+        // Check if config file exists -> No
+        mock_sys
+            .expect_file_exists()
+            .with(predicate::eq(Path::new(
+                "/tmp/home/.cloudflared/tunnel_id.json",
+            )))
+            .returning(|_| false);
 
-//         // Tunnel without config is no good, so create a new one
-//         mock_paid_manager
-//             .expect_create_tunnel()
-//             .once()
-//             .with(predicate::eq("tunnel-test_session"))
-//             .returning(|_| Ok("tunnel_id".to_string()));
+        // Tunnel without config is no good, so create a new one
+        mock_paid_manager
+            .expect_create_tunnel()
+            .once()
+            .with(predicate::eq("tunnel-test_session"))
+            .returning(|_| Ok("tunnel_id".to_string()));
 
-//         // Create DNS record
-//         mock_paid_manager
-//             .expect_create_dns_record()
-//             .once()
-//             .with(
-//                 predicate::eq("tunnel_id"),
-//                 predicate::eq("tunnel-test_session"),
-//             )
-//             .returning(|_, _| Ok(()));
+        // Create DNS record
+        mock_paid_manager
+            .expect_create_dns_record()
+            .once()
+            .with(
+                predicate::eq("tunnel_id"),
+                predicate::eq("tunnel-test_session"),
+            )
+            .returning(|_, _| Ok(()));
 
-//         mock_tunnel_manager
-//             .expect_is_tunnel_running()
-//             .once()
-//             .returning(|| Err(CheckErr::TunnelNotRunning));
+        mock_tunnel_manager
+            .expect_is_tunnel_running()
+            .once()
+            .returning(|| Err(CheckErr::TunnelNotRunning));
 
-//         // Run tunnel
-//         mock_tunnel_manager
-//             .expect_run_tunnel()
-//             .once()
-//             .with(predicate::eq(make_state("test_session")))
-//             .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
+        // Run tunnel
+        mock_tunnel_manager
+            .expect_run_tunnel()
+            .once()
+            .with(predicate::eq(make_state("test_session")))
+            .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
 
-//         mock_sys
-//             .expect_file_exists()
-//             .with(predicate::eq(linkup_file_path(LINKUP_LOCALDNS_INSTALL)))
-//             .returning(|_| true);
+        mock_sys
+            .expect_file_exists()
+            .with(predicate::eq(linkup_file_path(LINKUP_LOCALDNS_INSTALL)))
+            .returning(|_| true);
 
-//         mock_boot_bg_services
-//             .expect_boot_local_dns()
-//             .once()
-//             .returning(|_, _| Ok(()));
+        mock_boot_bg_services
+            .expect_boot_local_dns()
+            .once()
+            .returning(|_, _| Ok(()));
 
-//         let result = start_paid_tunnel(
-//             &mock_sys,
-//             &mock_paid_manager,
-//             &mock_boot_bg_services,
-//             &mock_tunnel_manager,
-//             make_state("test_session"),
-//         );
-//         assert!(result.is_ok());
-//     }
+        let result = start_paid_tunnel(
+            &mock_sys,
+            &mock_paid_manager,
+            &mock_boot_bg_services,
+            &mock_tunnel_manager,
+            make_state("test_session"),
+        );
+        assert!(result.is_ok());
+    }
 
-//     #[test]
-//     fn test_start_paid_tunnel_cannot_get_tunnel_id() {
-//         let mut mock_boot_bg_services = MockBackgroundServices::new();
-//         let mut mock_paid_manager = MockPaidTunnelManager::new();
-//         let mock_sys = MockSystem::new();
-//         let mock_tunnel_manager = MockTunnelManager::new();
+    #[test]
+    fn test_start_paid_tunnel_cannot_get_tunnel_id() {
+        let mut mock_boot_bg_services = MockBackgroundServices::new();
+        let mut mock_paid_manager = MockPaidTunnelManager::new();
+        let mock_sys = MockSystem::new();
+        let mock_tunnel_manager = MockTunnelManager::new();
 
-//         // Start background services
-//         mock_boot_bg_services
-//             .expect_boot_linkup_server()
-//             .once()
-//             .returning(|_| Ok(make_state("test_session")));
+        // Start background services
+        mock_boot_bg_services
+            .expect_boot_linkup_server()
+            .once()
+            .returning(|_| Ok(make_state("test_session")));
 
-//         // Check if tunnel exists -> Error
-//         mock_paid_manager
-//             .expect_get_tunnel_id()
-//             .with(predicate::eq("tunnel-test_session"))
-//             .returning(|_| Err(CliError::StatusErr("test error".to_string())));
+        // Check if tunnel exists -> Error
+        mock_paid_manager
+            .expect_get_tunnel_id()
+            .with(predicate::eq("tunnel-test_session"))
+            .returning(|_| Err(CliError::StatusErr("test error".to_string())));
 
-//         let result = start_paid_tunnel(
-//             &mock_sys,
-//             &mock_paid_manager,
-//             &mock_boot_bg_services,
-//             &mock_tunnel_manager,
-//             make_state("test_session"),
-//         );
-//         assert!(result.is_err());
-//     }
-// }
+        let result = start_paid_tunnel(
+            &mock_sys,
+            &mock_paid_manager,
+            &mock_boot_bg_services,
+            &mock_tunnel_manager,
+            make_state("test_session"),
+        );
+        assert!(result.is_err());
+    }
+}
