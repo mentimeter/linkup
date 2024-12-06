@@ -11,7 +11,6 @@ use linkup::{StorableService, StorableSession, UpdateSessionRequest};
 use url::Url;
 
 use crate::local_config::{LocalState, ServiceTarget};
-use crate::services::local_server::{is_local_server_started, start_local_server};
 use crate::worker_client::WorkerClient;
 use crate::CliError;
 use crate::{services, LINKUP_LOCALSERVER_PORT};
@@ -26,46 +25,49 @@ pub struct LocalBackgroundServices;
 
 impl BackgroundServices for LocalBackgroundServices {
     fn boot_linkup_server(&self, mut state: LocalState) -> Result<LocalState, CliError> {
-        let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
-            .expect("linkup url invalid");
+        // let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
+        //     .expect("linkup url invalid");
 
-        if is_local_server_started().is_err() {
-            println!("Starting linkup local server...");
-            start_local_server()?;
-        } else {
-            println!("Linkup local server was already running.. Try stopping linkup first if you have problems.");
-        }
+        // if is_local_server_started().is_err() {
+        //     println!("Starting linkup local server...");
+        //     // start_local_server()?;
+        // } else {
+        //     println!("Linkup local server was already running.. Try stopping linkup first if you have problems.");
+        // }
 
-        wait_till_ok(format!("{}linkup-check", local_url))?;
+        // wait_till_ok(format!("{}linkup-check", local_url))?;
 
-        let server_config = ServerConfig::from(&state);
+        // let server_config = ServerConfig::from(&state);
 
-        let server_session_name = load_config(
-            &state.linkup.remote,
-            &state.linkup.session_name,
-            server_config.remote,
-        )?;
-        let local_session_name =
-            load_config(&local_url, &server_session_name, server_config.local)?;
+        // let server_session_name = load_config(
+        //     &state.linkup.remote,
+        //     &state.linkup.session_name,
+        //     server_config.remote,
+        // )?;
+        // let local_session_name =
+        //     load_config(&local_url, &server_session_name, server_config.local)?;
 
-        if server_session_name != local_session_name {
-            return Err(CliError::InconsistentState);
-        }
+        // if server_session_name != local_session_name {
+        //     return Err(CliError::InconsistentState);
+        // }
 
-        state.linkup.session_name = server_session_name;
-        state.save()?;
+        // state.linkup.session_name = server_session_name;
+        // state.save()?;
 
-        Ok(state)
+        // Ok(state)
+        unimplemented!("deprecated")
     }
 
     fn boot_local_dns(&self, domains: Vec<String>, session_name: String) -> Result<(), CliError> {
-        services::caddy::start(domains.clone())?;
-        services::dnsmasq::start(domains, session_name)?;
+        // services::caddy::start(domains.clone())?;
+        // services::dnsmasq::start(domains, session_name)?;
 
-        Ok(())
+        // Ok(())
+        unimplemented!("deprecated")
     }
 }
 
+// TODO(augustoccesar)[2024-12-06]: This method might need a better name and maybe live somewhere else?
 pub fn load_config(
     url: &Url,
     desired_name: &str,
@@ -145,67 +147,5 @@ impl From<&LocalState> for ServerConfig {
 impl<'a> From<&'a ServerConfig> for (&'a StorableSession, &'a StorableSession) {
     fn from(config: &'a ServerConfig) -> Self {
         (&config.local, &config.remote)
-    }
-}
-
-pub fn wait_for_dns_ok(url: Url) -> Result<(), CliError> {
-    let mut opts = ResolverOpts::default();
-    opts.cache_size = 0; // Disable caching
-
-    let resolver = Resolver::new(ResolverConfig::default(), opts)
-        .map_err(|err| CliError::StartLinkupTimeout(err.to_string()))?;
-
-    let start = Instant::now();
-
-    let domain = url.host_str().unwrap();
-
-    loop {
-        if start.elapsed() > Duration::from_secs(40) {
-            return Err(CliError::StartLinkupTimeout(format!(
-                "{} took too long to resolve",
-                domain
-            )));
-        }
-
-        let response = resolver.lookup(domain, RecordType::A);
-
-        if let Ok(lookup) = response {
-            let addresses = lookup.iter().collect::<Vec<_>>();
-
-            if !addresses.is_empty() {
-                print!("DNS has propogated for {}.", domain);
-                thread::sleep(Duration::from_millis(1000));
-                return Ok(());
-            }
-        }
-
-        thread::sleep(Duration::from_millis(2000));
-    }
-}
-
-pub fn wait_till_ok(url: String) -> Result<(), CliError> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(1))
-        .build()
-        .map_err(|err| CliError::StartLinkupTimeout(err.to_string()))?;
-
-    let start = Instant::now();
-    loop {
-        if start.elapsed() > Duration::from_secs(20) {
-            return Err(CliError::StartLinkupTimeout(format!(
-                "{} took too long to load",
-                url
-            )));
-        }
-
-        let response = client.get(&url).send();
-
-        if let Ok(resp) = response {
-            if resp.status() == StatusCode::OK {
-                return Ok(());
-            }
-        }
-
-        thread::sleep(Duration::from_millis(2000));
     }
 }

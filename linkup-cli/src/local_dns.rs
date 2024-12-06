@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    linkup_file_path,
+    background, linkup_file_path,
     local_config::{config_path, get_config},
     services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALDNS_INSTALL,
 };
@@ -36,8 +36,7 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
     install_resolvers(&input_config.top_level_domains())?;
 
     println!("Installing extra caddy packages, this could take a while...");
-    services::caddy::install_cloudflare_package()?;
-    services::caddy::install_redis_package()?;
+    background::Caddy::install_extra_packages();
 
     if fs::write(linkup_file_path(LINKUP_LOCALDNS_INSTALL), "").is_err() {
         return Err(CliError::LocalDNSInstall(format!(

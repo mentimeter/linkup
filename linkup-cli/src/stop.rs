@@ -1,15 +1,13 @@
 use std::fs::{self};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use nix::sys::signal::Signal;
 
 use crate::env_files::clear_env_file;
 use crate::local_config::LocalState;
 use crate::signal::{get_pid, send_signal, PidError};
-use crate::{
-    linkup_file_path, services, CliError, LINKUP_CLOUDFLARED_PID, LINKUP_LOCALDNS_INSTALL,
-    LINKUP_LOCALSERVER_PID_FILE,
-};
+use crate::{background, services, CliError};
 
 pub fn stop() -> Result<(), CliError> {
     // Reset env vars back to what they were before
@@ -25,30 +23,39 @@ pub fn stop() -> Result<(), CliError> {
         }
     }
 
-    shutdown()
+    let state = Arc::new(Mutex::new(state));
+
+    let local_server = background::LocalServer::new(state.clone());
+    let cloudflare_tunnel = background::CloudflareTunnel::new(state.clone());
+    let caddy = background::Caddy::new(state.clone());
+    let dnsmasq = background::Dnsmasq::new(state.clone());
+
+    background::stop_background_services(vec![&local_server, &cloudflare_tunnel, &caddy, &dnsmasq]);
+
+    Ok(())
 }
 
-pub fn shutdown() -> Result<(), CliError> {
-    let local_stopped = stop_pid_file(
-        &linkup_file_path(LINKUP_LOCALSERVER_PID_FILE),
-        Signal::SIGINT,
-    );
+// pub fn shutdown() -> Result<(), CliError> {
+//     let local_stopped = stop_pid_file(
+//         &linkup_file_path(LINKUP_LOCALSERVER_PID_FILE),
+//         Signal::SIGINT,
+//     );
 
-    let tunnel_stopped = stop_pid_file(&linkup_file_path(LINKUP_CLOUDFLARED_PID), Signal::SIGINT);
+//     let tunnel_stopped = stop_pid_file(&linkup_file_path(LINKUP_CLOUDFLARED_PID), Signal::SIGINT);
 
-    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
-        stop_localdns_services();
-    }
+//     if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
+//         stop_localdns_services();
+//     }
 
-    match (local_stopped, tunnel_stopped) {
-        (Ok(_), Ok(_)) => {
-            println!("Stopped linkup");
-            Ok(())
-        }
-        (Err(e), _) => Err(e),
-        (_, Err(e)) => Err(e),
-    }
-}
+//     match (local_stopped, tunnel_stopped) {
+//         (Ok(_), Ok(_)) => {
+//             println!("Stopped linkup");
+//             Ok(())
+//         }
+//         (Err(e), _) => Err(e),
+//         (_, Err(e)) => Err(e),
+//     }
+// }
 
 pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), CliError> {
     let stopped = match get_pid(pid_file) {
@@ -109,9 +116,4 @@ fn remove_service_env(directory: String, config_path: String) -> Result<(), CliE
     }
 
     Ok(())
-}
-
-fn stop_localdns_services() {
-    let _ = services::caddy::stop();
-    services::dnsmasq::stop();
 }
