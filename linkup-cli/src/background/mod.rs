@@ -606,7 +606,7 @@ pid-file={}\n",
     fn stop(&self) {
         log::debug!("Stopping {}", self.name());
 
-        stop_pid_file(&self.pid_file_path, Signal::SIGINT).unwrap();
+        stop_pid_file(&self.pid_file_path, Signal::SIGTERM).unwrap();
     }
 
     fn pid(&self) -> Option<String> {
