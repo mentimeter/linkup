@@ -2,10 +2,7 @@ use std::{fmt::Display, path::Path};
 
 use nix::sys::signal::Signal;
 
-use crate::{
-    signal::{get_pid, send_signal, PidError},
-    CliError,
-};
+use crate::signal::{self, get_pid, send_signal, PidError};
 
 mod caddy;
 mod cloudflare_tunnel;
@@ -18,11 +15,11 @@ pub use {
 
 pub trait BackgroundService {
     fn name(&self) -> String;
-    fn setup(&self);
-    fn start(&self);
-    fn ready(&self) -> bool;
-    fn update_state(&self);
-    fn stop(&self);
+    fn setup(&self) -> Result<(), Box<dyn std::error::Error>>;
+    fn start(&self) -> Result<(), Box<dyn std::error::Error>>;
+    fn ready(&self) -> Result<bool, Box<dyn std::error::Error>>;
+    fn update_state(&self) -> Result<(), Box<dyn std::error::Error>>;
+    fn stop(&self) -> Result<(), Box<dyn std::error::Error>>;
     fn pid(&self) -> Option<String>;
 }
 
@@ -45,25 +42,15 @@ impl Display for BackgroudServiceStatus {
     }
 }
 
-pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), CliError> {
+pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), signal::PidError> {
     let stopped = match get_pid(pid_file) {
         Ok(pid) => match send_signal(&pid, signal) {
             Ok(_) => Ok(()),
             Err(PidError::NoSuchProcess(_)) => Ok(()),
-            Err(e) => Err(CliError::StopErr(format!(
-                "Could not send {} to {} pid {}: {}",
-                signal,
-                pid_file.display(),
-                pid,
-                e
-            ))),
+            Err(e) => Err(e),
         },
         Err(PidError::NoPidFile(_)) => Ok(()),
-        Err(e) => Err(CliError::StopErr(format!(
-            "Could not get {} pid: {}",
-            pid_file.display(),
-            e
-        ))),
+        Err(e) => Err(e),
     };
 
     if stopped.is_ok() {

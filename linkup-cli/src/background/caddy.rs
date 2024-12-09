@@ -6,10 +6,23 @@ use std::{
 };
 
 use crate::{
-    linkup_dir_path, linkup_file_path, local_config::LocalState, LINKUP_CF_TLS_API_ENV_VAR,
+    linkup_dir_path, linkup_file_path, local_config::LocalState, signal::get_running_pid,
+    LINKUP_CF_TLS_API_ENV_VAR,
 };
 
 use super::{localserver::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
+
+#[derive(thiserror::Error, Debug)]
+enum Error {
+    #[error("Failed while handing file: {0}")]
+    FileHandling(#[from] std::io::Error),
+    #[error("Failed while locking state file")]
+    StateFileLock,
+    #[error("Missing Cloudflare TLS API token on the environment variables")]
+    MissingTlsApiTokenEnv,
+    #[error("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.")]
+    MissingRedisInstalation,
+}
 
 pub struct Caddy {
     state: Arc<Mutex<LocalState>>,
@@ -44,7 +57,7 @@ impl Caddy {
             .unwrap();
     }
 
-    fn write_caddyfile(&self, domains: &[String]) {
+    fn write_caddyfile(&self, domains: &[String]) -> Result<(), Error> {
         let mut redis_storage = String::new();
 
         if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
@@ -53,10 +66,10 @@ impl Caddy {
                 // println!("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.");
                 // println!("Run `linkup local-dns uninstall && linkup local-dns install`");
 
-                panic!();
+                return Err(Error::MissingRedisInstalation);
             }
 
-            let url = url::Url::parse(&redis_url).unwrap();
+            let url = url::Url::parse(&redis_url).expect("failed to parse Redis URL");
             redis_storage = format!(
                 "
                 storage redis {{
@@ -100,12 +113,9 @@ impl Caddy {
             LINKUP_CF_TLS_API_ENV_VAR,
         );
 
-        if fs::write(&self.caddyfile_path, caddy_template).is_err() {
-            panic!(
-                "Failed to write Caddyfile at {}",
-                &self.caddyfile_path.display(),
-            );
-        }
+        fs::write(&self.caddyfile_path, caddy_template)?;
+
+        Ok(())
     }
 
     fn check_redis_installed(&self) -> bool {
@@ -126,15 +136,17 @@ impl BackgroundService for Caddy {
         String::from("Caddy")
     }
 
-    fn setup(&self) {}
+    fn setup(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
 
-    fn start(&self) {
+    fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Starting {}", self.name());
 
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock().map_err(|_| Error::StateFileLock)?;
 
         if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
-            panic!("{} env var is not set", LINKUP_CF_TLS_API_ENV_VAR);
+            return Err(Box::new(Error::MissingTlsApiTokenEnv));
         }
 
         let domains_and_subdomains: Vec<String> = state
@@ -143,13 +155,10 @@ impl BackgroundService for Caddy {
             .map(|domain| format!("{domain}, *.{domain}"))
             .collect();
 
-        self.write_caddyfile(&domains_and_subdomains);
+        self.write_caddyfile(&domains_and_subdomains)?;
 
         // Clear previous log file on startup
-        fs::write(&self.logfile_path, "").expect(&format!(
-            "Failed to clear log file at {}",
-            self.logfile_path.display(),
-        ));
+        fs::write(&self.logfile_path, "")?;
 
         Command::new("caddy")
             .current_dir(linkup_dir_path())
@@ -158,17 +167,20 @@ impl BackgroundService for Caddy {
             .arg(&self.pidfile_path)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status()
-            .unwrap();
+            .status()?;
+
+        Ok(())
     }
 
-    fn ready(&self) -> bool {
-        true
+    fn ready(&self) -> Result<bool, Box<dyn std::error::Error>> {
+        Ok(true)
     }
 
-    fn update_state(&self) {}
+    fn update_state(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
 
-    fn stop(&self) {
+    fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Stopping {}", self.name());
 
         Command::new("caddy")
@@ -176,11 +188,12 @@ impl BackgroundService for Caddy {
             .arg("stop")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status()
-            .unwrap();
+            .status()?;
+
+        Ok(())
     }
 
     fn pid(&self) -> Option<String> {
-        todo!()
+        get_running_pid(&self.pidfile_path)
     }
 }

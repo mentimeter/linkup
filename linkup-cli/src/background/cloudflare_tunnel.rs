@@ -17,9 +17,25 @@ use nix::{libc, sys::signal::Signal};
 use regex::Regex;
 use url::Url;
 
-use crate::{linkup_file_path, local_config::LocalState, signal::send_signal};
+use crate::{
+    linkup_file_path,
+    local_config::LocalState,
+    signal::{self, get_running_pid},
+};
 
 use super::{localserver::LINKUP_LOCAL_SERVER_PORT, stop_pid_file, BackgroundService};
+
+#[derive(thiserror::Error, Debug)]
+enum Error {
+    #[error("Failed while handing file: {0}")]
+    FileHandling(#[from] std::io::Error),
+    #[error("Failed while locking state file")]
+    StateFileLock,
+    #[error("Failed to start: {0}")]
+    FailedToStart(String),
+    #[error("Failed to stop pid: {0}")]
+    StoppingPid(#[from] signal::PidError),
+}
 
 pub struct CloudflareTunnel {
     state: Arc<Mutex<LocalState>>,
@@ -42,7 +58,9 @@ impl CloudflareTunnel {
         let tunnel_url_re = Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
             .expect("Failed to compile regex");
 
-        let stderr_content = fs::read_to_string(&self.stderr_file_path).unwrap();
+        let stderr_content = fs::read_to_string(&self.stderr_file_path)
+            .map_err(|e| Error::from(e))
+            .unwrap();
 
         match tunnel_url_re.find(&stderr_content) {
             Some(url_match) => {
@@ -58,13 +76,15 @@ impl BackgroundService for CloudflareTunnel {
         String::from("Cloudflare tunnel")
     }
 
-    fn setup(&self) {}
+    fn setup(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
 
-    fn start(&self) {
+    fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         let _ = remove_file(&self.pidfile_path);
 
-        let stdout_file = File::create(&self.stdout_file_path).unwrap();
-        let stderr_file = File::create(&self.stderr_file_path).unwrap();
+        let stdout_file = File::create(&self.stdout_file_path).map_err(|e| Error::from(e))?;
+        let stderr_file = File::create(&self.stderr_file_path).map_err(|e| Error::from(e))?;
 
         let url = format!("http://localhost:{}", LINKUP_LOCAL_SERVER_PORT);
 
@@ -96,10 +116,18 @@ impl BackgroundService for CloudflareTunnel {
             sleep(Duration::from_secs(1));
             attempts += 1;
         }
+
+        if self.pidfile_path.exists() {
+            Ok(())
+        } else {
+            Err(Box::new(Error::FailedToStart(
+                "Pidfile not found after all atempts of starting exhausted".to_string(),
+            )))
+        }
     }
 
-    fn ready(&self) -> bool {
-        let state = self.state.lock().unwrap();
+    fn ready(&self) -> Result<bool, Box<dyn std::error::Error>> {
+        let state = self.state.lock().map_err(|_| Error::StateFileLock)?;
 
         if let Some(tunnel) = &state.linkup.tunnel {
             log::debug!("Waiting for tunnel DNS to propagate at {}...", tunnel);
@@ -116,7 +144,7 @@ impl BackgroundService for CloudflareTunnel {
 
             loop {
                 if start.elapsed() > Duration::from_secs(40) {
-                    return false;
+                    return Ok(false);
                 }
 
                 let response = resolver.lookup(domain, RecordType::A);
@@ -128,7 +156,7 @@ impl BackgroundService for CloudflareTunnel {
                         log::debug!("DNS has propogated for {}.", domain);
                         thread::sleep(Duration::from_millis(1000));
 
-                        return true;
+                        return Ok(true);
                     }
                 }
 
@@ -136,37 +164,26 @@ impl BackgroundService for CloudflareTunnel {
             }
         }
 
-        return false;
+        return Ok(false);
     }
 
-    fn update_state(&self) {
-        let mut state = self.state.lock().unwrap();
+    fn update_state(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = self.state.lock().map_err(|_| Error::StateFileLock)?;
 
         state.linkup.tunnel = Some(self.url());
+
+        Ok(())
     }
 
-    fn stop(&self) {
+    fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Stopping {}", self.name());
 
-        stop_pid_file(&self.pidfile_path, Signal::SIGINT).unwrap();
+        stop_pid_file(&self.pidfile_path, Signal::SIGINT).map_err(|e| Error::from(e))?;
+
+        Ok(())
     }
 
     fn pid(&self) -> Option<String> {
-        if self.pidfile_path.exists() {
-            return match fs::read(&self.pidfile_path) {
-                Ok(data) => {
-                    let pid_str = String::from_utf8(data).unwrap();
-
-                    return if send_signal(&pid_str, Signal::SIGINFO).is_ok() {
-                        Some(pid_str.to_string())
-                    } else {
-                        None
-                    };
-                }
-                Err(_) => None,
-            };
-        }
-
-        None
+        get_running_pid(&self.pidfile_path)
     }
 }

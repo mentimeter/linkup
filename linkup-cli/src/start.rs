@@ -51,21 +51,22 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
         printing_thread = Some(background_printing(services_names, statuses.clone()));
     }
 
+    // TODO(augustoccesar)[2024-12-09]: Handle ignored errors here
     for i in 0..rows {
         let service = services[i];
 
-        service.setup();
+        let _ = service.setup();
 
         let mut s = statuses.lock().unwrap();
         s[i] = background::BackgroudServiceStatus::Starting;
         drop(s);
 
-        service.start();
-        if !service.ready() {
+        let _ = service.start();
+        if !service.ready().unwrap() {
             let mut s = statuses.lock().unwrap();
             s[i] = background::BackgroudServiceStatus::Timeout;
         }
-        service.update_state();
+        let _ = service.update_state();
 
         let mut s = statuses.lock().unwrap();
         s[i] = background::BackgroudServiceStatus::Started;

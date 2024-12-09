@@ -8,9 +8,23 @@ use std::{
 
 use nix::sys::signal::Signal;
 
-use crate::{linkup_dir_path, linkup_file_path, local_config::LocalState};
+use crate::{
+    linkup_dir_path, linkup_file_path,
+    local_config::LocalState,
+    signal::{self, get_running_pid},
+};
 
 use super::{stop_pid_file, BackgroundService};
+
+#[derive(thiserror::Error, Debug)]
+enum Error {
+    #[error("Failed while handing file: {0}")]
+    FileHandling(#[from] std::io::Error),
+    #[error("Failed while locking state file")]
+    StateFileLock,
+    #[error("Failed to stop pid: {0}")]
+    StoppingPid(#[from] signal::PidError),
+}
 
 pub struct Dnsmasq {
     state: Arc<Mutex<LocalState>>,
@@ -37,8 +51,8 @@ impl BackgroundService for Dnsmasq {
         String::from("Dnsmasq")
     }
 
-    fn setup(&self) {
-        let state = self.state.lock().unwrap();
+    fn setup(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let state = self.state.lock().map_err(|_| Error::StateFileLock)?;
         let session_name = state.linkup.session_name.clone();
 
         let local_domains_template =
@@ -66,15 +80,12 @@ pid-file={}\n",
             self.pid_file_path.display(),
         );
 
-        if fs::write(&self.config_file_path, dnsmasq_template).is_err() {
-            panic!(
-                "Failed to write dnsmasq config at {}",
-                &self.config_file_path.display()
-            );
-        }
+        fs::write(&self.config_file_path, dnsmasq_template)?;
+
+        Ok(())
     }
 
-    fn start(&self) {
+    fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Starting {}", self.name());
 
         Command::new("dnsmasq")
@@ -84,23 +95,28 @@ pid-file={}\n",
             .arg(&self.config_file_path)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status()
-            .unwrap();
+            .status()?;
+
+        Ok(())
     }
 
-    fn ready(&self) -> bool {
-        true
+    fn ready(&self) -> Result<bool, Box<dyn std::error::Error>> {
+        Ok(true)
     }
 
-    fn update_state(&self) {}
+    fn update_state(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
 
-    fn stop(&self) {
+    fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Stopping {}", self.name());
 
-        stop_pid_file(&self.pid_file_path, Signal::SIGTERM).unwrap();
+        stop_pid_file(&self.pid_file_path, Signal::SIGTERM)?;
+
+        Ok(())
     }
 
     fn pid(&self) -> Option<String> {
-        todo!()
+        get_running_pid(&self.pid_file_path)
     }
 }

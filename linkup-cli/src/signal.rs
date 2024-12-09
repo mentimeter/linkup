@@ -41,3 +41,18 @@ pub fn get_pid(file_path: &Path) -> Result<String, PidError> {
         Err(e) => Err(PidError::BadPidFile(e.to_string())),
     }
 }
+
+// Get the pid from a pidfile, but only return Some in case the pidfile is valid and the written pid on the file
+// is running.
+pub fn get_running_pid(file_path: &Path) -> Option<String> {
+    let pid = match get_pid(file_path) {
+        Ok(pid) => pid,
+        Err(_) => return None,
+    };
+
+    return if send_signal(&pid, Signal::SIGINFO).is_ok() {
+        Some(pid)
+    } else {
+        None
+    };
+}

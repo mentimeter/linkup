@@ -6,7 +6,7 @@ use std::{
 use crate::{
     background, linkup_file_path,
     local_config::{config_path, get_config},
-    services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALDNS_INSTALL,
+    CliError, Result, LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALDNS_INSTALL,
 };
 
 pub fn install(config_arg: &Option<String>) -> Result<()> {

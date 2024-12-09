@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File},
+    fs::File,
     path::PathBuf,
     process,
     sync::{Arc, Mutex},
@@ -16,12 +16,26 @@ use crate::{
     background_booting::{load_config, ServerConfig},
     linkup_file_path,
     local_config::LocalState,
-    signal::send_signal,
+    signal::{self, get_running_pid},
 };
 
 use super::{stop_pid_file, BackgroundService};
 
 pub const LINKUP_LOCAL_SERVER_PORT: u16 = 9066;
+
+#[derive(thiserror::Error, Debug)]
+enum Error {
+    #[error("Failed while handing file: {0}")]
+    FileHandling(#[from] std::io::Error),
+    #[error("Failed while locking state file")]
+    StateFileLock,
+    #[error("Failed to start: {0}")]
+    FailedToStart(#[from] daemonize::Error),
+    #[error("Failed to stop pid: {0}")]
+    StoppingPid(#[from] signal::PidError),
+    #[error("Local and remote servers have inconsistent state")]
+    InconsistentState,
+}
 
 pub struct LocalServer {
     state: Arc<Mutex<LocalState>>,
@@ -51,13 +65,15 @@ impl BackgroundService for LocalServer {
         String::from("Local Linkup server")
     }
 
-    fn setup(&self) {}
+    fn setup(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
 
-    fn start(&self) {
+    fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Starting {}", self.name());
 
-        let stdout_file = File::create(&self.stdout_file_path).unwrap();
-        let stderr_file = File::create(&self.stderr_file_path).unwrap();
+        let stdout_file = File::create(&self.stdout_file_path).map_err(|e| Error::from(e))?;
+        let stderr_file = File::create(&self.stderr_file_path).map_err(|e| Error::from(e))?;
 
         let daemonize = Daemonize::new()
             .pid_file(&self.pidfile_path)
@@ -78,25 +94,27 @@ impl BackgroundService for LocalServer {
                         process::exit(1);
                     }
                 },
-                Err(e) => panic!("{:?}", e),
+                Err(e) => return Err(Box::new(Error::from(e))),
             },
             Outcome::Parent(parent_result) => match parent_result {
-                Err(e) => panic!("{:?}", e),
+                Err(e) => return Err(Box::new(Error::from(e))),
                 Ok(_) => (),
             },
         }
+
+        Ok(())
     }
 
-    fn ready(&self) -> bool {
+    fn ready(&self) -> Result<bool, Box<dyn std::error::Error>> {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()
-            .unwrap();
+            .expect("failed while creating an HTTP client to check readiness of LocalServer");
 
         let start = std::time::Instant::now();
         loop {
             if start.elapsed() > Duration::from_secs(20) {
-                return false;
+                return Ok(false);
             }
 
             let url = format!("{}linkup-check", self.url());
@@ -104,7 +122,7 @@ impl BackgroundService for LocalServer {
 
             if let Ok(resp) = response {
                 if resp.status() == StatusCode::OK {
-                    return true;
+                    return Ok(true);
                 }
             }
 
@@ -113,50 +131,42 @@ impl BackgroundService for LocalServer {
     }
 
     // TODO(augustoccesar)[2024-12-06]: Revisit this method.
-    fn update_state(&self) {
-        let mut state = self.state.lock().unwrap();
+    fn update_state(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = self.state.lock().map_err(|_| Error::StateFileLock)?;
         let server_config = ServerConfig::from(&*state);
 
+        // TODO(augustoccesar)[2024-12-09]: Refactor this method to return a different error type.
         let server_session_name = load_config(
             &state.linkup.remote,
             &state.linkup.session_name,
             server_config.remote,
         )
-        .unwrap();
+        .expect("failed to load config to get server session name");
 
         let local_session_name =
-            load_config(&self.url(), &server_session_name, server_config.local).unwrap();
+            load_config(&self.url(), &server_session_name, server_config.local)
+                .expect("failed to load config to get local session name");
 
         if server_session_name != local_session_name {
-            // TODO(augustoccesar)[2024-12-06]: Gracefully handle this
-            panic!("inconsistent state");
+            return Err(Box::new(Error::InconsistentState));
         }
 
         state.linkup.session_name = server_session_name;
-        state.save().unwrap();
+        state
+            .save()
+            .expect("failed to update local state file with session name");
+
+        Ok(())
     }
 
-    fn stop(&self) {
+    fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Stopping {}", self.name());
-        stop_pid_file(&self.pidfile_path, Signal::SIGINT).unwrap();
+        stop_pid_file(&self.pidfile_path, Signal::SIGINT).map_err(|e| Error::from(e))?;
+
+        Ok(())
     }
 
     fn pid(&self) -> Option<String> {
-        if self.pidfile_path.exists() {
-            return match fs::read(&self.pidfile_path) {
-                Ok(data) => {
-                    let pid_str = String::from_utf8(data).unwrap();
-
-                    return if send_signal(&pid_str, Signal::SIGINFO).is_ok() {
-                        Some(pid_str.to_string())
-                    } else {
-                        None
-                    };
-                }
-                Err(_) => None,
-            };
-        }
-
-        None
+        get_running_pid(&self.pidfile_path)
     }
 }

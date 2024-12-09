@@ -34,7 +34,8 @@ pub fn stop() -> Result<(), CliError> {
     let services: Vec<&dyn BackgroundService> =
         vec![&local_server, &cloudflare_tunnel, &caddy, &dnsmasq];
     for service in services {
-        service.stop();
+        // TODO(augustoccesar)[2024-12-09]: Handle possible ignored error here
+        let _ = service.stop();
     }
 
     println!("Stopped linkup");
