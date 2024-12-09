@@ -13,7 +13,7 @@ use hickory_resolver::{
     proto::rr::RecordType,
     Resolver,
 };
-use nix::{libc, sys::signal::Signal};
+use nix::sys::signal::Signal;
 use regex::Regex;
 use url::Url;
 
@@ -88,26 +88,19 @@ impl BackgroundService for CloudflareTunnel {
 
         let url = format!("http://localhost:{}", LINKUP_LOCAL_SERVER_PORT);
 
-        unsafe {
-            process::Command::new("cloudflared")
-                .stdout(stdout_file)
-                .stderr(stderr_file)
-                .stdin(Stdio::null())
-                .args(&[
-                    "tunnel",
-                    "--url",
-                    &url,
-                    "--pidfile",
-                    self.pidfile_path.to_str().unwrap(),
-                ])
-                .pre_exec(|| {
-                    libc::setsid();
-
-                    Ok(())
-                })
-                .spawn()
-                .unwrap();
-        };
+        process::Command::new("cloudflared")
+            .process_group(0)
+            .stdout(stdout_file)
+            .stderr(stderr_file)
+            .stdin(Stdio::null())
+            .args(&[
+                "tunnel",
+                "--url",
+                &url,
+                "--pidfile",
+                self.pidfile_path.to_str().unwrap(),
+            ])
+            .spawn()?;
 
         let mut attempts = 0;
         while attempts < 10 && !self.pidfile_path.exists() {
