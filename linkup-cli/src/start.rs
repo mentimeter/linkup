@@ -2,7 +2,7 @@ use std::{
     env, fs,
     io::stdout,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{self, Arc, Mutex},
     thread::{self, sleep},
     time::Duration,
 };
@@ -41,46 +41,79 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
         rows
     ]));
 
-    std::io::stdout().execute(cursor::Hide).unwrap();
-
     let mut printing_thread: Option<thread::JoinHandle<()>> = None;
+    let printing_channel = sync::mpsc::channel::<bool>();
 
     // If we are running with debug, we will look at the logs instead of relying on the "pretty printed"
     // status update, so we skip it.
     if !log::log_enabled!(log::Level::Debug) {
-        printing_thread = Some(background_printing(services_names, statuses.clone()));
-    }
+        std::io::stdout().execute(cursor::Hide).unwrap();
 
-    // TODO(augustoccesar)[2024-12-09]: Handle ignored errors here
-    for i in 0..rows {
-        let service = services[i];
-
-        let _ = service.setup();
-
-        let mut s = statuses.lock().unwrap();
-        s[i] = background::BackgroudServiceStatus::Starting;
-        drop(s);
-
-        let _ = service.start();
-        if !service.ready().unwrap() {
-            let mut s = statuses.lock().unwrap();
-            s[i] = background::BackgroudServiceStatus::Timeout;
-        }
-        let _ = service.update_state();
-
-        let mut s = statuses.lock().unwrap();
-        s[i] = background::BackgroudServiceStatus::Started;
-    }
-
-    if let Some(printing_thread) = printing_thread {
         ctrlc::set_handler(move || {
             stdout().execute(cursor::Show).unwrap();
             std::process::exit(130);
         })
         .expect("Failed to set CTRL+C handler");
 
-        printing_thread.join().unwrap();
+        printing_thread = Some(background_printing(
+            services_names,
+            statuses.clone(),
+            printing_channel.1,
+        ));
+    }
 
+    // TODO(augustoccesar)[2024-12-09]: Handle ignored errors here
+    // TODO(augustoccesar)[2024-12-09]: This can probably be improved/simplified
+    for i in 0..rows {
+        let service = services[i];
+
+        if let Err(_) = service.setup() {
+            update_status(&statuses, i, background::BackgroudServiceStatus::Error);
+            break;
+        }
+
+        update_status(&statuses, i, background::BackgroudServiceStatus::Starting);
+
+        if let Some(_) = service.pid() {
+            update_status(&statuses, i, background::BackgroudServiceStatus::Started);
+            continue;
+        }
+
+        match service.start() {
+            Ok(_) => match service.ready() {
+                Ok(true) => (),
+                Ok(false) => {
+                    update_status(&statuses, i, background::BackgroudServiceStatus::Timeout);
+                    break;
+                }
+                Err(_) => {
+                    update_status(&statuses, i, background::BackgroudServiceStatus::Error);
+                    break;
+                }
+            },
+            Err(_) => {
+                update_status(&statuses, i, background::BackgroudServiceStatus::Error);
+                break;
+            }
+        }
+
+        match service.update_state() {
+            Ok(_) => (),
+            Err(_) => {
+                update_status(&statuses, i, background::BackgroudServiceStatus::Error);
+                break;
+            }
+        }
+
+        update_status(&statuses, i, background::BackgroudServiceStatus::Started);
+    }
+
+    // TODO(augustoccesar)[2024-12-09]: Maybe revert the ones that have started if get here no with any failed service?
+
+    if let Some(printing_thread) = printing_thread {
+        printing_channel.0.send(true).unwrap();
+
+        printing_thread.join().unwrap();
         std::io::stdout().execute(cursor::Show).unwrap();
     }
 
@@ -90,11 +123,12 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
 fn background_printing(
     services_names: Vec<String>,
     statuses: Arc<Mutex<Vec<BackgroudServiceStatus>>>,
+    receiver: sync::mpsc::Receiver<bool>,
 ) -> thread::JoinHandle<()> {
     let rows = services_names.len();
 
     println!("Background services:");
-    println!("{:<20} {:<10}", "NAME", "STATUS");
+    println!("{:<20} {:<10}", "NAME".bold(), "STATUS".bold());
 
     thread::spawn(move || {
         let mut loop_iter = 0;
@@ -126,13 +160,9 @@ fn background_printing(
                 Err(_) => continue,
             }
 
-            if statuses
-                .lock()
-                .unwrap()
-                .iter()
-                .all(|s| *s == background::BackgroudServiceStatus::Started)
-            {
-                break;
+            match receiver.try_recv() {
+                Ok(_) | Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+                _ => (),
             }
 
             loop_iter += 1;
@@ -151,71 +181,20 @@ fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
     Ok(())
 }
 
+fn update_status(
+    statuses: &Mutex<Vec<BackgroudServiceStatus>>,
+    index: usize,
+    status: BackgroudServiceStatus,
+) {
+    let mut s = statuses.lock().unwrap();
+    s[index] = status;
+}
+
 fn use_paid_tunnels() -> bool {
     env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
         && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
         && env::var("LINKUP_CF_API_TOKEN").is_ok()
 }
-
-// fn start_paid_tunnel(
-//     sys: &dyn System,
-//     paid_manager: &dyn PaidTunnelManager,
-//     boot: &dyn BackgroundServices,
-//     tunnel_manager: &dyn TunnelManager,
-//     mut state: LocalState,
-// ) -> Result<(), CliError> {
-//     state = boot.boot_linkup_server(state.clone())?;
-
-//     log::info!(
-//         "Starting paid tunnel with session name: {}",
-//         state.linkup.session_name
-//     );
-//     let tunnel_name = format!("tunnel-{}", state.linkup.session_name);
-//     let mut tunnel_id = match paid_manager.get_tunnel_id(&tunnel_name) {
-//         Ok(Some(id)) => id,
-//         Ok(None) => "".to_string(),
-//         Err(e) => return Err(e),
-//     };
-
-//     let mut create_tunnel = false;
-
-//     if tunnel_id.is_empty() {
-//         log::info!("Tunnel ID is empty");
-//         create_tunnel = true;
-//     } else {
-//         log::info!("Tunnel ID: {}", tunnel_id);
-//         let file_path = format!("{}/.cloudflared/{}.json", sys.get_env("HOME")?, tunnel_id);
-//         if sys.file_exists(Path::new(&file_path)) {
-//             log::info!("Tunnel config file for {}: {}", tunnel_id, file_path);
-//         } else {
-//             log::info!("Tunnel config file for {} does not exist", tunnel_id);
-//             create_tunnel = true;
-//         }
-//     }
-
-//     if create_tunnel {
-//         println!("Creating tunnel...");
-//         tunnel_id = paid_manager.create_tunnel(&tunnel_name)?;
-//         paid_manager.create_dns_record(&tunnel_id, &tunnel_name)?;
-//     }
-
-//     if tunnel_manager.is_tunnel_running().is_err() {
-//         println!("Starting paid tunnel...");
-//         state.linkup.tunnel = Some(tunnel_manager.run_tunnel(&state)?);
-//     } else {
-//         println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
-//     }
-//     state.save()?;
-
-//     if sys.file_exists(&linkup_file_path(LINKUP_LOCALDNS_INSTALL)) {
-//         boot.boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
-//     }
-
-//     print_session_names(&state);
-//     check_local_not_started(&state)?;
-
-//     Ok(())
-// }
 
 fn load_and_save_state(
     config_arg: &Option<String>,

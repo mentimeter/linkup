@@ -29,6 +29,7 @@ pub enum BackgroudServiceStatus {
     Starting,
     Started,
     Timeout,
+    Error,
 }
 
 impl Display for BackgroudServiceStatus {
@@ -38,6 +39,7 @@ impl Display for BackgroudServiceStatus {
             BackgroudServiceStatus::Starting => write!(f, "{}", "starting"),
             BackgroudServiceStatus::Started => write!(f, "{}", "started"),
             BackgroudServiceStatus::Timeout => write!(f, "{}", "timeout"),
+            BackgroudServiceStatus::Error => write!(f, "{}", "error"),
         }
     }
 }

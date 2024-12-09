@@ -180,3 +180,63 @@ impl BackgroundService for CloudflareTunnel {
         get_running_pid(&self.pidfile_path)
     }
 }
+
+// fn start_paid_tunnel(
+//     sys: &dyn System,
+//     paid_manager: &dyn PaidTunnelManager,
+//     boot: &dyn BackgroundServices,
+//     tunnel_manager: &dyn TunnelManager,
+//     mut state: LocalState,
+// ) -> Result<(), CliError> {
+//     state = boot.boot_linkup_server(state.clone())?;
+
+//     log::info!(
+//         "Starting paid tunnel with session name: {}",
+//         state.linkup.session_name
+//     );
+//     let tunnel_name = format!("tunnel-{}", state.linkup.session_name);
+//     let mut tunnel_id = match paid_manager.get_tunnel_id(&tunnel_name) {
+//         Ok(Some(id)) => id,
+//         Ok(None) => "".to_string(),
+//         Err(e) => return Err(e),
+//     };
+
+//     let mut create_tunnel = false;
+
+//     if tunnel_id.is_empty() {
+//         log::info!("Tunnel ID is empty");
+//         create_tunnel = true;
+//     } else {
+//         log::info!("Tunnel ID: {}", tunnel_id);
+//         let file_path = format!("{}/.cloudflared/{}.json", sys.get_env("HOME")?, tunnel_id);
+//         if sys.file_exists(Path::new(&file_path)) {
+//             log::info!("Tunnel config file for {}: {}", tunnel_id, file_path);
+//         } else {
+//             log::info!("Tunnel config file for {} does not exist", tunnel_id);
+//             create_tunnel = true;
+//         }
+//     }
+
+//     if create_tunnel {
+//         println!("Creating tunnel...");
+//         tunnel_id = paid_manager.create_tunnel(&tunnel_name)?;
+//         paid_manager.create_dns_record(&tunnel_id, &tunnel_name)?;
+//     }
+
+//     if tunnel_manager.is_tunnel_running().is_err() {
+//         println!("Starting paid tunnel...");
+//         state.linkup.tunnel = Some(tunnel_manager.run_tunnel(&state)?);
+//     } else {
+//         println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
+//     }
+//     state.save()?;
+
+//     if sys.file_exists(&linkup_file_path(LINKUP_LOCALDNS_INSTALL)) {
+//         boot.boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
+//     }
+
+//     print_session_names(&state);
+//     check_local_not_started(&state)?;
+
+//     Ok(())
+// }
