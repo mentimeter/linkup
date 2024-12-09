@@ -182,13 +182,6 @@ pub fn status(json: bool) -> Result<(), CliError> {
     Ok(())
 }
 
-pub fn print_session_names(state: &LocalState) {
-    print_session_status(&SessionStatus {
-        name: state.linkup.session_name.clone(),
-        domains: format_state_domains(&state.linkup.session_name, &state.domains),
-    });
-}
-
 pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> Vec<String> {
     // Filter out domains that are subdomains of other domains
     let filtered_domains = domains

@@ -4,10 +4,11 @@ use std::sync::{Arc, Mutex};
 
 use nix::sys::signal::Signal;
 
+use crate::background::BackgroundService;
 use crate::env_files::clear_env_file;
 use crate::local_config::LocalState;
 use crate::signal::{get_pid, send_signal, PidError};
-use crate::{background, services, CliError};
+use crate::{background, CliError};
 
 pub fn stop() -> Result<(), CliError> {
     // Reset env vars back to what they were before
@@ -30,7 +31,13 @@ pub fn stop() -> Result<(), CliError> {
     let caddy = background::Caddy::new(state.clone());
     let dnsmasq = background::Dnsmasq::new(state.clone());
 
-    background::stop_background_services(vec![&local_server, &cloudflare_tunnel, &caddy, &dnsmasq]);
+    let services: Vec<&dyn BackgroundService> =
+        vec![&local_server, &cloudflare_tunnel, &caddy, &dnsmasq];
+    for service in services {
+        service.stop();
+    }
+
+    println!("Stopped linkup");
 
     Ok(())
 }

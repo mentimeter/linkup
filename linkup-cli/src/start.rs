@@ -1,28 +1,23 @@
 use std::{
     env, fs,
+    io::stdout,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    thread::{self, sleep},
+    time::Duration,
 };
 
 use colored::Colorize;
+use crossterm::{cursor, ExecutableCommand};
 
 use crate::{
-    background,
-    // background_booting::{wait_for_dns_ok, BackgroundServices, LocalBackgroundServices},
+    background::{self, BackgroudServiceStatus, BackgroundService},
     env_files::write_to_env_file,
-    linkup_file_path,
     local_config::{config_path, config_to_state, get_config},
-    paid_tunnel::{CfPaidTunnelManager, PaidTunnelManager},
-    services::tunnel::{CfTunnelManager, TunnelManager},
-    status::print_session_names,
-    system::{RealSystem, System},
-    LINKUP_LOCALDNS_INSTALL,
 };
-use crate::{
-    local_config::LocalState,
-    status::{server_status, ServerStatus},
-    CliError,
-};
+use crate::{local_config::LocalState, CliError};
+
+const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
     env_logger::init();
@@ -36,14 +31,113 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
     let caddy = background::Caddy::new(state.clone());
     let dnsmasq = background::Dnsmasq::new(state.clone());
 
-    background::start_background_services(vec![
-        &local_server,
-        &cloudflare_tunnel,
-        &caddy,
-        &dnsmasq,
-    ]);
+    let services: Vec<&dyn BackgroundService> =
+        vec![&local_server, &cloudflare_tunnel, &caddy, &dnsmasq];
+    let services_names: Vec<String> = services.iter().map(|s| s.name()).collect();
+    let rows = services_names.len();
+
+    let statuses = Arc::new(Mutex::new(vec![
+        background::BackgroudServiceStatus::Pending;
+        rows
+    ]));
+
+    std::io::stdout().execute(cursor::Hide).unwrap();
+
+    let mut printing_thread: Option<thread::JoinHandle<()>> = None;
+
+    // If we are running with debug, we will look at the logs instead of relying on the "pretty printed"
+    // status update, so we skip it.
+    if !log::log_enabled!(log::Level::Debug) {
+        printing_thread = Some(background_printing(services_names, statuses.clone()));
+    }
+
+    for i in 0..rows {
+        let service = services[i];
+
+        service.setup();
+
+        let mut s = statuses.lock().unwrap();
+        s[i] = background::BackgroudServiceStatus::Starting;
+        drop(s);
+
+        service.start();
+        if !service.ready() {
+            let mut s = statuses.lock().unwrap();
+            s[i] = background::BackgroudServiceStatus::Timeout;
+        }
+        service.update_state();
+
+        let mut s = statuses.lock().unwrap();
+        s[i] = background::BackgroudServiceStatus::Started;
+    }
+
+    if let Some(printing_thread) = printing_thread {
+        ctrlc::set_handler(move || {
+            stdout().execute(cursor::Show).unwrap();
+            std::process::exit(130);
+        })
+        .expect("Failed to set CTRL+C handler");
+
+        printing_thread.join().unwrap();
+
+        std::io::stdout().execute(cursor::Show).unwrap();
+    }
 
     Ok(())
+}
+
+fn background_printing(
+    services_names: Vec<String>,
+    statuses: Arc<Mutex<Vec<BackgroudServiceStatus>>>,
+) -> thread::JoinHandle<()> {
+    let rows = services_names.len();
+
+    println!("Background services:");
+    println!("{:<20} {:<10}", "NAME", "STATUS");
+
+    thread::spawn(move || {
+        let mut loop_iter = 0;
+        loop {
+            if loop_iter > 0 {
+                crossterm::execute!(std::io::stdout(), cursor::MoveUp(rows as u16)).unwrap();
+            }
+
+            match statuses.lock() {
+                Ok(statuses) => {
+                    for i in 0..rows {
+                        let formatted_status = match statuses[i] {
+                            background::BackgroudServiceStatus::Starting => LOADING_CHARS
+                                [loop_iter % LOADING_CHARS.len()]
+                            .to_string()
+                            .normal(),
+                            background::BackgroudServiceStatus::Started => {
+                                statuses[i].to_string().blue()
+                            }
+                            background::BackgroudServiceStatus::Timeout => {
+                                statuses[i].to_string().yellow()
+                            }
+                            _ => statuses[i].to_string().normal(),
+                        };
+
+                        println!("{:<20} {:<10}", services_names[i], formatted_status)
+                    }
+                }
+                Err(_) => continue,
+            }
+
+            if statuses
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|s| *s == background::BackgroudServiceStatus::Started)
+            {
+                break;
+            }
+
+            loop_iter += 1;
+            sleep(Duration::from_millis(50));
+        }
+    })
 }
 
 fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
