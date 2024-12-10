@@ -23,6 +23,7 @@ const LINKUP_CLOUDFLARED_STDERR: &str = "cloudflared-stderr";
 const TUNNEL_START_WAIT: u64 = 20;
 
 #[cfg_attr(test, mockall::automock)]
+#[allow(dead_code)]
 pub trait TunnelManager {
     fn run_tunnel(&self, state: &LocalState) -> Result<Url, CliError>;
     fn is_tunnel_running(&self) -> Result<(), CheckErr>;

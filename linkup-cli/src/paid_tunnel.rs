@@ -120,6 +120,7 @@ fn send_request<T: for<'de> serde::Deserialize<'de>>(
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[allow(dead_code)]
 pub trait PaidTunnelManager {
     fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError>;
     fn create_tunnel(&self, tunnel_name: &str) -> Result<String, CliError>;

@@ -6,18 +6,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use nix::sys::signal::Signal;
+use crate::{linkup_dir_path, linkup_file_path, local_config::LocalState, signal};
 
-use crate::{
-    linkup_dir_path, linkup_file_path,
-    local_config::LocalState,
-    signal::{self, get_running_pid},
-};
-
-use super::{stop_pid_file, BackgroundService};
+use super::BackgroundService;
 
 #[derive(thiserror::Error, Debug)]
-enum Error {
+pub enum Error {
+    #[error("Something went wrong...")] // TODO: Remove Default variant for specific ones
+    Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Failed while locking state file")]
@@ -44,14 +40,8 @@ impl Dnsmasq {
             pid_file_path: linkup_file_path("dnsmasq-pid"),
         }
     }
-}
 
-impl BackgroundService for Dnsmasq {
-    fn name(&self) -> String {
-        String::from("Dnsmasq")
-    }
-
-    fn setup(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn setup(&self) -> Result<(), Error> {
         let state = self.state.lock().map_err(|_| Error::StateFileLock)?;
         let session_name = state.linkup.session_name.clone();
 
@@ -85,8 +75,8 @@ pid-file={}\n",
         Ok(())
     }
 
-    fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::debug!("Starting {}", self.name());
+    fn start(&self) -> Result<(), Error> {
+        log::debug!("Starting {}", Self::NAME);
 
         Command::new("dnsmasq")
             .current_dir(linkup_dir_path())
@@ -100,23 +90,46 @@ pid-file={}\n",
         Ok(())
     }
 
-    fn ready(&self) -> Result<bool, Box<dyn std::error::Error>> {
-        Ok(true)
-    }
+    pub fn stop(&self) -> Result<(), Error> {
+        log::debug!("Stopping {}", Self::NAME);
 
-    fn update_state(&self) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
-
-    fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::debug!("Stopping {}", self.name());
-
-        stop_pid_file(&self.pid_file_path, Signal::SIGTERM)?;
+        signal::stop_pid_file(&self.pid_file_path, signal::Signal::SIGTERM)?;
 
         Ok(())
     }
+}
 
-    fn pid(&self) -> Option<String> {
-        get_running_pid(&self.pid_file_path)
+impl BackgroundService<Error> for Dnsmasq {
+    const NAME: &str = "Dnsmasq";
+
+    fn run_with_progress(
+        &self,
+        status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
+    ) -> Result<(), Error> {
+        self.notify_update(&status_sender, super::RunStatus::Starting);
+
+        if let Err(_) = self.setup() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Error,
+                "Failed to setup",
+            );
+
+            return Err(Error::Default);
+        }
+
+        if let Err(_) = self.start() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Error,
+                "Failed to start",
+            );
+
+            return Err(Error::Default);
+        }
+
+        self.notify_update(&status_sender, super::RunStatus::Started);
+
+        Ok(())
     }
 }

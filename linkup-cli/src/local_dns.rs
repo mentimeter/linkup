@@ -4,9 +4,9 @@ use std::{
 };
 
 use crate::{
-    background, linkup_file_path,
+    linkup_file_path,
     local_config::{config_path, get_config},
-    CliError, Result, LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALDNS_INSTALL,
+    services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALDNS_INSTALL,
 };
 
 pub fn install(config_arg: &Option<String>) -> Result<()> {
@@ -36,7 +36,7 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
     install_resolvers(&input_config.top_level_domains())?;
 
     println!("Installing extra caddy packages, this could take a while...");
-    background::Caddy::install_extra_packages();
+    services::Caddy::install_extra_packages();
 
     if fs::write(linkup_file_path(LINKUP_LOCALDNS_INSTALL), "").is_err() {
         return Err(CliError::LocalDNSInstall(format!(

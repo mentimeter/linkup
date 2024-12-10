@@ -6,14 +6,15 @@ use std::{
 };
 
 use crate::{
-    linkup_dir_path, linkup_file_path, local_config::LocalState, signal::get_running_pid,
-    LINKUP_CF_TLS_API_ENV_VAR,
+    linkup_dir_path, linkup_file_path, local_config::LocalState, LINKUP_CF_TLS_API_ENV_VAR,
 };
 
-use super::{localserver::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
+use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 
 #[derive(thiserror::Error, Debug)]
-enum Error {
+pub enum Error {
+    #[error("Something went wrong...")] // TODO: Remove Default variant for specific ones
+    Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Failed while locking state file")]
@@ -55,6 +56,51 @@ impl Caddy {
             .stderr(Stdio::null())
             .status()
             .unwrap();
+    }
+
+    fn start(&self) -> Result<(), Error> {
+        log::debug!("Starting {}", Self::NAME);
+
+        let state = self.state.lock().map_err(|_| Error::StateFileLock)?;
+
+        if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
+            return Err(Error::MissingTlsApiTokenEnv);
+        }
+
+        let domains_and_subdomains: Vec<String> = state
+            .domain_strings()
+            .iter()
+            .map(|domain| format!("{domain}, *.{domain}"))
+            .collect();
+
+        self.write_caddyfile(&domains_and_subdomains)?;
+
+        // Clear previous log file on startup
+        fs::write(&self.logfile_path, "")?;
+
+        Command::new("caddy")
+            .current_dir(linkup_dir_path())
+            .arg("start")
+            .arg("--pidfile")
+            .arg(&self.pidfile_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()?;
+
+        Ok(())
+    }
+
+    pub fn stop(&self) -> Result<(), Error> {
+        log::debug!("Stopping {}", Self::NAME);
+
+        Command::new("caddy")
+            .current_dir(linkup_dir_path())
+            .arg("stop")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()?;
+
+        Ok(())
     }
 
     fn write_caddyfile(&self, domains: &[String]) -> Result<(), Error> {
@@ -131,69 +177,27 @@ impl Caddy {
     }
 }
 
-impl BackgroundService for Caddy {
-    fn name(&self) -> String {
-        String::from("Caddy")
-    }
+impl BackgroundService<Error> for Caddy {
+    const NAME: &str = "Caddy";
 
-    fn setup(&self) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
+    fn run_with_progress(
+        &self,
+        status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
+    ) -> Result<(), Error> {
+        self.notify_update(&status_sender, super::RunStatus::Starting);
 
-    fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::debug!("Starting {}", self.name());
+        if let Err(_) = self.start() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Error,
+                "Failed to start",
+            );
 
-        let state = self.state.lock().map_err(|_| Error::StateFileLock)?;
-
-        if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
-            return Err(Box::new(Error::MissingTlsApiTokenEnv));
+            return Err(Error::Default);
         }
 
-        let domains_and_subdomains: Vec<String> = state
-            .domain_strings()
-            .iter()
-            .map(|domain| format!("{domain}, *.{domain}"))
-            .collect();
-
-        self.write_caddyfile(&domains_and_subdomains)?;
-
-        // Clear previous log file on startup
-        fs::write(&self.logfile_path, "")?;
-
-        Command::new("caddy")
-            .current_dir(linkup_dir_path())
-            .arg("start")
-            .arg("--pidfile")
-            .arg(&self.pidfile_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()?;
+        self.notify_update(&status_sender, super::RunStatus::Started);
 
         Ok(())
-    }
-
-    fn ready(&self) -> Result<bool, Box<dyn std::error::Error>> {
-        Ok(true)
-    }
-
-    fn update_state(&self) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
-
-    fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::debug!("Stopping {}", self.name());
-
-        Command::new("caddy")
-            .current_dir(linkup_dir_path())
-            .arg("stop")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()?;
-
-        Ok(())
-    }
-
-    fn pid(&self) -> Option<String> {
-        get_running_pid(&self.pidfile_path)
     }
 }

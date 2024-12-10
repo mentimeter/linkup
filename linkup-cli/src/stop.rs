@@ -4,11 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use nix::sys::signal::Signal;
 
-use crate::background::BackgroundService;
 use crate::env_files::clear_env_file;
 use crate::local_config::LocalState;
 use crate::signal::{get_pid, send_signal, PidError};
-use crate::{background, CliError};
+use crate::{services, CliError};
 
 pub fn stop() -> Result<(), CliError> {
     // Reset env vars back to what they were before
@@ -26,44 +25,17 @@ pub fn stop() -> Result<(), CliError> {
 
     let state = Arc::new(Mutex::new(state));
 
-    let local_server = background::LocalServer::new(state.clone());
-    let cloudflare_tunnel = background::CloudflareTunnel::new(state.clone());
-    let caddy = background::Caddy::new(state.clone());
-    let dnsmasq = background::Dnsmasq::new(state.clone());
-
-    let services: Vec<&dyn BackgroundService> =
-        vec![&local_server, &cloudflare_tunnel, &caddy, &dnsmasq];
-    for service in services {
-        // TODO(augustoccesar)[2024-12-09]: Handle possible ignored error here
-        let _ = service.stop();
-    }
+    services::LocalServer::new(state.clone()).stop().unwrap();
+    services::CloudflareTunnel::new(state.clone())
+        .stop()
+        .unwrap();
+    services::Caddy::new(state.clone()).stop().unwrap();
+    services::Dnsmasq::new(state.clone()).stop().unwrap();
 
     println!("Stopped linkup");
 
     Ok(())
 }
-
-// pub fn shutdown() -> Result<(), CliError> {
-//     let local_stopped = stop_pid_file(
-//         &linkup_file_path(LINKUP_LOCALSERVER_PID_FILE),
-//         Signal::SIGINT,
-//     );
-
-//     let tunnel_stopped = stop_pid_file(&linkup_file_path(LINKUP_CLOUDFLARED_PID), Signal::SIGINT);
-
-//     if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
-//         stop_localdns_services();
-//     }
-
-//     match (local_stopped, tunnel_stopped) {
-//         (Ok(_), Ok(_)) => {
-//             println!("Stopped linkup");
-//             Ok(())
-//         }
-//         (Err(e), _) => Err(e),
-//         (_, Err(e)) => Err(e),
-//     }
-// }
 
 pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), CliError> {
     let stopped = match get_pid(pid_file) {

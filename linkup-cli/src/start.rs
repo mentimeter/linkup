@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     env, fs,
     io::stdout,
     path::{Path, PathBuf},
@@ -11,9 +12,9 @@ use colored::Colorize;
 use crossterm::{cursor, ExecutableCommand};
 
 use crate::{
-    background::{self, BackgroudServiceStatus, BackgroundService},
     env_files::write_to_env_file,
     local_config::{config_path, config_to_state, get_config},
+    services::{self, BackgroundService},
 };
 use crate::{local_config::LocalState, CliError};
 
@@ -26,148 +27,125 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
     set_linkup_env(state.clone())?;
 
     let state = Arc::new(Mutex::new(state));
-    let local_server = background::LocalServer::new(state.clone());
-    let cloudflare_tunnel = background::CloudflareTunnel::new(state.clone());
-    let caddy = background::Caddy::new(state.clone());
-    let dnsmasq = background::Dnsmasq::new(state.clone());
-
-    let services: Vec<&dyn BackgroundService> =
-        vec![&local_server, &cloudflare_tunnel, &caddy, &dnsmasq];
-    let services_names: Vec<String> = services.iter().map(|s| s.name()).collect();
-    let rows = services_names.len();
-
-    let statuses = Arc::new(Mutex::new(vec![
-        background::BackgroudServiceStatus::Pending;
-        rows
-    ]));
-
-    let mut printing_thread: Option<thread::JoinHandle<()>> = None;
+    let status_update_channel = sync::mpsc::channel::<services::RunUpdate>();
     let printing_channel = sync::mpsc::channel::<bool>();
 
-    // If we are running with debug, we will look at the logs instead of relying on the "pretty printed"
-    // status update, so we skip it.
-    if !log::log_enabled!(log::Level::Debug) {
-        std::io::stdout().execute(cursor::Hide).unwrap();
+    let local_server = services::LocalServer::new(state.clone());
+    let cloudflare_tunnel = services::CloudflareTunnel::new(state.clone());
+    let caddy = services::Caddy::new(state.clone());
+    let dnsmasq = services::Dnsmasq::new(state.clone());
 
-        ctrlc::set_handler(move || {
-            stdout().execute(cursor::Show).unwrap();
-            std::process::exit(130);
-        })
-        .expect("Failed to set CTRL+C handler");
+    let printing_thread = background_printing(
+        &[
+            services::LocalServer::NAME,
+            services::CloudflareTunnel::NAME,
+            services::Caddy::NAME,
+            services::Dnsmasq::NAME,
+        ],
+        status_update_channel.1,
+        printing_channel.1,
+    );
 
-        printing_thread = Some(background_printing(
-            services_names,
-            statuses.clone(),
-            printing_channel.1,
-        ));
-    }
+    local_server
+        .run_with_progress(status_update_channel.0.clone())
+        .unwrap();
 
-    // TODO(augustoccesar)[2024-12-09]: Handle ignored errors here
-    // TODO(augustoccesar)[2024-12-09]: This can probably be improved/simplified
-    for i in 0..rows {
-        let service = services[i];
+    cloudflare_tunnel
+        .run_with_progress(status_update_channel.0.clone())
+        .unwrap();
 
-        if let Err(_) = service.setup() {
-            update_status(&statuses, i, background::BackgroudServiceStatus::Error);
-            break;
-        }
+    caddy
+        .run_with_progress(status_update_channel.0.clone())
+        .unwrap();
 
-        update_status(&statuses, i, background::BackgroudServiceStatus::Starting);
+    dnsmasq
+        .run_with_progress(status_update_channel.0.clone())
+        .unwrap();
 
-        if let Some(_) = service.pid() {
-            update_status(&statuses, i, background::BackgroudServiceStatus::Started);
-            continue;
-        }
-
-        match service.start() {
-            Ok(_) => match service.ready() {
-                Ok(true) => (),
-                Ok(false) => {
-                    update_status(&statuses, i, background::BackgroudServiceStatus::Timeout);
-                    break;
-                }
-                Err(_) => {
-                    update_status(&statuses, i, background::BackgroudServiceStatus::Error);
-                    break;
-                }
-            },
-            Err(_) => {
-                update_status(&statuses, i, background::BackgroudServiceStatus::Error);
-                break;
-            }
-        }
-
-        match service.update_state() {
-            Ok(_) => (),
-            Err(_) => {
-                update_status(&statuses, i, background::BackgroudServiceStatus::Error);
-                break;
-            }
-        }
-
-        update_status(&statuses, i, background::BackgroudServiceStatus::Started);
-    }
-
-    // TODO(augustoccesar)[2024-12-09]: Maybe revert the ones that have started if get here no with any failed service?
-
-    if let Some(printing_thread) = printing_thread {
-        printing_channel.0.send(true).unwrap();
-
-        printing_thread.join().unwrap();
-        std::io::stdout().execute(cursor::Show).unwrap();
-    }
+    printing_channel.0.send(true).unwrap();
+    printing_thread.join().unwrap();
 
     Ok(())
 }
 
 fn background_printing(
-    services_names: Vec<String>,
-    statuses: Arc<Mutex<Vec<BackgroudServiceStatus>>>,
-    receiver: sync::mpsc::Receiver<bool>,
+    names: &[&str],
+    status_update_receiver: sync::mpsc::Receiver<services::RunUpdate>,
+    exit_signal_receiver: sync::mpsc::Receiver<bool>,
 ) -> thread::JoinHandle<()> {
-    let rows = services_names.len();
+    let rows = names.len();
 
     println!("Background services:");
     println!("{:<20} {:<10}", "NAME".bold(), "STATUS".bold());
 
+    let names: Vec<String> = names.iter().map(|name| String::from(*name)).collect();
     thread::spawn(move || {
+        std::io::stdout().execute(cursor::Hide).unwrap();
         let mut loop_iter = 0;
+        let mut statuses = HashMap::<String, services::RunUpdate>::new();
+
         loop {
-            if loop_iter > 0 {
+            if loop_iter == 0 {
+                for name in &names {
+                    statuses.insert(
+                        name.clone(),
+                        services::RunUpdate {
+                            id: name.clone(),
+                            status: services::RunStatus::Pending,
+                            details: None,
+                        },
+                    );
+                }
+            } else {
                 crossterm::execute!(std::io::stdout(), cursor::MoveUp(rows as u16)).unwrap();
             }
 
-            match statuses.lock() {
-                Ok(statuses) => {
-                    for i in 0..rows {
-                        let formatted_status = match statuses[i] {
-                            background::BackgroudServiceStatus::Starting => LOADING_CHARS
-                                [loop_iter % LOADING_CHARS.len()]
-                            .to_string()
-                            .normal(),
-                            background::BackgroudServiceStatus::Started => {
-                                statuses[i].to_string().blue()
-                            }
-                            background::BackgroudServiceStatus::Timeout => {
-                                statuses[i].to_string().yellow()
-                            }
-                            _ => statuses[i].to_string().normal(),
-                        };
-
-                        println!("{:<20} {:<10}", services_names[i], formatted_status)
+            for name in &names {
+                let latest_update = statuses.get(name).unwrap();
+                let mut formatted_status = match &latest_update.status {
+                    services::RunStatus::Starting => {
+                        LOADING_CHARS[loop_iter % LOADING_CHARS.len()].to_string()
                     }
+                    status => status.to_string(),
+                };
+
+                if let Some(details) = &latest_update.details {
+                    formatted_status.push_str(&format!(" ({})", details));
                 }
-                Err(_) => continue,
+
+                let colored_status = match latest_update.status {
+                    services::RunStatus::Started => formatted_status.blue(),
+                    services::RunStatus::Error => formatted_status.yellow(),
+                    _ => formatted_status.normal(),
+                };
+
+                stdout()
+                    .execute(crossterm::terminal::Clear(
+                        crossterm::terminal::ClearType::CurrentLine,
+                    ))
+                    .unwrap();
+
+                println!("{:<20} {:<10}", name, colored_status)
             }
 
-            match receiver.try_recv() {
-                Ok(_) | Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
-                _ => (),
+            match &status_update_receiver.try_recv() {
+                Ok(status_update) => {
+                    statuses.insert(status_update.id.clone(), status_update.clone());
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    match exit_signal_receiver.try_recv() {
+                        Ok(_) | Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+                        _ => (),
+                    }
+                }
             }
 
             loop_iter += 1;
             sleep(Duration::from_millis(50));
         }
+
+        std::io::stdout().execute(cursor::Show).unwrap();
     })
 }
 
@@ -179,15 +157,6 @@ fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
         }
     }
     Ok(())
-}
-
-fn update_status(
-    statuses: &Mutex<Vec<BackgroudServiceStatus>>,
-    index: usize,
-    status: BackgroudServiceStatus,
-) {
-    let mut s = statuses.lock().unwrap();
-    s[index] = status;
 }
 
 fn use_paid_tunnels() -> bool {

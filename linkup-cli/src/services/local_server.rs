@@ -8,7 +8,6 @@ use std::{
 };
 
 use daemonize::{Daemonize, Outcome};
-use nix::sys::signal::Signal;
 use reqwest::StatusCode;
 use url::Url;
 
@@ -16,15 +15,17 @@ use crate::{
     background_booting::{load_config, ServerConfig},
     linkup_file_path,
     local_config::LocalState,
-    signal::{self, get_running_pid},
+    signal,
 };
 
-use super::{stop_pid_file, BackgroundService};
+use super::BackgroundService;
 
 pub const LINKUP_LOCAL_SERVER_PORT: u16 = 9066;
 
 #[derive(thiserror::Error, Debug)]
-enum Error {
+pub enum Error {
+    #[error("Something went wrong...")] // TODO: Remove Default variant for specific ones
+    Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Failed while locking state file")]
@@ -58,19 +59,9 @@ impl LocalServer {
         Url::parse(&format!("http://localhost:{}", LINKUP_LOCAL_SERVER_PORT))
             .expect("linkup url invalid")
     }
-}
 
-impl BackgroundService for LocalServer {
-    fn name(&self) -> String {
-        String::from("Local Linkup server")
-    }
-
-    fn setup(&self) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
-
-    fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::debug!("Starting {}", self.name());
+    fn start(&self) -> Result<(), Error> {
+        log::debug!("Starting {}", Self::NAME);
 
         let stdout_file = File::create(&self.stdout_file_path).map_err(|e| Error::from(e))?;
         let stderr_file = File::create(&self.stderr_file_path).map_err(|e| Error::from(e))?;
@@ -94,10 +85,10 @@ impl BackgroundService for LocalServer {
                         process::exit(1);
                     }
                 },
-                Err(e) => return Err(Box::new(Error::from(e))),
+                Err(e) => return Err(Error::from(e)),
             },
             Outcome::Parent(parent_result) => match parent_result {
-                Err(e) => return Err(Box::new(Error::from(e))),
+                Err(e) => return Err(Error::from(e)),
                 Ok(_) => (),
             },
         }
@@ -105,33 +96,31 @@ impl BackgroundService for LocalServer {
         Ok(())
     }
 
-    fn ready(&self) -> Result<bool, Box<dyn std::error::Error>> {
+    pub fn stop(&self) -> Result<(), Error> {
+        log::debug!("Stopping {}", Self::NAME);
+        signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGINT)
+            .map_err(|e| Error::from(e))?;
+
+        Ok(())
+    }
+
+    fn reachable(&self) -> bool {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()
             .expect("failed while creating an HTTP client to check readiness of LocalServer");
 
-        let start = std::time::Instant::now();
-        loop {
-            if start.elapsed() > Duration::from_secs(20) {
-                return Ok(false);
-            }
+        let url = format!("{}linkup-check", self.url());
+        let response = client.get(url).send();
 
-            let url = format!("{}linkup-check", self.url());
-            let response = client.get(url).send();
-
-            if let Ok(resp) = response {
-                if resp.status() == StatusCode::OK {
-                    return Ok(true);
-                }
-            }
-
-            thread::sleep(Duration::from_millis(2000));
+        match response {
+            Ok(res) if res.status() == StatusCode::OK => true,
+            _ => false,
         }
     }
 
     // TODO(augustoccesar)[2024-12-06]: Revisit this method.
-    fn update_state(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn update_state(&self) -> Result<(), Error> {
         let mut state = self.state.lock().map_err(|_| Error::StateFileLock)?;
         let server_config = ServerConfig::from(&*state);
 
@@ -148,7 +137,7 @@ impl BackgroundService for LocalServer {
                 .expect("failed to load config to get local session name");
 
         if server_session_name != local_session_name {
-            return Err(Box::new(Error::InconsistentState));
+            return Err(Error::InconsistentState);
         }
 
         state.linkup.session_name = server_session_name;
@@ -158,15 +147,65 @@ impl BackgroundService for LocalServer {
 
         Ok(())
     }
+}
 
-    fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::debug!("Stopping {}", self.name());
-        stop_pid_file(&self.pidfile_path, Signal::SIGINT).map_err(|e| Error::from(e))?;
+impl BackgroundService<Error> for LocalServer {
+    const NAME: &str = "Linkup local server";
+
+    fn run_with_progress(
+        &self,
+        status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
+    ) -> Result<(), Error> {
+        self.notify_update(&status_sender, super::RunStatus::Starting);
+
+        if let Err(_) = self.start() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Error,
+                "Failed to start",
+            );
+
+            return Err(Error::Default);
+        }
+
+        let mut reachable = self.reachable();
+        let mut attempts: u8 = 0;
+        loop {
+            match (reachable, attempts) {
+                (true, _) => break,
+                (false, 0..10) => {
+                    self.notify_update_with_details(
+                        &status_sender,
+                        super::RunStatus::Starting,
+                        format!("Attempt to reach server #{}", attempts + 1),
+                    );
+
+                    thread::sleep(Duration::from_millis(1000));
+                    reachable = self.reachable();
+                    attempts += 1;
+                }
+                (false, 10..) => {
+                    self.notify_update_with_details(
+                        &status_sender,
+                        super::RunStatus::Starting,
+                        "Failed to reach server",
+                    );
+
+                    return Err(Error::Default);
+                }
+            }
+        }
+
+        match self.update_state() {
+            Ok(_) => {
+                self.notify_update(&status_sender, super::RunStatus::Started);
+            }
+            Err(_) => {
+                self.notify_update(&status_sender, super::RunStatus::Error);
+                return Err(Error::Default);
+            }
+        }
 
         Ok(())
-    }
-
-    fn pid(&self) -> Option<String> {
-        get_running_pid(&self.pidfile_path)
     }
 }

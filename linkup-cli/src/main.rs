@@ -6,7 +6,6 @@ use colored::Colorize;
 use health::health;
 use thiserror::Error;
 
-mod background;
 mod background_booting;
 mod completion;
 mod env_files;
