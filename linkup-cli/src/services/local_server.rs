@@ -174,15 +174,16 @@ impl BackgroundService<Error> for LocalServer {
             match (reachable, attempts) {
                 (true, _) => break,
                 (false, 0..10) => {
+                    thread::sleep(Duration::from_millis(1000));
+                    attempts += 1;
+
                     self.notify_update_with_details(
                         &status_sender,
                         super::RunStatus::Starting,
-                        format!("Attempt to reach server #{}", attempts + 1),
+                        format!("Waiting for server... retry #{}", attempts + 1),
                     );
 
-                    thread::sleep(Duration::from_millis(1000));
                     reachable = self.reachable();
-                    attempts += 1;
                 }
                 (false, 10..) => {
                     self.notify_update_with_details(

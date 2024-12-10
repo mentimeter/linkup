@@ -180,7 +180,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                     &status_sender,
                     super::RunStatus::Starting,
                     format!(
-                        "Waiting for tunnel... attempt {}",
+                        "Waiting for tunnel... retry #{}",
                         pid_file_ready_attempt + 1
                     ),
                 );
