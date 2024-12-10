@@ -104,6 +104,8 @@ pub enum CliError {
     StartDNSMasq(String),
     #[error("could not load config to {0}: {1}")]
     LoadConfig(String, String),
+    #[error("could not start: {0}")]
+    StartErr(String),
     #[error("could not stop: {0}")]
     StopErr(String),
     #[error("could not get status: {0}")]

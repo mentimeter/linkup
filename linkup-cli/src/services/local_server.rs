@@ -180,7 +180,7 @@ impl BackgroundService<Error> for LocalServer {
                     self.notify_update_with_details(
                         &status_sender,
                         super::RunStatus::Starting,
-                        format!("Waiting for server... retry #{}", attempts + 1),
+                        format!("Waiting for server... retry #{}", attempts),
                     );
 
                     reachable = self.reachable();
@@ -188,7 +188,7 @@ impl BackgroundService<Error> for LocalServer {
                 (false, 10..) => {
                     self.notify_update_with_details(
                         &status_sender,
-                        super::RunStatus::Starting,
+                        super::RunStatus::Error,
                         "Failed to reach server",
                     );
 

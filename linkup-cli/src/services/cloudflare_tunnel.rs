@@ -172,7 +172,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
         {
             let mut pid_file_ready_attempt = 0;
             let mut pid_file_exists = self.pidfile_path.exists();
-            while !pid_file_exists && pid_file_ready_attempt < 10 {
+            while !pid_file_exists && pid_file_ready_attempt <= 10 {
                 sleep(Duration::from_secs(1));
                 pid_file_ready_attempt += 1;
 
@@ -204,7 +204,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
             let mut dns_propagation_attempt = 0;
             let mut dns_propagated = self.dns_propagated();
             // TODO: Isn't 40 too much?
-            while !dns_propagated && dns_propagation_attempt < 40 {
+            while !dns_propagated && dns_propagation_attempt <= 40 {
                 sleep(Duration::from_secs(2));
                 dns_propagation_attempt += 1;
 
@@ -213,7 +213,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                     super::RunStatus::Starting,
                     format!(
                         "Waiting for tunnel DNS to propagate... retry #{}",
-                        dns_propagation_attempt + 1
+                        dns_propagation_attempt
                     ),
                 );
 

@@ -46,26 +46,41 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
         printing_channel.1,
     );
 
-    local_server
-        .run_with_progress(status_update_channel.0.clone())
-        .unwrap();
+    let mut exit_error: Option<Box<dyn std::error::Error>> = None;
 
-    cloudflare_tunnel
-        .run_with_progress(status_update_channel.0.clone())
-        .unwrap();
+    match local_server.run_with_progress(status_update_channel.0.clone()) {
+        Ok(_) => (),
+        Err(err) => exit_error = Some(Box::new(err)),
+    }
 
-    caddy
-        .run_with_progress(status_update_channel.0.clone())
-        .unwrap();
+    if exit_error.is_none() {
+        match cloudflare_tunnel.run_with_progress(status_update_channel.0.clone()) {
+            Ok(_) => (),
+            Err(err) => exit_error = Some(Box::new(err)),
+        }
+    }
 
-    dnsmasq
-        .run_with_progress(status_update_channel.0.clone())
-        .unwrap();
+    if exit_error.is_none() {
+        match caddy.run_with_progress(status_update_channel.0.clone()) {
+            Ok(_) => (),
+            Err(err) => exit_error = Some(Box::new(err)),
+        }
+    }
+
+    if exit_error.is_none() {
+        match dnsmasq.run_with_progress(status_update_channel.0.clone()) {
+            Ok(_) => (),
+            Err(err) => exit_error = Some(Box::new(err)),
+        }
+    }
 
     printing_channel.0.send(true).unwrap();
     printing_thread.join().unwrap();
 
-    Ok(())
+    match exit_error {
+        Some(exit_error) => Err(CliError::StatusErr(exit_error.to_string())),
+        None => Ok(()),
+    }
 }
 
 fn background_printing(
