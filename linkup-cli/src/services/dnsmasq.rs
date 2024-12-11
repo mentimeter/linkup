@@ -11,8 +11,6 @@ use super::BackgroundService;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Something went wrong...")] // TODO: Remove Default variant for specific ones
-    Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Failed to stop pid: {0}")]
@@ -101,24 +99,24 @@ impl BackgroundService<Error> for Dnsmasq {
     ) -> Result<(), Error> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
-        if let Err(_) = self.setup() {
+        if let Err(e) = self.setup() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,
                 "Failed to setup",
             );
 
-            return Err(Error::Default);
+            return Err(e);
         }
 
-        if let Err(_) = self.start() {
+        if let Err(e) = self.start() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,
                 "Failed to start",
             );
 
-            return Err(Error::Default);
+            return Err(e);
         }
 
         self.notify_update(&status_sender, super::RunStatus::Started);

@@ -23,14 +23,14 @@ pub const LINKUP_LOCAL_SERVER_PORT: u16 = 9066;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Something went wrong...")] // TODO: Remove Default variant for specific ones
-    Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
     #[error("Local and remote servers have inconsistent state")]
     InconsistentState,
+    #[error("Failed to reach the local server")]
+    ServerUnreachable,
 }
 
 pub struct LocalServer {
@@ -134,14 +134,14 @@ impl BackgroundService<Error> for LocalServer {
     ) -> Result<(), Error> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
-        if let Err(_) = self.start() {
+        if let Err(e) = self.start() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,
                 "Failed to start",
             );
 
-            return Err(Error::Default);
+            return Err(e);
         }
 
         let mut reachable = self.reachable().await;
@@ -168,7 +168,7 @@ impl BackgroundService<Error> for LocalServer {
                         "Failed to reach server",
                     );
 
-                    return Err(Error::Default);
+                    return Err(Error::ServerUnreachable);
                 }
             }
         }
@@ -177,9 +177,9 @@ impl BackgroundService<Error> for LocalServer {
             Ok(_) => {
                 self.notify_update(&status_sender, super::RunStatus::Started);
             }
-            Err(_) => {
+            Err(e) => {
                 self.notify_update(&status_sender, super::RunStatus::Error);
-                return Err(Error::Default);
+                return Err(e);
             }
         }
 

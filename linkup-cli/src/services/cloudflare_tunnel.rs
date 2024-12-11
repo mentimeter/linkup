@@ -24,8 +24,6 @@ use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 #[derive(thiserror::Error, Debug)]
 #[allow(dead_code)]
 pub enum Error {
-    #[error("Something went wrong...")] // TODO: Remove Default variant for specific ones
-    Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Failed to start: {0}")]
@@ -34,6 +32,10 @@ pub enum Error {
     StoppingPid(#[from] signal::PidError),
     #[error("Failed to find tunnel URL")]
     UrlNotFound,
+    #[error("Failed to find pidfile")]
+    PidfileNotFound,
+    #[error("Failed to verify that DNS got propagated")]
+    DNSNotPropagated,
 }
 
 pub struct CloudflareTunnel {
@@ -219,7 +221,7 @@ impl CloudflareTunnel {
     fn update_state(&self, state: &mut LocalState) -> Result<(), Error> {
         let url = self.url()?;
 
-        debug!("Adding tunne url {} to the state", url.as_str());
+        debug!("Adding tunnel url {} to the state", url.as_str());
 
         state.linkup.tunnel = Some(url);
         state
@@ -249,26 +251,26 @@ impl BackgroundService<Error> for CloudflareTunnel {
         if self.use_paid_tunnels() {
             self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Paid");
 
-            if let Err(_) = self.start_paid().await {
+            if let Err(e) = self.start_paid().await {
                 self.notify_update_with_details(
                     &status_sender,
                     super::RunStatus::Error,
                     "Failed to start",
                 );
 
-                return Err(Error::Default);
+                return Err(e);
             }
         } else {
             self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Free");
 
-            if let Err(_) = self.start_free() {
+            if let Err(e) = self.start_free() {
                 self.notify_update_with_details(
                     &status_sender,
                     super::RunStatus::Error,
                     "Failed to start",
                 );
 
-                return Err(Error::Default);
+                return Err(e);
             }
         }
 
@@ -296,7 +298,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                     "Failed to start tunnel",
                 );
 
-                return Err(Error::Default);
+                return Err(Error::PidfileNotFound);
             }
 
             self.notify_update(&status_sender, super::RunStatus::Starting);
@@ -330,7 +332,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                     "Failed to propagate tunnel DNS",
                 );
 
-                return Err(Error::Default);
+                return Err(Error::DNSNotPropagated);
             }
 
             self.notify_update(&status_sender, super::RunStatus::Starting);
@@ -340,10 +342,10 @@ impl BackgroundService<Error> for CloudflareTunnel {
             Ok(_) => {
                 self.notify_update(&status_sender, super::RunStatus::Started);
             }
-            Err(_) => {
+            Err(e) => {
                 self.notify_update(&status_sender, super::RunStatus::Error);
 
-                return Err(Error::Default);
+                return Err(e);
             }
         }
 

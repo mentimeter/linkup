@@ -12,8 +12,6 @@ use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Something went wrong...")] // TODO: Remove Default variant for specific ones
-    Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Missing Cloudflare TLS API token on the environment variables")]
@@ -104,9 +102,6 @@ impl Caddy {
         if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
             // This is worth doing to avoid confusion while the redis storage module is new
             if !self.check_redis_installed() {
-                // println!("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.");
-                // println!("Run `linkup local-dns uninstall && linkup local-dns install`");
-
                 return Err(Error::MissingRedisInstalation);
             }
 
@@ -182,14 +177,14 @@ impl BackgroundService<Error> for Caddy {
     ) -> Result<(), Error> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
-        if let Err(_) = self.start() {
+        if let Err(e) = self.start() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,
                 "Failed to start",
             );
 
-            return Err(Error::Default);
+            return Err(e);
         }
 
         self.notify_update(&status_sender, super::RunStatus::Started);
