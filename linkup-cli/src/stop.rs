@@ -2,11 +2,11 @@ use std::fs::{self};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use nix::sys::signal::Signal;
+// use nix::sys::signal::Signal;
 
 use crate::env_files::clear_env_file;
 use crate::local_config::LocalState;
-use crate::signal::{get_pid, send_signal, PidError};
+// use crate::signal::{get_pid, send_signal, PidError};
 use crate::{services, CliError};
 
 pub fn stop() -> Result<(), CliError> {
@@ -37,33 +37,33 @@ pub fn stop() -> Result<(), CliError> {
     Ok(())
 }
 
-pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), CliError> {
-    let stopped = match get_pid(pid_file) {
-        Ok(pid) => match send_signal(&pid, signal) {
-            Ok(_) => Ok(()),
-            Err(PidError::NoSuchProcess(_)) => Ok(()),
-            Err(e) => Err(CliError::StopErr(format!(
-                "Could not send {} to {} pid {}: {}",
-                signal,
-                pid_file.display(),
-                pid,
-                e
-            ))),
-        },
-        Err(PidError::NoPidFile(_)) => Ok(()),
-        Err(e) => Err(CliError::StopErr(format!(
-            "Could not get {} pid: {}",
-            pid_file.display(),
-            e
-        ))),
-    };
+// pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), CliError> {
+//     let stopped = match get_pid(pid_file) {
+//         Ok(pid) => match send_signal(&pid, signal) {
+//             Ok(_) => Ok(()),
+//             Err(PidError::NoSuchProcess(_)) => Ok(()),
+//             Err(e) => Err(CliError::StopErr(format!(
+//                 "Could not send {} to {} pid {}: {}",
+//                 signal,
+//                 pid_file.display(),
+//                 pid,
+//                 e
+//             ))),
+//         },
+//         Err(PidError::NoPidFile(_)) => Ok(()),
+//         Err(e) => Err(CliError::StopErr(format!(
+//             "Could not get {} pid: {}",
+//             pid_file.display(),
+//             e
+//         ))),
+//     };
 
-    if stopped.is_ok() {
-        let _ = std::fs::remove_file(pid_file);
-    }
+//     if stopped.is_ok() {
+//         let _ = std::fs::remove_file(pid_file);
+//     }
 
-    stopped
-}
+//     stopped
+// }
 
 fn remove_service_env(directory: String, config_path: String) -> Result<(), CliError> {
     let config_dir = Path::new(&config_path).parent().ok_or_else(|| {

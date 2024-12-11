@@ -11,7 +11,7 @@ use std::{
 use hickory_resolver::{
     config::{ResolverConfig, ResolverOpts},
     proto::rr::RecordType,
-    Resolver,
+    TokioAsyncResolver,
 };
 use regex::Regex;
 use url::Url;
@@ -102,7 +102,7 @@ impl CloudflareTunnel {
         Ok(())
     }
 
-    fn dns_propagated(&self) -> bool {
+    async fn dns_propagated(&self) -> bool {
         let state = match self.state.lock() {
             Ok(state) => state,
             Err(err) => {
@@ -118,19 +118,18 @@ impl CloudflareTunnel {
             let mut opts = ResolverOpts::default();
             opts.cache_size = 0; // Disable caching
 
-            let resolver = Resolver::new(ResolverConfig::default(), opts).unwrap();
+            let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), opts);
 
             let url = self.url();
             let domain = url.host_str().unwrap();
 
-            let response = resolver.lookup(domain, RecordType::A);
+            let response = resolver.lookup(domain, RecordType::A).await;
 
             if let Ok(lookup) = response {
                 let addresses = lookup.iter().collect::<Vec<_>>();
 
                 if !addresses.is_empty() {
                     log::debug!("DNS has propogated for {}.", domain);
-                    // thread::sleep(Duration::from_millis(1000));
 
                     return true;
                 }
@@ -152,7 +151,7 @@ impl CloudflareTunnel {
 impl BackgroundService<Error> for CloudflareTunnel {
     const NAME: &str = "Cloudflare Tunnel";
 
-    fn run_with_progress(
+    async fn run_with_progress(
         &self,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
@@ -202,7 +201,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
         // DNS Propagation check
         {
             let mut dns_propagation_attempt = 0;
-            let mut dns_propagated = self.dns_propagated();
+            let mut dns_propagated = self.dns_propagated().await;
             // TODO: Isn't 40 too much?
             while !dns_propagated && dns_propagation_attempt <= 40 {
                 sleep(Duration::from_secs(2));
@@ -217,7 +216,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                     ),
                 );
 
-                dns_propagated = self.dns_propagated();
+                dns_propagated = self.dns_propagated().await;
             }
 
             if !dns_propagated {

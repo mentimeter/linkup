@@ -16,6 +16,7 @@ mod paid_tunnel;
 mod preview;
 mod remote_local;
 mod reset;
+mod server;
 mod services;
 mod signal;
 mod start;
@@ -28,6 +29,7 @@ use completion::completion;
 use preview::preview;
 use remote_local::{local, remote};
 use reset::reset;
+use server::server;
 use start::start;
 use status::status;
 use stop::stop;
@@ -252,20 +254,29 @@ enum Commands {
         #[arg(long, help = "Print the request body instead of sending it.")]
         print_request: bool,
     },
+
+    // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
+    // It is called on `start` to start the local-server.
+    #[clap(hide = true)]
+    Server {
+        #[arg(long)]
+        pidfile: String,
+    },
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     ensure_linkup_dir()?;
 
     match &cli.command {
         Commands::Health { json } => health(*json),
-        Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel),
+        Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel).await,
         Commands::Stop => stop(),
         Commands::Reset => reset(),
-        Commands::Local { service_names, all } => local(service_names, *all),
-        Commands::Remote { service_names, all } => remote(service_names, *all),
+        Commands::Local { service_names, all } => local(service_names, *all).await,
+        Commands::Remote { service_names, all } => remote(service_names, *all).await,
         Commands::Status { json, all } => {
             // TODO(augustocesar)[2024-10-28]: Remove --all/-a in a future release.
             // Do not print the warning in case of JSON so it doesn't break any usage if the result of the command
@@ -287,6 +298,7 @@ fn main() -> Result<()> {
         Commands::Preview {
             services,
             print_request,
-        } => preview(&cli.config, services, *print_request),
+        } => preview(&cli.config, services, *print_request).await,
+        Commands::Server { pidfile } => server(pidfile).await,
     }
 }

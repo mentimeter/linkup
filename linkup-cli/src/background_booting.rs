@@ -6,7 +6,7 @@ use crate::worker_client::WorkerClient;
 use crate::CliError;
 
 // TODO(augustoccesar)[2024-12-06]: This method might need a better name and maybe live somewhere else?
-pub fn load_config(
+pub async fn load_config(
     url: &Url,
     desired_name: &str,
     config: StorableSession,
@@ -21,6 +21,7 @@ pub fn load_config(
 
     let content = WorkerClient::new(url)
         .linkup(&session_update_req)
+        .await
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
     Ok(content)

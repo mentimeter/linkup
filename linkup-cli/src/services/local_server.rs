@@ -1,13 +1,13 @@
 use std::{
     fs::File,
+    os::unix::process::CommandExt,
     path::PathBuf,
-    process,
+    process::{self, Stdio},
     sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
 
-use daemonize::{Daemonize, Outcome};
 use reqwest::StatusCode;
 use url::Url;
 
@@ -30,8 +30,6 @@ pub enum Error {
     FileHandling(#[from] std::io::Error),
     #[error("Failed while locking state file")]
     StateFileLock,
-    #[error("Failed to start: {0}")]
-    FailedToStart(#[from] daemonize::Error),
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
     #[error("Local and remote servers have inconsistent state")]
@@ -66,32 +64,13 @@ impl LocalServer {
         let stdout_file = File::create(&self.stdout_file_path).map_err(|e| Error::from(e))?;
         let stderr_file = File::create(&self.stderr_file_path).map_err(|e| Error::from(e))?;
 
-        let daemonize = Daemonize::new()
-            .pid_file(&self.pidfile_path)
-            .chown_pid_file(true)
-            .working_directory(".")
+        process::Command::new("linkup")
+            .process_group(0)
             .stdout(stdout_file)
-            .stderr(stderr_file);
-
-        match daemonize.execute() {
-            Outcome::Child(child_result) => match child_result {
-                Ok(_) => match linkup_local_server::local_linkup_main() {
-                    Ok(_) => {
-                        println!("local linkup server finished");
-                        process::exit(0);
-                    }
-                    Err(e) => {
-                        println!("local linkup server finished with error {}", e);
-                        process::exit(1);
-                    }
-                },
-                Err(e) => return Err(Error::from(e)),
-            },
-            Outcome::Parent(parent_result) => match parent_result {
-                Err(e) => return Err(Error::from(e)),
-                Ok(_) => (),
-            },
-        }
+            .stderr(stderr_file)
+            .stdin(Stdio::null())
+            .args(&["server", "--pidfile", self.pidfile_path.to_str().unwrap()])
+            .spawn()?;
 
         Ok(())
     }
@@ -104,14 +83,14 @@ impl LocalServer {
         Ok(())
     }
 
-    fn reachable(&self) -> bool {
-        let client = reqwest::blocking::Client::builder()
+    async fn reachable(&self) -> bool {
+        let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))
             .build()
             .expect("failed while creating an HTTP client to check readiness of LocalServer");
 
         let url = format!("{}linkup-check", self.url());
-        let response = client.get(url).send();
+        let response = client.get(url).send().await;
 
         match response {
             Ok(res) if res.status() == StatusCode::OK => true,
@@ -120,7 +99,7 @@ impl LocalServer {
     }
 
     // TODO(augustoccesar)[2024-12-06]: Revisit this method.
-    fn update_state(&self) -> Result<(), Error> {
+    async fn update_state(&self) -> Result<(), Error> {
         let mut state = self.state.lock().map_err(|_| Error::StateFileLock)?;
         let server_config = ServerConfig::from(&*state);
 
@@ -130,10 +109,12 @@ impl LocalServer {
             &state.linkup.session_name,
             server_config.remote,
         )
+        .await
         .expect("failed to load config to get server session name");
 
         let local_session_name =
             load_config(&self.url(), &server_session_name, server_config.local)
+                .await
                 .expect("failed to load config to get local session name");
 
         if server_session_name != local_session_name {
@@ -152,7 +133,7 @@ impl LocalServer {
 impl BackgroundService<Error> for LocalServer {
     const NAME: &str = "Linkup local server";
 
-    fn run_with_progress(
+    async fn run_with_progress(
         &self,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
@@ -168,7 +149,7 @@ impl BackgroundService<Error> for LocalServer {
             return Err(Error::Default);
         }
 
-        let mut reachable = self.reachable();
+        let mut reachable = self.reachable().await;
         let mut attempts: u8 = 0;
         loop {
             match (reachable, attempts) {
@@ -183,7 +164,7 @@ impl BackgroundService<Error> for LocalServer {
                         format!("Waiting for server... retry #{}", attempts),
                     );
 
-                    reachable = self.reachable();
+                    reachable = self.reachable().await;
                 }
                 (false, 10..) => {
                     self.notify_update_with_details(
@@ -197,7 +178,7 @@ impl BackgroundService<Error> for LocalServer {
             }
         }
 
-        match self.update_state() {
+        match self.update_state().await {
             Ok(_) => {
                 self.notify_update(&status_sender, super::RunStatus::Started);
             }

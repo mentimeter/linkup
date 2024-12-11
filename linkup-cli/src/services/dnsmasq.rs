@@ -102,7 +102,7 @@ pid-file={}\n",
 impl BackgroundService<Error> for Dnsmasq {
     const NAME: &str = "Dnsmasq";
 
-    fn run_with_progress(
+    async fn run_with_progress(
         &self,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {

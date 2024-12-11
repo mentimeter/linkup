@@ -19,26 +19,26 @@ pub enum Error {
 
 pub struct WorkerClient {
     url: Url,
-    inner: reqwest::blocking::Client,
+    inner: reqwest::Client,
 }
 
 impl WorkerClient {
     pub fn new(url: &Url) -> Self {
         Self {
             url: url.clone(),
-            inner: reqwest::blocking::Client::new(),
+            inner: reqwest::Client::new(),
         }
     }
 
-    pub fn preview(&self, params: &CreatePreviewRequest) -> Result<String, Error> {
-        self.post("/preview", params)
+    pub async fn preview(&self, params: &CreatePreviewRequest) -> Result<String, Error> {
+        self.post("/preview", params).await
     }
 
-    pub fn linkup(&self, params: &UpdateSessionRequest) -> Result<String, Error> {
-        self.post("/linkup", params)
+    pub async fn linkup(&self, params: &UpdateSessionRequest) -> Result<String, Error> {
+        self.post("/linkup", params).await
     }
 
-    fn post<T: Serialize>(&self, path: &str, params: &T) -> Result<String, Error> {
+    async fn post<T: Serialize>(&self, path: &str, params: &T) -> Result<String, Error> {
         let params = serde_json::to_string(params)?;
         let endpoint = self.url.join(path)?;
         let response = self
@@ -46,16 +46,17 @@ impl WorkerClient {
             .post(endpoint)
             .header("Content-Type", "application/json")
             .body(params)
-            .send()?;
+            .send()
+            .await?;
 
         match response.status() {
             StatusCode::OK => {
-                let content = response.text()?;
+                let content = response.text().await?;
                 Ok(content)
             }
             _ => Err(Error::Response(
                 response.status(),
-                response.text().unwrap_or_else(|_| "".to_string()),
+                response.text().await.unwrap_or_else(|_| "".to_string()),
             )),
         }
     }

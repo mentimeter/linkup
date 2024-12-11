@@ -20,7 +20,7 @@ use crate::{local_config::LocalState, CliError};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
+pub async fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
     env_logger::init();
     let is_paid = use_paid_tunnels();
     let state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
@@ -48,27 +48,39 @@ pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliErro
 
     let mut exit_error: Option<Box<dyn std::error::Error>> = None;
 
-    match local_server.run_with_progress(status_update_channel.0.clone()) {
+    match local_server
+        .run_with_progress(status_update_channel.0.clone())
+        .await
+    {
         Ok(_) => (),
         Err(err) => exit_error = Some(Box::new(err)),
     }
 
     if exit_error.is_none() {
-        match cloudflare_tunnel.run_with_progress(status_update_channel.0.clone()) {
+        match cloudflare_tunnel
+            .run_with_progress(status_update_channel.0.clone())
+            .await
+        {
             Ok(_) => (),
             Err(err) => exit_error = Some(Box::new(err)),
         }
     }
 
     if exit_error.is_none() {
-        match caddy.run_with_progress(status_update_channel.0.clone()) {
+        match caddy
+            .run_with_progress(status_update_channel.0.clone())
+            .await
+        {
             Ok(_) => (),
             Err(err) => exit_error = Some(Box::new(err)),
         }
     }
 
     if exit_error.is_none() {
-        match dnsmasq.run_with_progress(status_update_channel.0.clone()) {
+        match dnsmasq
+            .run_with_progress(status_update_channel.0.clone())
+            .await
+        {
             Ok(_) => (),
             Err(err) => exit_error = Some(Box::new(err)),
         }

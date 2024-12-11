@@ -180,7 +180,7 @@ impl Caddy {
 impl BackgroundService<Error> for Caddy {
     const NAME: &str = "Caddy";
 
-    fn run_with_progress(
+    async fn run_with_progress(
         &self,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {

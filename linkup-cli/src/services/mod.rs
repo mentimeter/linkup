@@ -41,7 +41,10 @@ pub struct RunUpdate {
 pub trait BackgroundService<E: std::error::Error> {
     const NAME: &str;
 
-    fn run_with_progress(&self, status_sender: sync::mpsc::Sender<RunUpdate>) -> Result<(), E>;
+    async fn run_with_progress(
+        &self,
+        status_sender: sync::mpsc::Sender<RunUpdate>,
+    ) -> Result<(), E>;
 
     fn notify_update(&self, status_sender: &sync::mpsc::Sender<RunUpdate>, status: RunStatus) {
         status_sender

@@ -4,7 +4,7 @@ use crate::worker_client::WorkerClient;
 use crate::CliError;
 use linkup::CreatePreviewRequest;
 
-pub fn preview(
+pub async fn preview(
     config: &Option<String>,
     services: &[(String, String)],
     print_request: bool,
@@ -24,6 +24,7 @@ pub fn preview(
 
     let preview_name = WorkerClient::from(&input_config)
         .preview(&create_preview_request)
+        .await
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
     print_session_status(&SessionStatus {
