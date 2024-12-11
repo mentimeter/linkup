@@ -32,7 +32,7 @@ pub async fn start(
     env_logger::init();
 
     let mut state = if fresh_state {
-        let is_paid = use_paid_tunnels();
+        let is_paid = services::CloudflareTunnel::use_paid_tunnels();
         let state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
         set_linkup_env(state.clone())?;
 
@@ -229,12 +229,6 @@ fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
     Ok(())
 }
 
-fn use_paid_tunnels() -> bool {
-    env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
-        && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
-        && env::var("LINKUP_CF_API_TOKEN").is_ok()
-}
-
 fn load_and_save_state(
     config_arg: &Option<String>,
     no_tunnel: bool,
@@ -309,7 +303,7 @@ fn set_service_env(directory: String, config_path: String) -> Result<(), CliErro
 //             continue;
 //         }
 
-//         if server_status(service.local.to_string(), None) == ServerStatus::Ok {
+//         if status::server_status(service.local.to_string(), None) == ServerStatus::Ok {
 //             let warning = format!(
 //                 "⚠️  Service {} is already running locally!! You need to restart it for linkup's environment variables to be loaded.",
 //                 service.name

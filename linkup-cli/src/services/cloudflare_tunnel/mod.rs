@@ -57,7 +57,7 @@ impl CloudflareTunnel {
         }
     }
 
-    fn use_paid_tunnels(&self) -> bool {
+    pub fn use_paid_tunnels() -> bool {
         env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
             && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
             && env::var("LINKUP_CF_API_TOKEN").is_ok()
@@ -162,7 +162,7 @@ impl CloudflareTunnel {
     }
 
     fn url(&self) -> Result<Url, Error> {
-        if self.use_paid_tunnels() {
+        if Self::use_paid_tunnels() {
             return Ok(Url::parse(
                 format!(
                     "https://tunnel-{}.mentimeter.dev",
@@ -247,7 +247,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
             );
         }
 
-        if self.use_paid_tunnels() {
+        if Self::use_paid_tunnels() {
             self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Paid");
 
             if let Err(e) = self.start_paid().await {
