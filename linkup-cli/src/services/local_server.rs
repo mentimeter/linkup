@@ -11,10 +11,9 @@ use tokio::time::sleep;
 use url::Url;
 
 use crate::{
-    background_booting::{load_config, ServerConfig},
     linkup_file_path,
-    local_config::LocalState,
-    signal,
+    local_config::{upload_state, LocalState},
+    signal, worker_client,
 };
 
 use super::BackgroundService;
@@ -27,10 +26,10 @@ pub enum Error {
     FileHandling(#[from] std::io::Error),
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
-    #[error("Local and remote servers have inconsistent state")]
-    InconsistentState,
     #[error("Failed to reach the local server")]
     ServerUnreachable,
+    #[error("WorkerClient error: {0}")]
+    WorkerClient(#[from] worker_client::Error),
 }
 
 pub struct LocalServer {
@@ -48,7 +47,7 @@ impl LocalServer {
         }
     }
 
-    pub fn url(&self) -> Url {
+    pub fn url() -> Url {
         Url::parse(&format!("http://localhost:{}", LINKUP_LOCAL_SERVER_PORT))
             .expect("linkup url invalid")
     }
@@ -83,35 +82,16 @@ impl LocalServer {
             .build()
             .expect("failed while creating an HTTP client to check readiness of LocalServer");
 
-        let url = format!("{}linkup-check", self.url());
+        let url = format!("{}linkup-check", Self::url());
         let response = client.get(url).send().await;
 
         matches!(response, Ok(res) if res.status() == StatusCode::OK)
     }
 
-    // TODO(augustoccesar)[2024-12-06]: Revisit this method.
     async fn update_state(&self, state: &mut LocalState) -> Result<(), Error> {
-        let server_config = ServerConfig::from(&*state);
+        let session_name = upload_state(state).await?;
 
-        // TODO(augustoccesar)[2024-12-09]: Refactor this method to return a different error type.
-        let server_session_name = load_config(
-            &state.linkup.remote,
-            &state.linkup.session_name,
-            server_config.remote,
-        )
-        .await
-        .expect("failed to load config to get server session name");
-
-        let local_session_name =
-            load_config(&self.url(), &server_session_name, server_config.local)
-                .await
-                .expect("failed to load config to get local session name");
-
-        if server_session_name != local_session_name {
-            return Err(Error::InconsistentState);
-        }
-
-        state.linkup.session_name = server_session_name;
+        state.linkup.session_name = session_name;
         state
             .save()
             .expect("failed to update local state file with session name");

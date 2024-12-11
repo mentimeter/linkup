@@ -6,7 +6,6 @@ use colored::Colorize;
 use health::health;
 use thiserror::Error;
 
-mod background_booting;
 mod completion;
 mod env_files;
 mod health;
@@ -134,6 +133,8 @@ pub enum CliError {
     FileErr(String, String),
     #[error("{0}")]
     IOError(#[from] std::io::Error),
+    #[error("{0}")]
+    WorkerClientErr(#[from] worker_client::Error),
 }
 
 #[derive(Error, Debug)]

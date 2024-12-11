@@ -1,9 +1,6 @@
-use url::Url;
-
 use crate::{
-    background_booting::{load_config, ServerConfig},
-    local_config::{LocalState, ServiceTarget},
-    CliError, LINKUP_LOCALSERVER_PORT,
+    local_config::{upload_state, LocalState, ServiceTarget},
+    CliError,
 };
 
 pub async fn remote(service_names: &[String], all: bool) -> Result<(), CliError> {
@@ -31,7 +28,7 @@ pub async fn remote(service_names: &[String], all: bool) -> Result<(), CliError>
     }
 
     state.save()?;
-    load_server_states(state).await?;
+    upload_state(&state).await?;
 
     if all {
         println!("Linkup is routing all traffic to the remote servers");
@@ -70,7 +67,7 @@ pub async fn local(service_names: &[String], all: bool) -> Result<(), CliError> 
     }
 
     state.save()?;
-    load_server_states(state).await?;
+    upload_state(&state).await?;
 
     if all {
         println!("Linkup is routing all traffic to the local servers");
@@ -80,23 +77,6 @@ pub async fn local(service_names: &[String], all: bool) -> Result<(), CliError> 
             service_names.join(", ")
         );
     }
-
-    Ok(())
-}
-
-async fn load_server_states(state: LocalState) -> Result<(), CliError> {
-    let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT))
-        .expect("linkup url invalid");
-
-    let server_config = ServerConfig::from(&state);
-
-    let _ = load_config(
-        &state.linkup.remote,
-        &state.linkup.session_name.clone(),
-        server_config.remote,
-    )
-    .await?;
-    let _ = load_config(&local_url, &state.linkup.session_name, server_config.local).await?;
 
     Ok(())
 }
