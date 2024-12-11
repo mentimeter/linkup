@@ -1,4 +1,5 @@
 use std::{
+    env,
     fs::{self, File},
     os::unix::process::CommandExt,
     path::PathBuf,
@@ -53,10 +54,9 @@ impl CloudflareTunnel {
     }
 
     fn use_paid_tunnels(&self) -> bool {
-        false
-        // env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
-        //     && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
-        //     && env::var("LINKUP_CF_API_TOKEN").is_ok()
+        env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
+            && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
+            && env::var("LINKUP_CF_API_TOKEN").is_ok()
     }
 
     fn start_free(&self) -> Result<(), Error> {
@@ -132,10 +132,6 @@ impl CloudflareTunnel {
                 .unwrap();
         }
 
-        // println!("{}", self.pidfile_path.to_str().unwrap());
-        // println!("{}", &tunnel_name);
-        // process::exit(0);
-
         process::Command::new("cloudflared")
             .process_group(0)
             .stdout(stdout_file)
@@ -149,26 +145,6 @@ impl CloudflareTunnel {
                 &tunnel_name,
             ])
             .spawn()?;
-
-        // cloudflared tunnel [tunnel command options] run [subcommand options] [TUNNEL]
-
-        // if let None = signal::get_running_pid(&self.pidfile_path) {
-        //     // if tunnel_manager.is_tunnel_running().is_err() {
-        //     println!("Starting paid tunnel...");
-        //     state.linkup.tunnel = Some(tunnel_manager.run_tunnel(&state)?);
-        // } else {
-        //     println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
-        // }
-
-        // state.save()?;
-        // self.update_state()?;
-
-        // if sys.file_exists(&linkup_file_path(LINKUP_LOCALDNS_INSTALL)) {
-        //     boot.boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
-        // }
-
-        // print_session_names(&state);
-        // check_local_not_started(&state)?;
 
         Ok(())
     }
@@ -262,6 +238,14 @@ impl BackgroundService<Error> for CloudflareTunnel {
         state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
+        if !state.should_use_tunnel() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Skipped,
+                "Requested no tunnel",
+            );
+        }
+
         if self.use_paid_tunnels() {
             self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Paid");
 
@@ -314,6 +298,8 @@ impl BackgroundService<Error> for CloudflareTunnel {
 
                 return Err(Error::Default);
             }
+
+            self.notify_update(&status_sender, super::RunStatus::Starting);
         }
 
         // DNS Propagation check
@@ -346,6 +332,8 @@ impl BackgroundService<Error> for CloudflareTunnel {
 
                 return Err(Error::Default);
             }
+
+            self.notify_update(&status_sender, super::RunStatus::Starting);
         }
 
         match self.update_state(state) {

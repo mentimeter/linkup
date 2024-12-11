@@ -1,16 +1,10 @@
-use crate::{
-    // local_config::LocalState,
-    // stop::shutdown,
-    CliError,
-};
+use crate::{local_config::LocalState, CliError};
 
-pub fn reset() -> Result<(), CliError> {
-    // Ensure there is some kind of state from before, otherwise reset doesn't make sense
-    // let state = LocalState::load()?;
+pub async fn reset() -> Result<(), CliError> {
+    let _ = LocalState::load()?;
 
-    // shutdown()?;
-    // let background_service = LocalBackgroundServices;
-    // let _ = background_service.boot_linkup_server(state);
+    crate::stop(false)?;
+    crate::start(&None, false, false).await?;
 
     Ok(())
 }

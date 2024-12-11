@@ -1,7 +1,5 @@
 use std::{fmt::Display, sync};
 
-pub mod tunnel;
-
 mod caddy;
 mod cloudflare_tunnel;
 mod dnsmasq;
@@ -19,6 +17,7 @@ pub enum RunStatus {
     Pending,
     Starting,
     Started,
+    Skipped,
     Error,
 }
 
@@ -28,6 +27,7 @@ impl Display for RunStatus {
             Self::Pending => write!(f, "{}", "pending"),
             Self::Starting => write!(f, "{}", "starting"),
             Self::Started => write!(f, "{}", "started"),
+            Self::Skipped => write!(f, "{}", "skipped"),
             Self::Error => write!(f, "{}", "error"),
         }
     }

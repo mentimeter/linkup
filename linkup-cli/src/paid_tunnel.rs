@@ -57,78 +57,6 @@ struct Config {
     credentials_file: String,
 }
 
-// Helper to create an HTTP client and prepare headers
-fn prepare_client_and_headers(sys: &dyn System) -> Result<(reqwest::Client, HeaderMap), CliError> {
-    // this should be a string, not a result
-    let bearer_token = sys.get_env("LINKUP_CF_API_TOKEN")?;
-    let client = reqwest::Client::new();
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {}", bearer_token))
-            .map_err(|_| CliError::GetEnvVar("LINKUP_CF_API_TOKEN".to_string()))?,
-    );
-
-    Ok((client, headers))
-}
-
-// Helper for sending requests and handling responses
-async fn send_request<T: for<'de> serde::Deserialize<'de>>(
-    client: &reqwest::Client,
-    url: &str,
-    headers: HeaderMap,
-    body: Option<String>,
-    method: &str,
-) -> Result<T, CliError> {
-    let builder = match method {
-        "GET" => client.get(url),
-        "POST" => client.post(url),
-        _ => {
-            return Err(CliError::HttpErr(format!(
-                "Unsupported HTTP method: {}",
-                method
-            )))
-        }
-    };
-
-    let builder = builder.headers(headers);
-    let builder = if let Some(body) = body {
-        builder.body(body)
-    } else {
-        builder
-    };
-
-    let response = builder
-        .send()
-        .await
-        .map_err(|err| CliError::HttpErr(format!("Failed to send request, {}", err).to_string()))?;
-
-    if response.status().is_success() {
-        let response_body = response.text().await.map_err(|err| {
-            CliError::HttpErr(format!("Could not read response body, {}", err).to_string())
-        })?;
-        serde_json::from_str(&response_body)
-            .map_err(|err| CliError::ParseErr("from str to JSON".to_string(), err.to_string()))
-    } else {
-        Err(CliError::HttpErr(format!(
-            "Failed to get a successful response: {}",
-            response.status()
-        )))
-    }
-}
-
-// #[cfg_attr(test, mockall::automock)]
-// #[allow(dead_code)]
-// pub trait PaidTunnelManager {
-//     fn get_tunnel_id(&self, tunnel_name: &str) -> Result<Option<String>, CliError>;
-//     fn create_tunnel(&self, tunnel_name: &str) -> Result<String, CliError>;
-//     fn create_dns_record(&self, tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError>;
-// }
-
-// pub struct CfPaidTunnelManager;
-
-// impl PaidTunnelManager for CfPaidTunnelManager {
 pub async fn get_tunnel_id(tunnel_name: &str) -> Result<Option<String>, CliError> {
     let account_id = env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID")
         .map_err(|_| CliError::GetEnvVar("LINKUP_CLOUDFLARE_ACCOUNT_ID".to_string()))?;
@@ -206,7 +134,67 @@ pub async fn create_dns_record(tunnel_id: &str, tunnel_name: &str) -> Result<(),
         send_request(&client, &url, headers, Some(body), "POST").await?;
     Ok(())
 }
-// }
+
+// Helper to create an HTTP client and prepare headers
+fn prepare_client_and_headers(sys: &dyn System) -> Result<(reqwest::Client, HeaderMap), CliError> {
+    // this should be a string, not a result
+    let bearer_token = sys.get_env("LINKUP_CF_API_TOKEN")?;
+    let client = reqwest::Client::new();
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&format!("Bearer {}", bearer_token))
+            .map_err(|_| CliError::GetEnvVar("LINKUP_CF_API_TOKEN".to_string()))?,
+    );
+
+    Ok((client, headers))
+}
+
+// Helper for sending requests and handling responses
+async fn send_request<T: for<'de> serde::Deserialize<'de>>(
+    client: &reqwest::Client,
+    url: &str,
+    headers: HeaderMap,
+    body: Option<String>,
+    method: &str,
+) -> Result<T, CliError> {
+    let builder = match method {
+        "GET" => client.get(url),
+        "POST" => client.post(url),
+        _ => {
+            return Err(CliError::HttpErr(format!(
+                "Unsupported HTTP method: {}",
+                method
+            )))
+        }
+    };
+
+    let builder = builder.headers(headers);
+    let builder = if let Some(body) = body {
+        builder.body(body)
+    } else {
+        builder
+    };
+
+    let response = builder
+        .send()
+        .await
+        .map_err(|err| CliError::HttpErr(format!("Failed to send request, {}", err).to_string()))?;
+
+    if response.status().is_success() {
+        let response_body = response.text().await.map_err(|err| {
+            CliError::HttpErr(format!("Could not read response body, {}", err).to_string())
+        })?;
+        serde_json::from_str(&response_body)
+            .map_err(|err| CliError::ParseErr("from str to JSON".to_string(), err.to_string()))
+    } else {
+        Err(CliError::HttpErr(format!(
+            "Failed to get a successful response: {}",
+            response.status()
+        )))
+    }
+}
 
 fn generate_tunnel_secret() -> String {
     let mut rng = rand::thread_rng();

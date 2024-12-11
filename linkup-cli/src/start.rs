@@ -20,11 +20,22 @@ use crate::{local_config::LocalState, CliError};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-pub async fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
+pub async fn start(
+    config_arg: &Option<String>,
+    no_tunnel: bool,
+    fresh_state: bool,
+) -> Result<(), CliError> {
     env_logger::init();
-    let is_paid = use_paid_tunnels();
-    let mut state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
-    set_linkup_env(state.clone())?;
+
+    let mut state = if fresh_state {
+        let is_paid = use_paid_tunnels();
+        let state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
+        set_linkup_env(state.clone())?;
+
+        state
+    } else {
+        LocalState::load()?
+    };
 
     let status_update_channel = sync::mpsc::channel::<services::RunUpdate>();
 

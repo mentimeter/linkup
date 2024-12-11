@@ -38,7 +38,6 @@ const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
-const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
 const LINKUP_LOCALDNS_INSTALL: &str = "localdns-install";
 const LINKUP_CF_TLS_API_ENV_VAR: &str = "LINKUP_CF_API_TOKEN";
 
@@ -272,9 +271,9 @@ async fn main() -> Result<()> {
 
     match &cli.command {
         Commands::Health { json } => health(*json),
-        Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel).await,
-        Commands::Stop => stop(),
-        Commands::Reset => reset(),
+        Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel, true).await,
+        Commands::Stop => stop(true),
+        Commands::Reset => reset().await,
         Commands::Local { service_names, all } => local(service_names, *all).await,
         Commands::Remote { service_names, all } => remote(service_names, *all).await,
         Commands::Status { json, all } => {
