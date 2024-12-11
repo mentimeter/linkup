@@ -1,3 +1,5 @@
+mod paid_tunnel;
+
 use std::{
     env,
     fs::{self, File},
@@ -17,7 +19,7 @@ use regex::Regex;
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{linkup_file_path, local_config::LocalState, paid_tunnel, signal};
+use crate::{linkup_file_path, local_config::LocalState, signal};
 
 use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 

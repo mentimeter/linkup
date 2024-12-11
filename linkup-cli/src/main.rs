@@ -12,7 +12,6 @@ mod env_files;
 mod health;
 mod local_config;
 mod local_dns;
-mod paid_tunnel;
 mod preview;
 mod remote_local;
 mod reset;
