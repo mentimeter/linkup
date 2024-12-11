@@ -99,9 +99,9 @@ pub async fn start(
         }
     }
 
-    if printing_thread.is_some() {
+    if let Some(printing_thread) = printing_thread {
         printing_channel.0.send(true).unwrap();
-        printing_thread.unwrap().join().unwrap();
+        printing_thread.join().unwrap();
     }
 
     match exit_error {

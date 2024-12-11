@@ -62,8 +62,8 @@ impl CloudflareTunnel {
     }
 
     fn start_free(&self) -> Result<(), Error> {
-        let stdout_file = File::create(&self.stdout_file_path).map_err(|e| Error::from(e))?;
-        let stderr_file = File::create(&self.stderr_file_path).map_err(|e| Error::from(e))?;
+        let stdout_file = File::create(&self.stdout_file_path)?;
+        let stderr_file = File::create(&self.stderr_file_path)?;
 
         let url = format!("http://localhost:{}", LINKUP_LOCAL_SERVER_PORT);
 
@@ -72,7 +72,7 @@ impl CloudflareTunnel {
             .stdout(stdout_file)
             .stderr(stderr_file)
             .stdin(Stdio::null())
-            .args(&[
+            .args([
                 "tunnel",
                 "--url",
                 &url,
@@ -85,8 +85,8 @@ impl CloudflareTunnel {
     }
 
     async fn start_paid(&self) -> Result<(), Error> {
-        let stdout_file = File::create(&self.stdout_file_path).map_err(|e| Error::from(e))?;
-        let stderr_file = File::create(&self.stderr_file_path).map_err(|e| Error::from(e))?;
+        let stdout_file = File::create(&self.stdout_file_path)?;
+        let stderr_file = File::create(&self.stderr_file_path)?;
 
         log::info!(
             "Starting paid tunnel with session name: {}",
@@ -139,7 +139,7 @@ impl CloudflareTunnel {
             .stdout(stdout_file)
             .stderr(stderr_file)
             .stdin(Stdio::null())
-            .args(&[
+            .args([
                 "tunnel",
                 "--pidfile",
                 self.pidfile_path.to_str().unwrap(),
@@ -154,8 +154,7 @@ impl CloudflareTunnel {
     pub fn stop(&self) -> Result<(), Error> {
         log::debug!("Stopping {}", Self::NAME);
 
-        signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGINT)
-            .map_err(|e| Error::from(e))?;
+        signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGINT)?;
 
         Ok(())
     }
@@ -174,15 +173,13 @@ impl CloudflareTunnel {
             let tunnel_url_re = Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
                 .expect("Failed to compile regex");
 
-            let stderr_content = fs::read_to_string(&self.stderr_file_path)
-                .map_err(|e| Error::from(e))
-                .unwrap();
+            let stderr_content = fs::read_to_string(&self.stderr_file_path)?;
 
             match tunnel_url_re.find(&stderr_content) {
                 Some(url_match) => {
-                    return Ok(Url::parse(url_match.as_str()).expect("Failed to parse tunnel URL"));
+                    Ok(Url::parse(url_match.as_str()).expect("Failed to parse tunnel URL"))
                 }
-                None => return Err(Error::UrlNotFound),
+                None => Err(Error::UrlNotFound),
             }
         }
     }
@@ -215,7 +212,7 @@ impl CloudflareTunnel {
             log::debug!("DNS {} not propagated yet.", domain);
         }
 
-        return false;
+        false
     }
 
     fn update_state(&self, state: &mut LocalState) -> Result<(), Error> {

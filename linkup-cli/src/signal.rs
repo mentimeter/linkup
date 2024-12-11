@@ -53,11 +53,11 @@ pub fn get_running_pid(file_path: &Path) -> Option<String> {
         Err(_) => return None,
     };
 
-    return if send_signal(&pid, Signal::SIGINFO).is_ok() {
+    if send_signal(&pid, Signal::SIGINFO).is_ok() {
         Some(pid)
     } else {
         None
-    };
+    }
 }
 
 pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), PidError> {

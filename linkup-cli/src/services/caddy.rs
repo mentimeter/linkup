@@ -159,11 +159,7 @@ impl Caddy {
 
         let output_str = String::from_utf8(output.stdout).unwrap();
 
-        if !output_str.contains("redis") {
-            return false;
-        }
-
-        return true;
+        output_str.contains("redis")
     }
 }
 

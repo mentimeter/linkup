@@ -56,15 +56,15 @@ impl LocalServer {
     fn start(&self) -> Result<(), Error> {
         log::debug!("Starting {}", Self::NAME);
 
-        let stdout_file = File::create(&self.stdout_file_path).map_err(|e| Error::from(e))?;
-        let stderr_file = File::create(&self.stderr_file_path).map_err(|e| Error::from(e))?;
+        let stdout_file = File::create(&self.stdout_file_path)?;
+        let stderr_file = File::create(&self.stderr_file_path)?;
 
         process::Command::new("linkup")
             .process_group(0)
             .stdout(stdout_file)
             .stderr(stderr_file)
             .stdin(Stdio::null())
-            .args(&["server", "--pidfile", self.pidfile_path.to_str().unwrap()])
+            .args(["server", "--pidfile", self.pidfile_path.to_str().unwrap()])
             .spawn()?;
 
         Ok(())
@@ -72,8 +72,7 @@ impl LocalServer {
 
     pub fn stop(&self) -> Result<(), Error> {
         log::debug!("Stopping {}", Self::NAME);
-        signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGINT)
-            .map_err(|e| Error::from(e))?;
+        signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGINT)?;
 
         Ok(())
     }
@@ -87,10 +86,7 @@ impl LocalServer {
         let url = format!("{}linkup-check", self.url());
         let response = client.get(url).send().await;
 
-        match response {
-            Ok(res) if res.status() == StatusCode::OK => true,
-            _ => false,
-        }
+        matches!(response, Ok(res) if res.status() == StatusCode::OK)
     }
 
     // TODO(augustoccesar)[2024-12-06]: Revisit this method.

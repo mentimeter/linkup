@@ -24,11 +24,11 @@ pub enum RunStatus {
 impl Display for RunStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Pending => write!(f, "{}", "pending"),
-            Self::Starting => write!(f, "{}", "starting"),
-            Self::Started => write!(f, "{}", "started"),
-            Self::Skipped => write!(f, "{}", "skipped"),
-            Self::Error => write!(f, "{}", "error"),
+            Self::Pending => write!(f, "pending"),
+            Self::Starting => write!(f, "starting"),
+            Self::Started => write!(f, "started"),
+            Self::Skipped => write!(f, "skipped"),
+            Self::Error => write!(f, "error"),
         }
     }
 }
