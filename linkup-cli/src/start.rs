@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    env, fs,
+    fs,
     io::stdout,
     path::{Path, PathBuf},
     sync,
@@ -20,6 +20,10 @@ use crate::{local_config::LocalState, CliError};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
+/// # Arguments
+/// * `config_arg`  - Path to the Linkup config to be used as base in case `fresh_state` argument is `true`.
+/// * `no_tunnel`   - If there should not be a Cloudflare tunnel.
+/// * `fresh_state` - Boolean representing if should refresh the state to what is defined on `config_arg`.
 pub async fn start(
     config_arg: &Option<String>,
     no_tunnel: bool,
@@ -44,10 +48,14 @@ pub async fn start(
     let caddy = services::Caddy::new(state.domain_strings());
     let dnsmasq = services::Dnsmasq::new(state.linkup.session_name.clone(), state.domain_strings());
 
-    let mut printing_thread: Option<JoinHandle<()>> = None;
-    let printing_channel = sync::mpsc::channel::<bool>();
+    let mut display_thread: Option<JoinHandle<()>> = None;
+    let display_channel = sync::mpsc::channel::<bool>();
+
+    // If we are doing RUST_LOG=debug to debug if there is anything wrong, having the display thread make so it
+    // overwrites some of the output since it does some cursor moving.
+    // So in that case, we do not start the display thread.
     if !log::log_enabled!(log::Level::Debug) {
-        printing_thread = Some(background_printing(
+        display_thread = Some(spawn_display_thread(
             &[
                 services::LocalServer::NAME,
                 services::CloudflareTunnel::NAME,
@@ -55,10 +63,13 @@ pub async fn start(
                 services::Dnsmasq::NAME,
             ],
             status_update_channel.1,
-            printing_channel.1,
+            display_channel.1,
         ));
     }
 
+    // To make sure that we get the last update to the display thread before the error is bubbled up,
+    // we store any error that might happen on one of the steps and only return it after we have
+    // send the message to the display thread to stop and we join it.
     let mut exit_error: Option<Box<dyn std::error::Error>> = None;
 
     match local_server
@@ -99,9 +110,9 @@ pub async fn start(
         }
     }
 
-    if let Some(printing_thread) = printing_thread {
-        printing_channel.0.send(true).unwrap();
-        printing_thread.join().unwrap();
+    if let Some(display_thread) = display_thread {
+        display_channel.0.send(true).unwrap();
+        display_thread.join().unwrap();
     }
 
     match exit_error {
@@ -110,7 +121,19 @@ pub async fn start(
     }
 }
 
-fn background_printing(
+/// This spawns a background thread that is responsible for updating the terminal with the information
+/// about the start of the services.
+///
+/// # Arguments
+/// * `names` - These are the names of the services that are going to be displayed here. These is also
+///   the "keys" that the status receiver will listen to for updating.
+///
+/// * `status_update_receiver` - This is a [`sync::mpsc::Receiver`] on which this thread will listen
+///   for updates.
+///
+/// * `exit_signal_receiver` - This is also a [`sync::mpsc::Receiver`], where, to make sure that we always
+///   show the last update, the exit of the display thread is done by receiving any message on this receiver.
+fn spawn_display_thread(
     names: &[&str],
     status_update_receiver: sync::mpsc::Receiver<services::RunUpdate>,
     exit_signal_receiver: sync::mpsc::Receiver<bool>,
@@ -128,6 +151,7 @@ fn background_printing(
 
         loop {
             if loop_iter == 0 {
+                // For the first loop, make sure we add all the services with a pending status.
                 for name in &names {
                     statuses.insert(
                         name.clone(),
@@ -161,6 +185,8 @@ fn background_printing(
                     _ => formatted_status.normal(),
                 };
 
+                // This is necessary in case the previous update was a longer line
+                // than the one that is going to be shown now.
                 stdout()
                     .execute(crossterm::terminal::Clear(
                         crossterm::terminal::ClearType::CurrentLine,
@@ -176,6 +202,8 @@ fn background_printing(
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // To make sure we exit on the right order, only check for the exit signal in case
+                    // we are not receiving more updates on the `status_update_receiver`.
                     match exit_signal_receiver.try_recv() {
                         Ok(_) | Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
                         _ => (),
