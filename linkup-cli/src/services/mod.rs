@@ -12,6 +12,8 @@ pub use cloudflare_tunnel::CloudflareTunnel;
 pub use dnsmasq::Dnsmasq;
 pub use local_server::LocalServer;
 
+use crate::local_config::LocalState;
+
 #[derive(Clone)]
 pub enum RunStatus {
     Pending,
@@ -43,6 +45,7 @@ pub trait BackgroundService<E: std::error::Error> {
 
     async fn run_with_progress(
         &self,
+        local_state: &mut LocalState,
         status_sender: sync::mpsc::Sender<RunUpdate>,
     ) -> Result<(), E>;
 

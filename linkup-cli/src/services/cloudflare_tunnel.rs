@@ -1,10 +1,8 @@
 use std::{
-    fs::{self, remove_file, File},
+    fs::{self, File},
     os::unix::process::CommandExt,
     path::PathBuf,
     process::{self, Stdio},
-    sync::{Arc, Mutex},
-    thread::sleep,
     time::Duration,
 };
 
@@ -13,10 +11,12 @@ use hickory_resolver::{
     proto::rr::RecordType,
     TokioAsyncResolver,
 };
+use log::{debug, error};
 use regex::Regex;
+use tokio::time::sleep;
 use url::Url;
 
-use crate::{linkup_file_path, local_config::LocalState, signal};
+use crate::{linkup_file_path, local_config::LocalState, paid_tunnel, signal};
 
 use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 
@@ -27,50 +27,39 @@ pub enum Error {
     Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
-    #[error("Failed while locking state file")]
-    StateFileLock,
     #[error("Failed to start: {0}")]
     FailedToStart(String),
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
+    #[error("Failed to find tunnel URL")]
+    UrlNotFound,
 }
 
 pub struct CloudflareTunnel {
-    state: Arc<Mutex<LocalState>>,
+    linkup_session_name: String,
     stdout_file_path: PathBuf,
     stderr_file_path: PathBuf,
     pidfile_path: PathBuf,
 }
 
 impl CloudflareTunnel {
-    pub fn new(state: Arc<Mutex<LocalState>>) -> Self {
+    pub fn new(linkup_session_name: impl Into<String>) -> Self {
         Self {
-            state,
+            linkup_session_name: linkup_session_name.into(),
             stdout_file_path: linkup_file_path("cloudflared-stdout"),
             stderr_file_path: linkup_file_path("cloudflared-stderr"),
             pidfile_path: linkup_file_path("cloudflared-pid"),
         }
     }
 
-    pub fn url(&self) -> Url {
-        let tunnel_url_re = Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
-            .expect("Failed to compile regex");
-
-        let stderr_content = fs::read_to_string(&self.stderr_file_path)
-            .map_err(|e| Error::from(e))
-            .unwrap();
-
-        match tunnel_url_re.find(&stderr_content) {
-            Some(url_match) => {
-                return Url::parse(url_match.as_str()).expect("Failed to parse tunnel URL");
-            }
-            None => panic!("failed to find tunnel url"),
-        }
+    fn use_paid_tunnels(&self) -> bool {
+        false
+        // env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
+        //     && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
+        //     && env::var("LINKUP_CF_API_TOKEN").is_ok()
     }
 
-    fn start(&self) -> Result<(), Error> {
-        let _ = remove_file(&self.pidfile_path);
-
+    fn start_free(&self) -> Result<(), Error> {
         let stdout_file = File::create(&self.stdout_file_path).map_err(|e| Error::from(e))?;
         let stderr_file = File::create(&self.stderr_file_path).map_err(|e| Error::from(e))?;
 
@@ -93,6 +82,97 @@ impl CloudflareTunnel {
         Ok(())
     }
 
+    async fn start_paid(&self) -> Result<(), Error> {
+        let stdout_file = File::create(&self.stdout_file_path).map_err(|e| Error::from(e))?;
+        let stderr_file = File::create(&self.stderr_file_path).map_err(|e| Error::from(e))?;
+
+        log::info!(
+            "Starting paid tunnel with session name: {}",
+            self.linkup_session_name
+        );
+
+        let tunnel_name = format!("tunnel-{}", self.linkup_session_name);
+        let mut tunnel_id = match paid_tunnel::get_tunnel_id(&tunnel_name).await {
+            Ok(Some(id)) => id,
+            Ok(None) => "".to_string(),
+            // Err(e) => return Err(e),
+            Err(e) => panic!("{}", e),
+        };
+
+        let mut create_tunnel = false;
+
+        if tunnel_id.is_empty() {
+            log::info!("Tunnel ID is empty");
+
+            create_tunnel = true;
+        } else {
+            log::info!("Tunnel ID: {}", tunnel_id);
+
+            let file_path = format!(
+                "{}/.cloudflared/{}.json",
+                std::env::var("HOME").unwrap(),
+                tunnel_id
+            );
+
+            if fs::exists(&file_path).unwrap_or(false) {
+                log::info!("Tunnel config file for {}: {}", tunnel_id, file_path);
+            } else {
+                log::info!("Tunnel config file for {} does not exist", tunnel_id);
+
+                create_tunnel = true;
+            }
+        }
+
+        if create_tunnel {
+            println!("Creating tunnel...");
+
+            tunnel_id = paid_tunnel::create_tunnel(&tunnel_name).await.unwrap();
+            paid_tunnel::create_dns_record(&tunnel_id, &tunnel_name)
+                .await
+                .unwrap();
+        }
+
+        // println!("{}", self.pidfile_path.to_str().unwrap());
+        // println!("{}", &tunnel_name);
+        // process::exit(0);
+
+        process::Command::new("cloudflared")
+            .process_group(0)
+            .stdout(stdout_file)
+            .stderr(stderr_file)
+            .stdin(Stdio::null())
+            .args(&[
+                "tunnel",
+                "--pidfile",
+                self.pidfile_path.to_str().unwrap(),
+                "run",
+                &tunnel_name,
+            ])
+            .spawn()?;
+
+        // cloudflared tunnel [tunnel command options] run [subcommand options] [TUNNEL]
+
+        // if let None = signal::get_running_pid(&self.pidfile_path) {
+        //     // if tunnel_manager.is_tunnel_running().is_err() {
+        //     println!("Starting paid tunnel...");
+        //     state.linkup.tunnel = Some(tunnel_manager.run_tunnel(&state)?);
+        // } else {
+        //     println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
+        // }
+
+        // state.save()?;
+        // self.update_state()?;
+
+        // if sys.file_exists(&linkup_file_path(LINKUP_LOCALDNS_INSTALL)) {
+        //     boot.boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
+        // }
+
+        // print_session_names(&state);
+        // check_local_not_started(&state)?;
+
+        Ok(())
+    }
+
     pub fn stop(&self) -> Result<(), Error> {
         log::debug!("Stopping {}", Self::NAME);
 
@@ -102,47 +182,73 @@ impl CloudflareTunnel {
         Ok(())
     }
 
-    async fn dns_propagated(&self) -> bool {
-        let state = match self.state.lock() {
-            Ok(state) => state,
-            Err(err) => {
-                log::error!("Failed to aquire state lock: {}", err);
+    fn url(&self) -> Result<Url, Error> {
+        if self.use_paid_tunnels() {
+            return Ok(Url::parse(
+                format!(
+                    "https://tunnel-{}.mentimeter.dev",
+                    &self.linkup_session_name
+                )
+                .as_str(),
+            )
+            .expect("Failed to parse tunnel URL"));
+        } else {
+            let tunnel_url_re = Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+                .expect("Failed to compile regex");
 
-                return false;
+            let stderr_content = fs::read_to_string(&self.stderr_file_path)
+                .map_err(|e| Error::from(e))
+                .unwrap();
+
+            match tunnel_url_re.find(&stderr_content) {
+                Some(url_match) => {
+                    return Ok(Url::parse(url_match.as_str()).expect("Failed to parse tunnel URL"));
+                }
+                None => return Err(Error::UrlNotFound),
             }
+        }
+    }
+
+    async fn dns_propagated(&self) -> bool {
+        let mut opts = ResolverOpts::default();
+        opts.cache_size = 0; // Disable caching
+
+        let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), opts);
+
+        let url = match self.url() {
+            Ok(url) => url,
+            Err(_) => return false,
         };
 
-        if let Some(tunnel) = &state.linkup.tunnel {
-            log::debug!("Waiting for tunnel DNS to propagate at {}...", tunnel);
+        // let url = self.url().unwrap_or_else(|_| return false);
+        let domain = url.host_str().unwrap();
 
-            let mut opts = ResolverOpts::default();
-            opts.cache_size = 0; // Disable caching
+        let response = resolver.lookup(domain, RecordType::A).await;
 
-            let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), opts);
+        if let Ok(lookup) = response {
+            let addresses = lookup.iter().collect::<Vec<_>>();
 
-            let url = self.url();
-            let domain = url.host_str().unwrap();
+            if !addresses.is_empty() {
+                log::debug!("DNS has propogated for {}.", domain);
 
-            let response = resolver.lookup(domain, RecordType::A).await;
-
-            if let Ok(lookup) = response {
-                let addresses = lookup.iter().collect::<Vec<_>>();
-
-                if !addresses.is_empty() {
-                    log::debug!("DNS has propogated for {}.", domain);
-
-                    return true;
-                }
+                return true;
             }
+        } else {
+            log::debug!("DNS {} not propagated yet.", domain);
         }
 
         return false;
     }
 
-    fn update_state(&self) -> Result<(), Error> {
-        let mut state = self.state.lock().map_err(|_| Error::StateFileLock)?;
+    fn update_state(&self, state: &mut LocalState) -> Result<(), Error> {
+        let url = self.url()?;
 
-        state.linkup.tunnel = Some(self.url());
+        debug!("Adding tunne url {} to the state", url.as_str());
+
+        state.linkup.tunnel = Some(url);
+        state
+            .save()
+            .expect("failed to update local state file with tunnel url");
 
         Ok(())
     }
@@ -153,38 +259,50 @@ impl BackgroundService<Error> for CloudflareTunnel {
 
     async fn run_with_progress(
         &self,
+        state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
-        self.notify_update(&status_sender, super::RunStatus::Starting);
+        if self.use_paid_tunnels() {
+            self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Paid");
 
-        if let Err(_) = self.start() {
-            self.notify_update_with_details(
-                &status_sender,
-                super::RunStatus::Error,
-                "Failed to start",
-            );
+            if let Err(_) = self.start_paid().await {
+                self.notify_update_with_details(
+                    &status_sender,
+                    super::RunStatus::Error,
+                    "Failed to start",
+                );
 
-            return Err(Error::Default);
+                return Err(Error::Default);
+            }
+        } else {
+            self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Free");
+
+            if let Err(_) = self.start_free() {
+                self.notify_update_with_details(
+                    &status_sender,
+                    super::RunStatus::Error,
+                    "Failed to start",
+                );
+
+                return Err(Error::Default);
+            }
         }
 
         // Pidfile existence check
         {
             let mut pid_file_ready_attempt = 0;
-            let mut pid_file_exists = self.pidfile_path.exists();
+            let mut pid_file_exists = signal::get_running_pid(&self.pidfile_path).is_some();
             while !pid_file_exists && pid_file_ready_attempt <= 10 {
-                sleep(Duration::from_secs(1));
+                sleep(Duration::from_secs(1)).await;
                 pid_file_ready_attempt += 1;
 
                 self.notify_update_with_details(
                     &status_sender,
                     super::RunStatus::Starting,
-                    format!(
-                        "Waiting for tunnel... retry #{}",
-                        pid_file_ready_attempt + 1
-                    ),
+                    format!("Waiting for tunnel... retry #{}", pid_file_ready_attempt),
                 );
 
-                pid_file_exists = self.pidfile_path.exists();
+                pid_file_exists = signal::get_running_pid(&self.pidfile_path).is_some();
             }
 
             if !pid_file_exists {
@@ -204,7 +322,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
             let mut dns_propagated = self.dns_propagated().await;
             // TODO: Isn't 40 too much?
             while !dns_propagated && dns_propagation_attempt <= 40 {
-                sleep(Duration::from_secs(2));
+                sleep(Duration::from_secs(2)).await;
                 dns_propagation_attempt += 1;
 
                 self.notify_update_with_details(
@@ -230,7 +348,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
             }
         }
 
-        match self.update_state() {
+        match self.update_state(state) {
             Ok(_) => {
                 self.notify_update(&status_sender, super::RunStatus::Started);
             }

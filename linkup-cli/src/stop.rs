@@ -1,6 +1,5 @@
 use std::fs::{self};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
 // use nix::sys::signal::Signal;
 
@@ -23,14 +22,14 @@ pub fn stop() -> Result<(), CliError> {
         }
     }
 
-    let state = Arc::new(Mutex::new(state));
-
-    services::LocalServer::new(state.clone()).stop().unwrap();
-    services::CloudflareTunnel::new(state.clone())
+    services::LocalServer::new().stop().unwrap();
+    services::CloudflareTunnel::new(state.linkup.session_name.clone())
         .stop()
         .unwrap();
-    services::Caddy::new(state.clone()).stop().unwrap();
-    services::Dnsmasq::new(state.clone()).stop().unwrap();
+    services::Caddy::new(state.domain_strings()).stop().unwrap();
+    services::Dnsmasq::new(state.linkup.session_name.clone(), state.domain_strings())
+        .stop()
+        .unwrap();
 
     println!("Stopped linkup");
 

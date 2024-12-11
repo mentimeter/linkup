@@ -3,12 +3,11 @@ use std::{
     os::unix::process::CommandExt,
     path::PathBuf,
     process::{self, Stdio},
-    sync::{Arc, Mutex},
-    thread,
     time::Duration,
 };
 
 use reqwest::StatusCode;
+use tokio::time::sleep;
 use url::Url;
 
 use crate::{
@@ -28,8 +27,6 @@ pub enum Error {
     Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
-    #[error("Failed while locking state file")]
-    StateFileLock,
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
     #[error("Local and remote servers have inconsistent state")]
@@ -37,16 +34,14 @@ pub enum Error {
 }
 
 pub struct LocalServer {
-    state: Arc<Mutex<LocalState>>,
     stdout_file_path: PathBuf,
     stderr_file_path: PathBuf,
     pidfile_path: PathBuf,
 }
 
 impl LocalServer {
-    pub fn new(state: Arc<Mutex<LocalState>>) -> Self {
+    pub fn new() -> Self {
         Self {
-            state,
             stdout_file_path: linkup_file_path("localserver-stdout"),
             stderr_file_path: linkup_file_path("localserver-stderr"),
             pidfile_path: linkup_file_path("localserver-pid"),
@@ -99,8 +94,7 @@ impl LocalServer {
     }
 
     // TODO(augustoccesar)[2024-12-06]: Revisit this method.
-    async fn update_state(&self) -> Result<(), Error> {
-        let mut state = self.state.lock().map_err(|_| Error::StateFileLock)?;
+    async fn update_state(&self, state: &mut LocalState) -> Result<(), Error> {
         let server_config = ServerConfig::from(&*state);
 
         // TODO(augustoccesar)[2024-12-09]: Refactor this method to return a different error type.
@@ -135,6 +129,7 @@ impl BackgroundService<Error> for LocalServer {
 
     async fn run_with_progress(
         &self,
+        state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
@@ -155,7 +150,7 @@ impl BackgroundService<Error> for LocalServer {
             match (reachable, attempts) {
                 (true, _) => break,
                 (false, 0..10) => {
-                    thread::sleep(Duration::from_millis(1000));
+                    sleep(Duration::from_millis(1000)).await;
                     attempts += 1;
 
                     self.notify_update_with_details(
@@ -178,7 +173,7 @@ impl BackgroundService<Error> for LocalServer {
             }
         }
 
-        match self.update_state().await {
+        match self.update_state(state).await {
             Ok(_) => {
                 self.notify_update(&status_sender, super::RunStatus::Started);
             }

@@ -3,8 +3,8 @@ use std::{
     env, fs,
     io::stdout,
     path::{Path, PathBuf},
-    sync::{self, Arc, Mutex},
-    thread::{self, sleep},
+    sync,
+    thread::{self, sleep, JoinHandle},
     time::Duration,
 };
 
@@ -23,33 +23,35 @@ const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '�
 pub async fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
     env_logger::init();
     let is_paid = use_paid_tunnels();
-    let state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
+    let mut state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
     set_linkup_env(state.clone())?;
 
-    let state = Arc::new(Mutex::new(state));
     let status_update_channel = sync::mpsc::channel::<services::RunUpdate>();
+
+    let local_server = services::LocalServer::new();
+    let cloudflare_tunnel = services::CloudflareTunnel::new(state.linkup.session_name.clone());
+    let caddy = services::Caddy::new(state.domain_strings());
+    let dnsmasq = services::Dnsmasq::new(state.linkup.session_name.clone(), state.domain_strings());
+
+    let mut printing_thread: Option<JoinHandle<()>> = None;
     let printing_channel = sync::mpsc::channel::<bool>();
-
-    let local_server = services::LocalServer::new(state.clone());
-    let cloudflare_tunnel = services::CloudflareTunnel::new(state.clone());
-    let caddy = services::Caddy::new(state.clone());
-    let dnsmasq = services::Dnsmasq::new(state.clone());
-
-    let printing_thread = background_printing(
-        &[
-            services::LocalServer::NAME,
-            services::CloudflareTunnel::NAME,
-            services::Caddy::NAME,
-            services::Dnsmasq::NAME,
-        ],
-        status_update_channel.1,
-        printing_channel.1,
-    );
+    if !log::log_enabled!(log::Level::Debug) {
+        printing_thread = Some(background_printing(
+            &[
+                services::LocalServer::NAME,
+                services::CloudflareTunnel::NAME,
+                services::Caddy::NAME,
+                services::Dnsmasq::NAME,
+            ],
+            status_update_channel.1,
+            printing_channel.1,
+        ));
+    }
 
     let mut exit_error: Option<Box<dyn std::error::Error>> = None;
 
     match local_server
-        .run_with_progress(status_update_channel.0.clone())
+        .run_with_progress(&mut state, status_update_channel.0.clone())
         .await
     {
         Ok(_) => (),
@@ -58,7 +60,7 @@ pub async fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), C
 
     if exit_error.is_none() {
         match cloudflare_tunnel
-            .run_with_progress(status_update_channel.0.clone())
+            .run_with_progress(&mut state, status_update_channel.0.clone())
             .await
         {
             Ok(_) => (),
@@ -68,7 +70,7 @@ pub async fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), C
 
     if exit_error.is_none() {
         match caddy
-            .run_with_progress(status_update_channel.0.clone())
+            .run_with_progress(&mut state, status_update_channel.0.clone())
             .await
         {
             Ok(_) => (),
@@ -78,7 +80,7 @@ pub async fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), C
 
     if exit_error.is_none() {
         match dnsmasq
-            .run_with_progress(status_update_channel.0.clone())
+            .run_with_progress(&mut state, status_update_channel.0.clone())
             .await
         {
             Ok(_) => (),
@@ -86,8 +88,10 @@ pub async fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), C
         }
     }
 
-    printing_channel.0.send(true).unwrap();
-    printing_thread.join().unwrap();
+    if printing_thread.is_some() {
+        printing_channel.0.send(true).unwrap();
+        printing_thread.unwrap().join().unwrap();
+    }
 
     match exit_error {
         Some(exit_error) => Err(CliError::StatusErr(exit_error.to_string())),

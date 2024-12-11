@@ -2,7 +2,6 @@ use std::{
     fs,
     path::PathBuf,
     process::{Command, Stdio},
-    sync::{Arc, Mutex},
 };
 
 use crate::{
@@ -17,8 +16,6 @@ pub enum Error {
     Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
-    #[error("Failed while locking state file")]
-    StateFileLock,
     #[error("Missing Cloudflare TLS API token on the environment variables")]
     MissingTlsApiTokenEnv,
     #[error("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.")]
@@ -26,16 +23,16 @@ pub enum Error {
 }
 
 pub struct Caddy {
-    state: Arc<Mutex<LocalState>>,
+    domains: Vec<String>,
     caddyfile_path: PathBuf,
     logfile_path: PathBuf,
     pidfile_path: PathBuf,
 }
 
 impl Caddy {
-    pub fn new(state: Arc<Mutex<LocalState>>) -> Self {
+    pub fn new(domains: Vec<String>) -> Self {
         Self {
-            state,
+            domains,
             caddyfile_path: linkup_file_path("Caddyfile"),
             logfile_path: linkup_file_path("caddy-log"),
             pidfile_path: linkup_file_path("caddy-pid"),
@@ -61,14 +58,12 @@ impl Caddy {
     fn start(&self) -> Result<(), Error> {
         log::debug!("Starting {}", Self::NAME);
 
-        let state = self.state.lock().map_err(|_| Error::StateFileLock)?;
-
         if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
             return Err(Error::MissingTlsApiTokenEnv);
         }
 
-        let domains_and_subdomains: Vec<String> = state
-            .domain_strings()
+        let domains_and_subdomains: Vec<String> = self
+            .domains
             .iter()
             .map(|domain| format!("{domain}, *.{domain}"))
             .collect();
@@ -182,6 +177,7 @@ impl BackgroundService<Error> for Caddy {
 
     async fn run_with_progress(
         &self,
+        _state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
         self.notify_update(&status_sender, super::RunStatus::Starting);

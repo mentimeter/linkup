@@ -3,7 +3,6 @@ use std::{
     fs,
     path::PathBuf,
     process::{Command, Stdio},
-    sync::{Arc, Mutex},
 };
 
 use crate::{linkup_dir_path, linkup_file_path, local_config::LocalState, signal};
@@ -16,14 +15,13 @@ pub enum Error {
     Default,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
-    #[error("Failed while locking state file")]
-    StateFileLock,
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
 }
 
 pub struct Dnsmasq {
-    state: Arc<Mutex<LocalState>>,
+    linkup_session_name: String,
+    domains: Vec<String>,
     port: u16,
     config_file_path: PathBuf,
     log_file_path: PathBuf,
@@ -31,9 +29,10 @@ pub struct Dnsmasq {
 }
 
 impl Dnsmasq {
-    pub fn new(state: Arc<Mutex<LocalState>>) -> Self {
+    pub fn new(linkup_session_name: String, domains: Vec<String>) -> Self {
         Self {
-            state,
+            linkup_session_name,
+            domains,
             port: 8053,
             config_file_path: linkup_file_path("dnsmasq-conf"),
             log_file_path: linkup_file_path("dnsmasq-log"),
@@ -42,21 +41,14 @@ impl Dnsmasq {
     }
 
     fn setup(&self) -> Result<(), Error> {
-        let state = self.state.lock().map_err(|_| Error::StateFileLock)?;
-        let session_name = state.linkup.session_name.clone();
-
-        let local_domains_template =
-            state
-                .domain_strings()
-                .iter()
-                .fold(String::new(), |mut acc, d| {
-                    let _ = write!(
-                        acc,
-                        "address=/{}.{}/127.0.0.1\naddress=/{}.{}/::1\nlocal=/{}.{}/\n",
-                        session_name, d, session_name, d, session_name, d
-                    );
-                    acc
-                });
+        let local_domains_template = self.domains.iter().fold(String::new(), |mut acc, d| {
+            let _ = write!(
+                acc,
+                "address=/{0}.{1}/127.0.0.1\naddress=/{0}.{1}/::1\nlocal=/{0}.{1}/\n",
+                self.linkup_session_name, d,
+            );
+            acc
+        });
 
         let dnsmasq_template = format!(
             "{}
@@ -104,6 +96,7 @@ impl BackgroundService<Error> for Dnsmasq {
 
     async fn run_with_progress(
         &self,
+        _state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
