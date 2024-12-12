@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    linkup_dir_path, linkup_file_path, local_config::LocalState, LINKUP_CF_TLS_API_ENV_VAR,
+    linkup_dir_path, linkup_file_path, local_config::LocalState, signal, LINKUP_CF_TLS_API_ENV_VAR,
 };
 
 use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
@@ -172,6 +172,16 @@ impl BackgroundService<Error> for Caddy {
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
+
+        if signal::get_running_pid(&self.pidfile_path).is_some() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Started,
+                "Was already running",
+            );
+
+            return Ok(());
+        }
 
         if let Err(e) = self.start() {
             self.notify_update_with_details(

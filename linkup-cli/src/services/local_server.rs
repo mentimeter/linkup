@@ -110,6 +110,16 @@ impl BackgroundService<Error> for LocalServer {
     ) -> Result<(), Error> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
+        if self.reachable().await {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Started,
+                "Was already running",
+            );
+
+            return Ok(());
+        }
+
         if let Err(e) = self.start() {
             self.notify_update_with_details(
                 &status_sender,

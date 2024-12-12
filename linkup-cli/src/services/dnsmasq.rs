@@ -99,6 +99,16 @@ impl BackgroundService<Error> for Dnsmasq {
     ) -> Result<(), Error> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
+        if signal::get_running_pid(&self.pid_file_path).is_some() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Started,
+                "Was already running",
+            );
+
+            return Ok(());
+        }
+
         if let Err(e) = self.setup() {
             self.notify_update_with_details(
                 &status_sender,

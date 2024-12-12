@@ -247,6 +247,16 @@ impl BackgroundService<Error> for CloudflareTunnel {
             );
         }
 
+        if signal::get_running_pid(&self.pidfile_path).is_some() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Started,
+                "Was already running",
+            );
+
+            return Ok(());
+        }
+
         if Self::use_paid_tunnels() {
             self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Paid");
 
