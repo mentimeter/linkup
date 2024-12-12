@@ -61,10 +61,9 @@ pub fn get_running_pid(file_path: &Path) -> Option<String> {
         sysinfo::RefreshKind::new().with_processes(sysinfo::ProcessRefreshKind::everything()),
     );
 
-    match system.process(sysinfo::Pid::from_u32(pid)) {
-        Some(_) => return Some(pid.to_string()),
-        None => None,
-    }
+    system
+        .process(sysinfo::Pid::from_u32(pid))
+        .map(|_| pid.to_string())
 }
 
 pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), PidError> {
