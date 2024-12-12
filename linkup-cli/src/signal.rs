@@ -46,17 +46,24 @@ pub fn get_pid(file_path: &Path) -> Result<String, PidError> {
 
 // Get the pid from a pidfile, but only return Some in case the pidfile is valid and the written pid on the file
 // is running.
-#[allow(dead_code)]
 pub fn get_running_pid(file_path: &Path) -> Option<String> {
     let pid = match get_pid(file_path) {
         Ok(pid) => pid,
         Err(_) => return None,
     };
 
-    if send_signal(&pid, Signal::SIGINFO).is_ok() {
-        Some(pid)
-    } else {
-        None
+    let pid = match u32::from_str(&pid) {
+        Ok(pid) => pid,
+        Err(_) => return None, // TODO: Do we want to be loud about this?
+    };
+
+    let system = sysinfo::System::new_with_specifics(
+        sysinfo::RefreshKind::new().with_processes(sysinfo::ProcessRefreshKind::everything()),
+    );
+
+    match system.process(sysinfo::Pid::from_u32(pid)) {
+        Some(_) => return Some(pid.to_string()),
+        None => None,
     }
 }
 
