@@ -317,8 +317,8 @@ impl BackgroundService<Error> for CloudflareTunnel {
         {
             let mut dns_propagation_attempt = 0;
             let mut dns_propagated = self.dns_propagated().await;
-            // TODO: Isn't 40 too much?
-            while !dns_propagated && dns_propagation_attempt <= 40 {
+
+            while !dns_propagated && dns_propagation_attempt <= 20 {
                 sleep(Duration::from_secs(2)).await;
                 dns_propagation_attempt += 1;
 
