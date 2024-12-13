@@ -28,7 +28,7 @@ use preview::preview;
 use remote_local::{local, remote};
 use reset::reset;
 use server::server;
-use start::start;
+use start::{start, StartArgs};
 use status::status;
 use stop::stop;
 
@@ -271,7 +271,14 @@ async fn main() -> Result<()> {
 
     match &cli.command {
         Commands::Health { json } => health(*json),
-        Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel, true).await,
+        Commands::Start { no_tunnel } => {
+            start(StartArgs {
+                config_arg: &cli.config,
+                no_tunnel: *no_tunnel,
+                fresh_state: true,
+            })
+            .await
+        }
         Commands::Stop => stop(true),
         Commands::Reset => reset().await,
         Commands::Local { service_names, all } => local(service_names, *all).await,
