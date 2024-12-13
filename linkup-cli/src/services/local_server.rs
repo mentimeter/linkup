@@ -1,4 +1,5 @@
 use std::{
+    env,
     fs::File,
     os::unix::process::CommandExt,
     path::PathBuf,
@@ -58,12 +59,30 @@ impl LocalServer {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
-        process::Command::new("linkup")
+        // When running with cargo (e.g. `cargo run -- start`), we should start the server also with cargo.
+        let mut command = if env::var("CARGO").is_ok() {
+            let mut cmd = process::Command::new("cargo");
+            cmd.args([
+                "run",
+                "--",
+                "server",
+                "--pidfile",
+                self.pidfile_path.to_str().unwrap(),
+            ]);
+
+            cmd
+        } else {
+            let mut cmd = process::Command::new("linkup");
+            cmd.args(["server", "--pidfile", self.pidfile_path.to_str().unwrap()]);
+
+            cmd
+        };
+
+        command
             .process_group(0)
             .stdout(stdout_file)
             .stderr(stderr_file)
             .stdin(Stdio::null())
-            .args(["server", "--pidfile", self.pidfile_path.to_str().unwrap()])
             .spawn()?;
 
         Ok(())
