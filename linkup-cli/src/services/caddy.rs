@@ -100,7 +100,6 @@ impl Caddy {
         let mut redis_storage = String::new();
 
         if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
-            // This is worth doing to avoid confusion while the redis storage module is new
             if !self.check_redis_installed() {
                 return Err(Error::MissingRedisInstalation);
             }
