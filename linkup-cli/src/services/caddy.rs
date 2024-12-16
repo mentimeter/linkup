@@ -14,7 +14,7 @@ use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 pub enum Error {
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
-    #[error("Missing Cloudflare TLS API token on the environment variables")]
+    #[error("Cloudflare TLS API token is required for local-dns Cloudflare TLS certificates.")]
     MissingTlsApiTokenEnv,
     #[error("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.")]
     MissingRedisInstalation,
