@@ -30,6 +30,16 @@ pub struct SessionStatus {
     pub domains: Vec<String>,
 }
 
+impl SessionStatus {
+    pub fn print(&self) {
+        println!("Session Name: {}", self.name);
+        println!("Domains: ");
+        for domain in &self.domains {
+            println!("    {}", domain);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct ServiceStatus {
     name: String,
@@ -106,7 +116,9 @@ pub fn status(json: bool) -> Result<(), CliError> {
             serde_json::to_string_pretty(&status).expect("Failed to serialize status")
         );
     } else {
-        print_session_status(&status.session);
+        status.session.print();
+        println!();
+
         println!(
             "{:<20} {:<15} {:<8} LOCATION",
             "SERVICE NAME", "COMPONENT KIND", "STATUS",
@@ -198,15 +210,6 @@ pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> V
         .iter()
         .map(|domain| format!("https://{}.{}", session_name, domain.clone()))
         .collect();
-}
-
-pub fn print_session_status(session: &SessionStatus) {
-    println!("Session Name: {}", session.name);
-    println!("Domains: ");
-    for domain in &session.domains {
-        println!("    {}", domain);
-    }
-    println!();
 }
 
 fn linkup_services(state: &LocalState) -> Vec<LocalService> {

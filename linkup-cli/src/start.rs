@@ -15,7 +15,7 @@ use crate::{
     env_files::write_to_env_file,
     local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
-    status::{format_state_domains, print_session_status, SessionStatus},
+    status::{format_state_domains, SessionStatus},
 };
 use crate::{local_config::LocalState, CliError};
 
@@ -139,7 +139,7 @@ pub async fn start<'a>(args: StartArgs<'_>) -> Result<(), CliError> {
     };
 
     println!();
-    print_session_status(&status);
+    status.print();
 
     Ok(())
 }
