@@ -87,6 +87,15 @@ pid-file={}\n",
 
         Ok(())
     }
+
+    fn should_start(&self) -> bool {
+        let resolvers: Vec<String> = fs::read_dir("/etc/resolver/")
+            .unwrap()
+            .map(|f| f.unwrap().file_name().into_string().unwrap())
+            .collect();
+
+        self.domains.iter().any(|domain| resolvers.contains(domain))
+    }
 }
 
 impl BackgroundService<Error> for Dnsmasq {
@@ -97,6 +106,16 @@ impl BackgroundService<Error> for Dnsmasq {
         _state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
+        if !self.should_start() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Skipped,
+                "Local DNS not installed",
+            );
+
+            return Ok(());
+        }
+
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
         if signal::get_running_pid(&self.pid_file_path).is_some() {
