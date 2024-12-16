@@ -1,4 +1,7 @@
-use std::process::{Command, Stdio};
+use std::{
+    fs,
+    process::{Command, Stdio},
+};
 
 use crate::{
     local_config::{config_path, get_config},
@@ -120,6 +123,14 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
     kill_dns_responder()?;
 
     Ok(())
+}
+
+pub fn list_resolvers() -> Result<Vec<String>> {
+    let resolvers = fs::read_dir("/etc/resolver/")?
+        .map(|f| f.unwrap().file_name().into_string().unwrap())
+        .collect();
+
+    Ok(resolvers)
 }
 
 fn flush_dns_cache() -> Result<()> {

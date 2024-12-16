@@ -5,7 +5,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{linkup_dir_path, linkup_file_path, local_config::LocalState, signal};
+use crate::{linkup_dir_path, linkup_file_path, local_config::LocalState, local_dns, signal};
 
 use super::BackgroundService;
 
@@ -89,10 +89,7 @@ pid-file={}\n",
     }
 
     fn should_start(&self) -> bool {
-        let resolvers: Vec<String> = fs::read_dir("/etc/resolver/")
-            .unwrap()
-            .map(|f| f.unwrap().file_name().into_string().unwrap())
-            .collect();
+        let resolvers = local_dns::list_resolvers().unwrap();
 
         self.domains.iter().any(|domain| resolvers.contains(domain))
     }
