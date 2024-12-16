@@ -15,6 +15,7 @@ use crate::{
     env_files::write_to_env_file,
     local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
+    status::{format_state_domains, print_session_status, SessionStatus},
 };
 use crate::{local_config::LocalState, CliError};
 
@@ -128,10 +129,19 @@ pub async fn start<'a>(args: StartArgs<'_>) -> Result<(), CliError> {
         display_thread.join().unwrap();
     }
 
-    match exit_error {
-        Some(exit_error) => Err(CliError::StatusErr(exit_error.to_string())),
-        None => Ok(()),
+    if let Some(exit_error) = exit_error {
+        return Err(CliError::StartErr(exit_error.to_string()));
     }
+
+    let status = SessionStatus {
+        name: state.linkup.session_name.clone(),
+        domains: format_state_domains(&state.linkup.session_name, &state.domains),
+    };
+
+    println!();
+    print_session_status(&status);
+
+    Ok(())
 }
 
 /// This spawns a background thread that is responsible for updating the terminal with the information
