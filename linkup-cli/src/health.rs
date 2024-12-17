@@ -28,6 +28,7 @@ impl System {
 #[derive(Debug, Serialize)]
 struct Session {
     name: String,
+    tunnel_url: String,
 }
 
 impl Session {
@@ -36,6 +37,11 @@ impl Session {
 
         Ok(Self {
             name: state.linkup.session_name,
+            tunnel_url: state
+                .linkup
+                .tunnel
+                .map(|url| url.as_str().to_string())
+                .unwrap_or("None".to_string()),
         })
     }
 }
@@ -163,7 +169,8 @@ impl Display for Health {
         )?;
 
         writeln!(f, "{}", "Session info:".bold().italic())?;
-        writeln!(f, "  Name: {}", self.session.name)?;
+        writeln!(f, "  Name:       {}", self.session.name)?;
+        writeln!(f, "  Tunnel URL: {}", self.session.tunnel_url)?;
 
         writeln!(f, "{}", "Background sevices:".bold().italic())?;
         write!(f, "  - Caddy       ")?;

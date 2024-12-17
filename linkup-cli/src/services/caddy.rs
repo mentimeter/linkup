@@ -1,167 +1,216 @@
 use std::{
     fs,
+    path::PathBuf,
     process::{Command, Stdio},
 };
 
 use crate::{
-    linkup_dir_path, linkup_file_path, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
-    LINKUP_LOCALSERVER_PORT,
+    linkup_dir_path, linkup_file_path, local_config::LocalState, local_dns, signal,
+    LINKUP_CF_TLS_API_ENV_VAR,
 };
 
-const CADDYFILE: &str = "Caddyfile";
-const PID_FILE: &str = "caddy-pid";
-const LOG_FILE: &str = "caddy-log";
+use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 
-pub fn start(domains: Vec<String>) -> Result<()> {
-    if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
-        return Err(CliError::StartCaddy(format!(
-            "{} env var is not set",
-            LINKUP_CF_TLS_API_ENV_VAR
-        )));
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("Failed while handing file: {0}")]
+    FileHandling(#[from] std::io::Error),
+    #[error("Cloudflare TLS API token is required for local-dns Cloudflare TLS certificates.")]
+    MissingTlsApiTokenEnv,
+    #[error("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.")]
+    MissingRedisInstalation,
+}
+
+pub struct Caddy {
+    domains: Vec<String>,
+    caddyfile_path: PathBuf,
+    logfile_path: PathBuf,
+    pidfile_path: PathBuf,
+}
+
+impl Caddy {
+    pub fn new(domains: Vec<String>) -> Self {
+        Self {
+            domains,
+            caddyfile_path: linkup_file_path("Caddyfile"),
+            logfile_path: linkup_file_path("caddy-log"),
+            pidfile_path: linkup_file_path("caddy-pid"),
+        }
     }
 
-    let domains_and_subdomains: Vec<String> = domains
-        .iter()
-        .map(|domain| format!("{domain}, *.{domain}"))
-        .collect();
+    pub fn install_extra_packages() {
+        Command::new("caddy")
+            .args(["add-package", "github.com/caddy-dns/cloudflare"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
 
-    write_caddyfile(&domains_and_subdomains)?;
+        Command::new("caddy")
+            .args(["add-package", "github.com/pberkel/caddy-storage-redis"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+    }
 
-    // Clear previous log file on startup
-    fs::write(linkup_file_path(LOG_FILE), "").map_err(|err| {
-        CliError::WriteFile(format!(
-            "Failed to clear log file at {}, error: {}",
-            linkup_file_path(LOG_FILE).display(),
-            err
-        ))
-    })?;
+    fn start(&self) -> Result<(), Error> {
+        log::debug!("Starting {}", Self::NAME);
 
-    Command::new("caddy")
-        .current_dir(linkup_dir_path())
-        .arg("start")
-        .arg("--pidfile")
-        .arg(linkup_file_path(PID_FILE))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|err| CliError::StartCaddy(err.to_string()))?;
+        if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
+            return Err(Error::MissingTlsApiTokenEnv);
+        }
 
-    Ok(())
-}
+        let domains_and_subdomains: Vec<String> = self
+            .domains
+            .iter()
+            .map(|domain| format!("{domain}, *.{domain}"))
+            .collect();
 
-pub fn stop() -> Result<()> {
-    Command::new("caddy")
-        .current_dir(linkup_dir_path())
-        .arg("stop")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|err| CliError::StopErr(err.to_string()))?;
+        self.write_caddyfile(&domains_and_subdomains)?;
 
-    Ok(())
-}
+        // Clear previous log file on startup
+        fs::write(&self.logfile_path, "")?;
 
-pub fn install_cloudflare_package() -> Result<()> {
-    Command::new("caddy")
-        .args(["add-package", "github.com/caddy-dns/cloudflare"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|err| CliError::StartCaddy(err.to_string()))?;
+        Command::new("caddy")
+            .current_dir(linkup_dir_path())
+            .arg("start")
+            .arg("--pidfile")
+            .arg(&self.pidfile_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-pub fn install_redis_package() -> Result<()> {
-    Command::new("caddy")
-        .args(["add-package", "github.com/pberkel/caddy-storage-redis"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|err| CliError::StartCaddy(err.to_string()))?;
+    pub fn stop(&self) -> Result<(), Error> {
+        log::debug!("Stopping {}", Self::NAME);
 
-    Ok(())
-}
+        Command::new("caddy")
+            .current_dir(linkup_dir_path())
+            .arg("stop")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()?;
 
-fn write_caddyfile(domains: &[String]) -> Result<()> {
-    let mut redis_storage = String::new();
+        Ok(())
+    }
 
-    if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
-        // This is worth doing to avoid confusion while the redis storage module is new
-        check_redis_installed()?;
+    fn write_caddyfile(&self, domains: &[String]) -> Result<(), Error> {
+        let mut redis_storage = String::new();
 
-        let url = url::Url::parse(&redis_url)
-            .map_err(|_| CliError::StartCaddy(format!("Invalid REDIS_URL: {}", redis_url)))?;
-        redis_storage = format!(
+        if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
+            if !self.check_redis_installed() {
+                return Err(Error::MissingRedisInstalation);
+            }
+
+            let url = url::Url::parse(&redis_url).expect("failed to parse Redis URL");
+            redis_storage = format!(
+                "
+                storage redis {{
+                    host           {}
+                    port           {}
+                    username       \"{}\"
+                    password       \"{}\"
+                    key_prefix     \"caddy\"
+                    compression    true
+                }}
+                ",
+                url.host().unwrap(),
+                url.port().unwrap_or(6379),
+                url.username(),
+                url.password().unwrap(),
+            );
+        }
+
+        let caddy_template = format!(
             "
-            storage redis {{
-                host           {}
-                port           {}
-                username       \"{}\"
-                password       \"{}\"
-                key_prefix     \"caddy\"
-                compression    true
+            {{
+                http_port 80
+                https_port 443
+                log {{
+                    output file {}
+                }}
+                {}
+            }}
+    
+            {} {{
+                reverse_proxy localhost:{}
+                tls {{
+                    dns cloudflare {{env.{}}}
+                }}
             }}
             ",
-            url.host().unwrap(),
-            url.port().unwrap_or(6379),
-            url.username(),
-            url.password().unwrap(),
+            self.logfile_path.display(),
+            redis_storage,
+            domains.join(", "),
+            LINKUP_LOCAL_SERVER_PORT,
+            LINKUP_CF_TLS_API_ENV_VAR,
         );
+
+        fs::write(&self.caddyfile_path, caddy_template)?;
+
+        Ok(())
     }
 
-    let caddy_template = format!(
-        "
-        {{
-            http_port 80
-            https_port 443
-            log {{
-                output file {}
-            }}
-            {}
-        }}
+    fn check_redis_installed(&self) -> bool {
+        let output = Command::new("caddy").arg("list-modules").output().unwrap();
 
-        {} {{
-            reverse_proxy localhost:{}
-            tls {{
-                dns cloudflare {{env.{}}}
-            }}
-        }}
-        ",
-        linkup_file_path(LOG_FILE).display(),
-        redis_storage,
-        domains.join(", "),
-        LINKUP_LOCALSERVER_PORT,
-        LINKUP_CF_TLS_API_ENV_VAR,
-    );
+        let output_str = String::from_utf8(output.stdout).unwrap();
 
-    let caddyfile_path = linkup_file_path(CADDYFILE);
-    if fs::write(&caddyfile_path, caddy_template).is_err() {
-        return Err(CliError::WriteFile(format!(
-            "Failed to write Caddyfile at {}",
-            caddyfile_path.display(),
-        )));
+        output_str.contains("redis")
     }
 
-    Ok(())
+    fn should_start(&self) -> bool {
+        let resolvers = local_dns::list_resolvers().unwrap();
+
+        self.domains.iter().any(|domain| resolvers.contains(domain))
+    }
 }
 
-fn check_redis_installed() -> Result<()> {
-    let output = Command::new("caddy")
-        .arg("list-modules")
-        .output()
-        .map_err(|err| CliError::StartCaddy(err.to_string()))?;
+impl BackgroundService<Error> for Caddy {
+    const NAME: &str = "Caddy";
 
-    let output_str = String::from_utf8(output.stdout).map_err(|_| {
-        CliError::StartCaddy("Failed to parse caddy list-modules output".to_string())
-    })?;
+    async fn run_with_progress(
+        &self,
+        _state: &mut LocalState,
+        status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
+    ) -> Result<(), Error> {
+        if !self.should_start() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Skipped,
+                "Local DNS not installed",
+            );
 
-    if !output_str.contains("redis") {
-        println!("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.");
-        println!("Run `linkup local-dns uninstall && linkup local-dns install`");
+            return Ok(());
+        }
 
-        return Err(CliError::StartCaddy("Redis module not found".to_string()));
+        self.notify_update(&status_sender, super::RunStatus::Starting);
+
+        if signal::get_running_pid(&self.pidfile_path).is_some() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Started,
+                "Was already running",
+            );
+
+            return Ok(());
+        }
+
+        if let Err(e) = self.start() {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Error,
+                "Failed to start",
+            );
+
+            return Err(e);
+        }
+
+        self.notify_update(&status_sender, super::RunStatus::Started);
+
+        Ok(())
     }
-
-    Ok(())
 }

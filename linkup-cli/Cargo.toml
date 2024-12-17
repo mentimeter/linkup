@@ -1,6 +1,6 @@
 [package]
 name = "linkup-cli"
-version = "1.3.0"
+version = "1.4.0"
 edition = "2021"
 
 [[bin]]
@@ -12,8 +12,7 @@ clap = { version = "4.5.20", features = ["derive", "cargo"] }
 clap_complete = "4.5.33"
 colored = "2.1.0"
 ctrlc = { version = "3.4.5", features = ["termination"] }
-daemonize = "0.5.0"
-hickory-resolver = "0.24.1"
+hickory-resolver = { version = "0.24.1", features = ["tokio-runtime"] }
 linkup = { path = "../linkup" }
 linkup-local-server = { path = "../local-server" }
 log = "0.4.22"
@@ -27,6 +26,7 @@ reqwest = { version = "0.12.8", default-features = false, features = [
 serde = "1.0.210"
 serde_json = "1.0.129"
 serde_yaml = "0.9.34"
+tokio = { version = "1.40.0", features = ["macros"] }
 thiserror = "1.0.64"
 url = { version = "2.5.2", features = ["serde"] }
 base64 = "0.22.1"

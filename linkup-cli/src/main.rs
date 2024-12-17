@@ -6,16 +6,15 @@ use colored::Colorize;
 use health::health;
 use thiserror::Error;
 
-mod background_booting;
 mod completion;
 mod env_files;
 mod health;
 mod local_config;
 mod local_dns;
-mod paid_tunnel;
 mod preview;
 mod remote_local;
 mod reset;
+mod server;
 mod services;
 mod signal;
 mod start;
@@ -28,7 +27,8 @@ use completion::completion;
 use preview::preview;
 use remote_local::{local, remote};
 use reset::reset;
-use start::start;
+use server::server;
+use start::{start, StartArgs};
 use status::status;
 use stop::stop;
 
@@ -36,9 +36,6 @@ const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
-const LINKUP_LOCALSERVER_PID_FILE: &str = "localserver-pid";
-const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
-const LINKUP_LOCALDNS_INSTALL: &str = "localdns-install";
 const LINKUP_CF_TLS_API_ENV_VAR: &str = "LINKUP_CF_API_TOKEN";
 
 pub fn linkup_dir_path() -> PathBuf {
@@ -105,6 +102,8 @@ pub enum CliError {
     StartDNSMasq(String),
     #[error("could not load config to {0}: {1}")]
     LoadConfig(String, String),
+    #[error("could not start: {0}")]
+    StartErr(String),
     #[error("could not stop: {0}")]
     StopErr(String),
     #[error("could not get status: {0}")]
@@ -133,6 +132,8 @@ pub enum CliError {
     FileErr(String, String),
     #[error("{0}")]
     IOError(#[from] std::io::Error),
+    #[error("{0}")]
+    WorkerClientErr(#[from] worker_client::Error),
 }
 
 #[derive(Error, Debug)]
@@ -251,20 +252,36 @@ enum Commands {
         #[arg(long, help = "Print the request body instead of sending it.")]
         print_request: bool,
     },
+
+    // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
+    // It is called on `start` to start the local-server.
+    #[clap(hide = true)]
+    Server {
+        #[arg(long)]
+        pidfile: String,
+    },
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     ensure_linkup_dir()?;
 
     match &cli.command {
         Commands::Health { json } => health(*json),
-        Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel),
-        Commands::Stop => stop(),
-        Commands::Reset => reset(),
-        Commands::Local { service_names, all } => local(service_names, *all),
-        Commands::Remote { service_names, all } => remote(service_names, *all),
+        Commands::Start { no_tunnel } => {
+            start(StartArgs {
+                config_arg: &cli.config,
+                no_tunnel: *no_tunnel,
+                fresh_state: true,
+            })
+            .await
+        }
+        Commands::Stop => stop(true),
+        Commands::Reset => reset().await,
+        Commands::Local { service_names, all } => local(service_names, *all).await,
+        Commands::Remote { service_names, all } => remote(service_names, *all).await,
         Commands::Status { json, all } => {
             // TODO(augustocesar)[2024-10-28]: Remove --all/-a in a future release.
             // Do not print the warning in case of JSON so it doesn't break any usage if the result of the command
@@ -286,6 +303,7 @@ fn main() -> Result<()> {
         Commands::Preview {
             services,
             print_request,
-        } => preview(&cli.config, services, *print_request),
+        } => preview(&cli.config, services, *print_request).await,
+        Commands::Server { pidfile } => server(pidfile).await,
     }
 }

@@ -4,9 +4,8 @@ use std::{
 };
 
 use crate::{
-    linkup_file_path,
     local_config::{config_path, get_config},
-    services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR, LINKUP_LOCALDNS_INSTALL,
+    services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
 };
 
 pub fn install(config_arg: &Option<String>) -> Result<()> {
@@ -36,26 +35,12 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
     install_resolvers(&input_config.top_level_domains())?;
 
     println!("Installing extra caddy packages, this could take a while...");
-    services::caddy::install_cloudflare_package()?;
-    services::caddy::install_redis_package()?;
-
-    if fs::write(linkup_file_path(LINKUP_LOCALDNS_INSTALL), "").is_err() {
-        return Err(CliError::LocalDNSInstall(format!(
-            "Failed to write install localdns file at {}",
-            linkup_file_path(LINKUP_LOCALDNS_INSTALL).display()
-        )));
-    }
+    services::Caddy::install_extra_packages();
 
     Ok(())
 }
 
 pub fn uninstall(config_arg: &Option<String>) -> Result<()> {
-    let install_check_file = linkup_file_path(LINKUP_LOCALDNS_INSTALL);
-    if !install_check_file.exists() {
-        println!("Linkup local-dns is not installed");
-        return Ok(());
-    }
-
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
@@ -66,14 +51,6 @@ pub fn uninstall(config_arg: &Option<String>) -> Result<()> {
     }
 
     uninstall_resolvers(&input_config.top_level_domains())?;
-
-    if let Err(err) = fs::remove_file(install_check_file) {
-        return Err(CliError::LocalDNSUninstall(format!(
-            "Failed to delete localdns file at {}. Reason: {}",
-            linkup_file_path(LINKUP_LOCALDNS_INSTALL).display(),
-            err
-        )));
-    }
 
     Ok(())
 }
@@ -146,6 +123,14 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
     kill_dns_responder()?;
 
     Ok(())
+}
+
+pub fn list_resolvers() -> Result<Vec<String>> {
+    let resolvers = fs::read_dir("/etc/resolver/")?
+        .map(|f| f.unwrap().file_name().into_string().unwrap())
+        .collect();
+
+    Ok(resolvers)
 }
 
 fn flush_dns_cache() -> Result<()> {

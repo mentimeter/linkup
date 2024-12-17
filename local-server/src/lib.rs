@@ -71,8 +71,7 @@ pub fn linkup_router() -> Router {
         )
 }
 
-#[tokio::main]
-pub async fn local_linkup_main() -> std::io::Result<()> {
+pub async fn start_server() -> std::io::Result<()> {
     let app = linkup_router();
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", LINKUP_LOCALSERVER_PORT))
@@ -84,6 +83,11 @@ pub async fn local_linkup_main() -> std::io::Result<()> {
         .await?;
 
     Ok(())
+}
+
+#[tokio::main]
+pub async fn local_linkup_main() -> std::io::Result<()> {
+    start_server().await
 }
 
 async fn linkup_request_handler(

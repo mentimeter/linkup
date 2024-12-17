@@ -1,10 +1,10 @@
 use crate::local_config::{config_path, get_config};
-use crate::status::{format_state_domains, print_session_status, SessionStatus};
+use crate::status::{format_state_domains, SessionStatus};
 use crate::worker_client::WorkerClient;
 use crate::CliError;
 use linkup::CreatePreviewRequest;
 
-pub fn preview(
+pub async fn preview(
     config: &Option<String>,
     services: &[(String, String)],
     print_request: bool,
@@ -24,12 +24,14 @@ pub fn preview(
 
     let preview_name = WorkerClient::from(&input_config)
         .preview(&create_preview_request)
+        .await
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
-    print_session_status(&SessionStatus {
+    let status = SessionStatus {
         name: preview_name.clone(),
         domains: format_state_domains(&preview_name, &input_config.domains),
-    });
+    };
+    status.print();
 
     Ok(())
 }

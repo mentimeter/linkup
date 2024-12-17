@@ -8,9 +8,16 @@ use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{CreatePreviewRequest, StorableDomain, StorableRewrite, StorableService};
+use linkup::{
+    CreatePreviewRequest, StorableDomain, StorableRewrite, StorableService, StorableSession,
+    UpdateSessionRequest,
+};
 
-use crate::{linkup_file_path, CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE};
+use crate::{
+    linkup_file_path, services,
+    worker_client::{self, WorkerClient},
+    CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
+};
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct LocalState {
@@ -184,6 +191,12 @@ pub struct YamlLocalService {
     rewrites: Option<Vec<StorableRewrite>>,
 }
 
+#[derive(Debug)]
+pub struct ServerConfig {
+    pub local: StorableSession,
+    pub remote: StorableSession,
+}
+
 pub fn config_to_state(
     yaml_config: YamlLocalConfig,
     config_path: String,
@@ -277,6 +290,92 @@ pub fn get_config(config_path: &str) -> Result<YamlLocalConfig, CliError> {
     };
 
     Ok(yaml_config)
+}
+
+// This method gets the local state and uploads it to both the local linkup server and
+// the remote linkup server (worker).
+pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::Error> {
+    let local_url = services::LocalServer::url();
+
+    let server_config = ServerConfig::from(state);
+    let session_name = &state.linkup.session_name;
+
+    let _ =
+        upload_config_to_server(&state.linkup.remote, session_name, server_config.remote).await?;
+    let _ = upload_config_to_server(&local_url, session_name, server_config.local).await?;
+
+    Ok(session_name.clone())
+}
+
+async fn upload_config_to_server(
+    linkup_url: &Url,
+    desired_name: &str,
+    config: StorableSession,
+) -> Result<String, worker_client::Error> {
+    let session_update_req = UpdateSessionRequest {
+        session_token: config.session_token,
+        desired_name: desired_name.to_string(),
+        services: config.services,
+        domains: config.domains,
+        cache_routes: config.cache_routes,
+    };
+
+    let session_name = WorkerClient::new(linkup_url)
+        .linkup(&session_update_req)
+        .await?;
+
+    Ok(session_name)
+}
+
+impl From<&LocalState> for ServerConfig {
+    fn from(state: &LocalState) -> Self {
+        let local_server_services = state
+            .services
+            .iter()
+            .map(|service| StorableService {
+                name: service.name.clone(),
+                location: if service.current == ServiceTarget::Remote {
+                    service.remote.clone()
+                } else {
+                    service.local.clone()
+                },
+                rewrites: Some(service.rewrites.clone()),
+            })
+            .collect::<Vec<StorableService>>();
+
+        let remote_server_services = state
+            .services
+            .iter()
+            .map(|service| StorableService {
+                name: service.name.clone(),
+                location: if service.current == ServiceTarget::Remote {
+                    service.remote.clone()
+                } else {
+                    state.get_tunnel_url()
+                },
+                rewrites: Some(service.rewrites.clone()),
+            })
+            .collect::<Vec<StorableService>>();
+
+        let local_storable_session = StorableSession {
+            session_token: state.linkup.session_token.clone(),
+            services: local_server_services,
+            domains: state.domains.clone(),
+            cache_routes: state.linkup.cache_routes.clone(),
+        };
+
+        let remote_storable_session = StorableSession {
+            session_token: state.linkup.session_token.clone(),
+            services: remote_server_services,
+            domains: state.domains.clone(),
+            cache_routes: state.linkup.cache_routes.clone(),
+        };
+
+        ServerConfig {
+            local: local_storable_session,
+            remote: remote_storable_session,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1,44 +1,245 @@
 use std::{
-    env, fs,
+    collections::HashMap,
+    fs,
+    io::stdout,
     path::{Path, PathBuf},
+    sync,
+    thread::{self, sleep, JoinHandle},
+    time::Duration,
 };
 
 use colored::Colorize;
+use crossterm::{cursor, ExecutableCommand};
 
 use crate::{
-    background_booting::{wait_for_dns_ok, BackgroundServices, LocalBackgroundServices},
     env_files::write_to_env_file,
-    linkup_file_path,
     local_config::{config_path, config_to_state, get_config},
-    paid_tunnel::{CfPaidTunnelManager, PaidTunnelManager},
-    services::tunnel::{CfTunnelManager, TunnelManager},
-    status::print_session_names,
-    system::{RealSystem, System},
-    LINKUP_LOCALDNS_INSTALL,
+    services::{self, BackgroundService},
+    status::{format_state_domains, SessionStatus},
 };
-use crate::{
-    local_config::LocalState,
-    status::{server_status, ServerStatus},
-    CliError,
-};
+use crate::{local_config::LocalState, CliError};
 
-pub fn start(config_arg: &Option<String>, no_tunnel: bool) -> Result<(), CliError> {
-    env_logger::init();
-    let is_paid = use_paid_tunnels();
-    let state = load_and_save_state(config_arg, no_tunnel, is_paid)?;
-    set_linkup_env(state.clone())?;
-    if is_paid {
-        start_paid_tunnel(
-            &RealSystem,
-            &CfPaidTunnelManager,
-            &LocalBackgroundServices,
-            &CfTunnelManager,
-            state,
-        )?;
-    } else {
-        start_free_tunnel(state, no_tunnel)?;
+const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+pub struct StartArgs<'a> {
+    /// Path to the Linkup config to be used as base in case `fresh_state` argument is `true`.
+    pub config_arg: &'a Option<String>,
+
+    /// If there should not be a Cloudflare tunnel.
+    pub no_tunnel: bool,
+
+    /// Boolean representing if should refresh the state to what is defined on `config_arg`.
+    pub fresh_state: bool,
+}
+
+impl<'a> Default for StartArgs<'a> {
+    fn default() -> Self {
+        Self {
+            config_arg: &None,
+            no_tunnel: false,
+            fresh_state: false,
+        }
     }
+}
+
+pub async fn start<'a>(args: StartArgs<'_>) -> Result<(), CliError> {
+    env_logger::init();
+
+    let mut state = if args.fresh_state {
+        let is_paid = services::CloudflareTunnel::use_paid_tunnels();
+        let state = load_and_save_state(args.config_arg, args.no_tunnel, is_paid)?;
+        set_linkup_env(state.clone())?;
+
+        state
+    } else {
+        LocalState::load()?
+    };
+
+    let status_update_channel = sync::mpsc::channel::<services::RunUpdate>();
+
+    let local_server = services::LocalServer::new();
+    let cloudflare_tunnel = services::CloudflareTunnel::new(state.linkup.session_name.clone());
+    let caddy = services::Caddy::new(state.domain_strings());
+    let dnsmasq = services::Dnsmasq::new(state.linkup.session_name.clone(), state.domain_strings());
+
+    let mut display_thread: Option<JoinHandle<()>> = None;
+    let display_channel = sync::mpsc::channel::<bool>();
+
+    // If we are doing RUST_LOG=debug to debug if there is anything wrong, having the display thread make so it
+    // overwrites some of the output since it does some cursor moving.
+    // So in that case, we do not start the display thread.
+    if !log::log_enabled!(log::Level::Debug) {
+        display_thread = Some(spawn_display_thread(
+            &[
+                services::LocalServer::NAME,
+                services::CloudflareTunnel::NAME,
+                services::Caddy::NAME,
+                services::Dnsmasq::NAME,
+            ],
+            status_update_channel.1,
+            display_channel.1,
+        ));
+    }
+
+    // To make sure that we get the last update to the display thread before the error is bubbled up,
+    // we store any error that might happen on one of the steps and only return it after we have
+    // send the message to the display thread to stop and we join it.
+    let mut exit_error: Option<Box<dyn std::error::Error>> = None;
+
+    match local_server
+        .run_with_progress(&mut state, status_update_channel.0.clone())
+        .await
+    {
+        Ok(_) => (),
+        Err(err) => exit_error = Some(Box::new(err)),
+    }
+
+    if exit_error.is_none() {
+        match cloudflare_tunnel
+            .run_with_progress(&mut state, status_update_channel.0.clone())
+            .await
+        {
+            Ok(_) => (),
+            Err(err) => exit_error = Some(Box::new(err)),
+        }
+    }
+
+    if exit_error.is_none() {
+        match caddy
+            .run_with_progress(&mut state, status_update_channel.0.clone())
+            .await
+        {
+            Ok(_) => (),
+            Err(err) => exit_error = Some(Box::new(err)),
+        }
+    }
+
+    if exit_error.is_none() {
+        match dnsmasq
+            .run_with_progress(&mut state, status_update_channel.0.clone())
+            .await
+        {
+            Ok(_) => (),
+            Err(err) => exit_error = Some(Box::new(err)),
+        }
+    }
+
+    if let Some(display_thread) = display_thread {
+        display_channel.0.send(true).unwrap();
+        display_thread.join().unwrap();
+    }
+
+    if let Some(exit_error) = exit_error {
+        return Err(CliError::StartErr(exit_error.to_string()));
+    }
+
+    let status = SessionStatus {
+        name: state.linkup.session_name.clone(),
+        domains: format_state_domains(&state.linkup.session_name, &state.domains),
+    };
+
+    println!();
+    status.print();
+
     Ok(())
+}
+
+/// This spawns a background thread that is responsible for updating the terminal with the information
+/// about the start of the services.
+///
+/// # Arguments
+/// * `names` - These are the names of the services that are going to be displayed here. These is also
+///   the "keys" that the status receiver will listen to for updating.
+///
+/// * `status_update_receiver` - This is a [`sync::mpsc::Receiver`] on which this thread will listen
+///   for updates.
+///
+/// * `exit_signal_receiver` - This is also a [`sync::mpsc::Receiver`], where, to make sure that we always
+///   show the last update, the exit of the display thread is done by receiving any message on this receiver.
+fn spawn_display_thread(
+    names: &[&str],
+    status_update_receiver: sync::mpsc::Receiver<services::RunUpdate>,
+    exit_signal_receiver: sync::mpsc::Receiver<bool>,
+) -> thread::JoinHandle<()> {
+    let rows = names.len();
+
+    println!("Background services:");
+    println!("{:<20} {:<10}", "NAME".bold(), "STATUS".bold());
+
+    let names: Vec<String> = names.iter().map(|name| String::from(*name)).collect();
+    thread::spawn(move || {
+        std::io::stdout().execute(cursor::Hide).unwrap();
+        let mut loop_iter = 0;
+        let mut statuses = HashMap::<String, services::RunUpdate>::new();
+
+        loop {
+            if loop_iter == 0 {
+                // For the first loop, make sure we add all the services with a pending status.
+                for name in &names {
+                    statuses.insert(
+                        name.clone(),
+                        services::RunUpdate {
+                            id: name.clone(),
+                            status: services::RunStatus::Pending,
+                            details: None,
+                        },
+                    );
+                }
+            } else {
+                crossterm::execute!(std::io::stdout(), cursor::MoveUp(rows as u16)).unwrap();
+            }
+
+            for name in &names {
+                let latest_update = statuses.get(name).unwrap();
+                let mut formatted_status = match &latest_update.status {
+                    services::RunStatus::Starting => {
+                        LOADING_CHARS[loop_iter % LOADING_CHARS.len()].to_string()
+                    }
+                    status => status.to_string(),
+                };
+
+                if let Some(details) = &latest_update.details {
+                    formatted_status.push_str(&format!(" ({})", details));
+                }
+
+                let colored_status = match latest_update.status {
+                    services::RunStatus::Started => formatted_status.blue(),
+                    services::RunStatus::Error => formatted_status.yellow(),
+                    _ => formatted_status.normal(),
+                };
+
+                // This is necessary in case the previous update was a longer line
+                // than the one that is going to be shown now.
+                stdout()
+                    .execute(crossterm::terminal::Clear(
+                        crossterm::terminal::ClearType::CurrentLine,
+                    ))
+                    .unwrap();
+
+                println!("{:<20} {:<10}", name, colored_status)
+            }
+
+            match &status_update_receiver.try_recv() {
+                Ok(status_update) => {
+                    statuses.insert(status_update.id.clone(), status_update.clone());
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // To make sure we exit on the right order, only check for the exit signal in case
+                    // we are not receiving more updates on the `status_update_receiver`.
+                    match exit_signal_receiver.try_recv() {
+                        Ok(_) | Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+                        _ => (),
+                    }
+                }
+            }
+
+            loop_iter += 1;
+            sleep(Duration::from_millis(50));
+        }
+
+        std::io::stdout().execute(cursor::Show).unwrap();
+    })
 }
 
 fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
@@ -48,118 +249,6 @@ fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
             set_service_env(d.clone(), state.linkup.config_path.clone())?
         }
     }
-    Ok(())
-}
-
-fn use_paid_tunnels() -> bool {
-    env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
-        && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
-        && env::var("LINKUP_CF_API_TOKEN").is_ok()
-}
-
-fn start_paid_tunnel(
-    sys: &dyn System,
-    paid_manager: &dyn PaidTunnelManager,
-    boot: &dyn BackgroundServices,
-    tunnel_manager: &dyn TunnelManager,
-    mut state: LocalState,
-) -> Result<(), CliError> {
-    state = boot.boot_linkup_server(state.clone())?;
-
-    log::info!(
-        "Starting paid tunnel with session name: {}",
-        state.linkup.session_name
-    );
-    let tunnel_name = format!("tunnel-{}", state.linkup.session_name);
-    let mut tunnel_id = match paid_manager.get_tunnel_id(&tunnel_name) {
-        Ok(Some(id)) => id,
-        Ok(None) => "".to_string(),
-        Err(e) => return Err(e),
-    };
-
-    let mut create_tunnel = false;
-
-    if tunnel_id.is_empty() {
-        log::info!("Tunnel ID is empty");
-        create_tunnel = true;
-    } else {
-        log::info!("Tunnel ID: {}", tunnel_id);
-        let file_path = format!("{}/.cloudflared/{}.json", sys.get_env("HOME")?, tunnel_id);
-        if sys.file_exists(Path::new(&file_path)) {
-            log::info!("Tunnel config file for {}: {}", tunnel_id, file_path);
-        } else {
-            log::info!("Tunnel config file for {} does not exist", tunnel_id);
-            create_tunnel = true;
-        }
-    }
-
-    if create_tunnel {
-        println!("Creating tunnel...");
-        tunnel_id = paid_manager.create_tunnel(&tunnel_name)?;
-        paid_manager.create_dns_record(&tunnel_id, &tunnel_name)?;
-    }
-
-    if tunnel_manager.is_tunnel_running().is_err() {
-        println!("Starting paid tunnel...");
-        state.linkup.tunnel = Some(tunnel_manager.run_tunnel(&state)?);
-    } else {
-        println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
-    }
-    state.save()?;
-
-    if sys.file_exists(&linkup_file_path(LINKUP_LOCALDNS_INSTALL)) {
-        boot.boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
-    }
-
-    print_session_names(&state);
-    check_local_not_started(&state)?;
-
-    Ok(())
-}
-
-fn start_free_tunnel(state: LocalState, no_tunnel: bool) -> Result<(), CliError> {
-    println!("Starting free tunnel");
-
-    if no_tunnel && !linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
-        println!("Run `linkup local-dns install` before running without a tunnel");
-
-        return Err(CliError::NoTunnelWithoutLocalDns);
-    }
-
-    let background_service = LocalBackgroundServices {};
-    let mut state = background_service.boot_linkup_server(state)?;
-
-    if state.should_use_tunnel() {
-        let tunnel_manager = CfTunnelManager {};
-        if tunnel_manager.is_tunnel_running().is_err() {
-            println!("Starting tunnel...");
-            let tunnel = tunnel_manager.run_tunnel(&state)?;
-            state.linkup.tunnel = Some(tunnel);
-        } else {
-            println!("Cloudflare tunnel was already running.. Try stopping linkup first if you have problems.");
-        }
-    } else {
-        println!(
-            "Skipping tunnel start... WARNING: not all kinds of requests will work in this mode."
-        );
-    }
-
-    if linkup_file_path(LINKUP_LOCALDNS_INSTALL).exists() {
-        background_service
-            .boot_local_dns(state.domain_strings(), state.linkup.session_name.clone())?;
-    }
-
-    if let Some(tunnel) = &state.linkup.tunnel {
-        println!("Waiting for tunnel DNS to propagate at {}...", tunnel);
-
-        wait_for_dns_ok(tunnel.clone())?;
-
-        println!();
-    }
-
-    print_session_names(&state);
-    check_local_not_started(&state)?;
-
     Ok(())
 }
 
@@ -229,313 +318,4 @@ fn set_service_env(directory: String, config_path: String) -> Result<(), CliErro
     }
 
     Ok(())
-}
-
-fn check_local_not_started(state: &LocalState) -> Result<(), CliError> {
-    for service in &state.services {
-        if service.local == service.remote {
-            continue;
-        }
-
-        if server_status(service.local.to_string(), None) == ServerStatus::Ok {
-            let warning = format!(
-                "⚠️  Service {} is already running locally!! You need to restart it for linkup's environment variables to be loaded.",
-                service.name
-            ).yellow();
-
-            println!("{}", warning);
-        }
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use mockall::{mock, predicate};
-
-    use crate::{
-        background_booting::MockBackgroundServices, local_config::LinkupState,
-        paid_tunnel::MockPaidTunnelManager, services::tunnel::MockTunnelManager,
-        system::MockSystem, CheckErr,
-    };
-
-    use url::Url;
-
-    use super::*;
-
-    mock! {
-        pub LocalState {
-            pub fn save(&self) -> Result<(), CliError>;
-        }
-    }
-
-    fn make_state(session_name: &str) -> LocalState {
-        LocalState {
-            linkup: {
-                LinkupState {
-                    session_name: session_name.to_string(),
-                    session_token: "test_token".to_string(),
-                    config_path: "/tmp/home/.linkup/config".to_string(),
-                    remote: Url::parse("http://localhost:9066").unwrap(),
-                    is_paid: Some(true),
-                    tunnel: Some(Url::parse("http://localhost:9066").unwrap()),
-                    cache_routes: None,
-                }
-            },
-            services: vec![],
-            domains: vec![],
-        }
-    }
-
-    #[test]
-    fn test_start_paid_tunnel_tunnel_exists() {
-        let mut mock_boot_bg_services = MockBackgroundServices::new();
-        let mut mock_paid_manager = MockPaidTunnelManager::new();
-        let mut mock_sys = MockSystem::new();
-        let mut mock_tunnel_manager = MockTunnelManager::new();
-
-        // Start background services
-        mock_boot_bg_services
-            .expect_boot_linkup_server()
-            .once()
-            .returning(|_| Ok(make_state("test_session")));
-
-        // Check if tunnel exists -> Yes
-        mock_paid_manager
-            .expect_get_tunnel_id()
-            .with(predicate::eq("tunnel-test_session"))
-            .returning(|_| Ok(Some("test_tunnel_id".to_string())));
-
-        // Mock HOME env var
-        mock_sys
-            .expect_get_env()
-            .with(predicate::eq("HOME"))
-            .returning(|_| Ok("/tmp/home".to_string()));
-
-        // Check if config file exists -> Yes
-        mock_sys
-            .expect_file_exists()
-            .with(predicate::eq(Path::new(
-                "/tmp/home/.cloudflared/test_tunnel_id.json",
-            )))
-            .returning(|_| true);
-
-        mock_tunnel_manager
-            .expect_is_tunnel_running()
-            .once()
-            .returning(|| Err(CheckErr::TunnelNotRunning));
-
-        // Run tunnel
-        mock_tunnel_manager
-            .expect_run_tunnel()
-            .once()
-            .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
-
-        mock_sys
-            .expect_file_exists()
-            .with(predicate::eq(linkup_file_path(LINKUP_LOCALDNS_INSTALL)))
-            .returning(|_| true);
-
-        mock_boot_bg_services
-            .expect_boot_local_dns()
-            .once()
-            .returning(|_, _| Ok(()));
-
-        // Don't create tunnel or DNS record
-        mock_paid_manager.expect_create_tunnel().never();
-        mock_paid_manager.expect_create_dns_record().never();
-
-        let result = start_paid_tunnel(
-            &mock_sys,
-            &mock_paid_manager,
-            &mock_boot_bg_services,
-            &mock_tunnel_manager,
-            make_state("test_session"),
-        );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_start_paid_tunnel_no_tunnel_exists() {
-        let mut mock_boot_bg_services = MockBackgroundServices::new();
-        let mut mock_paid_manager = MockPaidTunnelManager::new();
-        let mut mock_sys = MockSystem::new();
-        let mut mock_tunnel_manager = MockTunnelManager::new();
-
-        // Start background services
-        mock_boot_bg_services
-            .expect_boot_linkup_server()
-            .once()
-            .returning(|_| Ok(make_state("test_session")));
-
-        // Check if tunnel exists -> No
-        mock_paid_manager
-            .expect_get_tunnel_id()
-            .returning(|_| Ok(None));
-
-        // Don't read config file
-        mock_sys
-            .expect_file_exists()
-            .with(predicate::eq(Path::new("/tmp/home/.cloudflared/.json")))
-            .never();
-
-        // Create tunnel
-        mock_paid_manager
-            .expect_create_tunnel()
-            .once()
-            .with(predicate::eq("tunnel-test_session"))
-            .returning(|_| Ok("tunnel-id".to_string()));
-
-        // Create DNS record
-        mock_paid_manager
-            .expect_create_dns_record()
-            .once()
-            .with(
-                predicate::eq("tunnel-id"),
-                predicate::eq("tunnel-test_session"),
-            )
-            .returning(|_, _| Ok(()));
-
-        mock_tunnel_manager
-            .expect_is_tunnel_running()
-            .once()
-            .returning(|| Err(CheckErr::TunnelNotRunning));
-
-        // Run tunnel
-        mock_tunnel_manager
-            .expect_run_tunnel()
-            .once()
-            .with(predicate::eq(make_state("test_session")))
-            .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
-
-        mock_sys
-            .expect_file_exists()
-            .with(predicate::eq(linkup_file_path(LINKUP_LOCALDNS_INSTALL)))
-            .returning(|_| true);
-
-        mock_boot_bg_services
-            .expect_boot_local_dns()
-            .once()
-            .returning(|_, _| Ok(()));
-
-        let result = start_paid_tunnel(
-            &mock_sys,
-            &mock_paid_manager,
-            &mock_boot_bg_services,
-            &mock_tunnel_manager,
-            make_state("test_session"),
-        );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_start_paid_tunnel_tunnel_exists_but_not_config() {
-        let mut mock_boot_bg_services = MockBackgroundServices::new();
-        let mut mock_paid_manager = MockPaidTunnelManager::new();
-        let mut mock_sys = MockSystem::new();
-        let mut mock_tunnel_manager = MockTunnelManager::new();
-
-        // Start background services
-        mock_boot_bg_services
-            .expect_boot_linkup_server()
-            .once()
-            .returning(|_| Ok(make_state("test_session")));
-
-        // Check if tunnel exists -> Yes
-        mock_paid_manager
-            .expect_get_tunnel_id()
-            .with(predicate::eq("tunnel-test_session"))
-            .returning(|_| Ok(Some("tunnel_id".to_string())));
-
-        // Mock HOME env var
-        mock_sys
-            .expect_get_env()
-            .with(predicate::eq("HOME"))
-            .returning(|_| Ok("/tmp/home".to_string()));
-
-        // Check if config file exists -> No
-        mock_sys
-            .expect_file_exists()
-            .with(predicate::eq(Path::new(
-                "/tmp/home/.cloudflared/tunnel_id.json",
-            )))
-            .returning(|_| false);
-
-        // Tunnel without config is no good, so create a new one
-        mock_paid_manager
-            .expect_create_tunnel()
-            .once()
-            .with(predicate::eq("tunnel-test_session"))
-            .returning(|_| Ok("tunnel_id".to_string()));
-
-        // Create DNS record
-        mock_paid_manager
-            .expect_create_dns_record()
-            .once()
-            .with(
-                predicate::eq("tunnel_id"),
-                predicate::eq("tunnel-test_session"),
-            )
-            .returning(|_, _| Ok(()));
-
-        mock_tunnel_manager
-            .expect_is_tunnel_running()
-            .once()
-            .returning(|| Err(CheckErr::TunnelNotRunning));
-
-        // Run tunnel
-        mock_tunnel_manager
-            .expect_run_tunnel()
-            .once()
-            .with(predicate::eq(make_state("test_session")))
-            .returning(|_| Ok(Url::parse("http://localhost:9066").unwrap()));
-
-        mock_sys
-            .expect_file_exists()
-            .with(predicate::eq(linkup_file_path(LINKUP_LOCALDNS_INSTALL)))
-            .returning(|_| true);
-
-        mock_boot_bg_services
-            .expect_boot_local_dns()
-            .once()
-            .returning(|_, _| Ok(()));
-
-        let result = start_paid_tunnel(
-            &mock_sys,
-            &mock_paid_manager,
-            &mock_boot_bg_services,
-            &mock_tunnel_manager,
-            make_state("test_session"),
-        );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_start_paid_tunnel_cannot_get_tunnel_id() {
-        let mut mock_boot_bg_services = MockBackgroundServices::new();
-        let mut mock_paid_manager = MockPaidTunnelManager::new();
-        let mock_sys = MockSystem::new();
-        let mock_tunnel_manager = MockTunnelManager::new();
-
-        // Start background services
-        mock_boot_bg_services
-            .expect_boot_linkup_server()
-            .once()
-            .returning(|_| Ok(make_state("test_session")));
-
-        // Check if tunnel exists -> Error
-        mock_paid_manager
-            .expect_get_tunnel_id()
-            .with(predicate::eq("tunnel-test_session"))
-            .returning(|_| Err(CliError::StatusErr("test error".to_string())));
-
-        let result = start_paid_tunnel(
-            &mock_sys,
-            &mock_paid_manager,
-            &mock_boot_bg_services,
-            &mock_tunnel_manager,
-            make_state("test_session"),
-        );
-        assert!(result.is_err());
-    }
 }
