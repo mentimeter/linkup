@@ -238,7 +238,7 @@ pub fn status(json: bool) -> Result<(), CliError> {
             sleep(Duration::from_millis(50));
         }
 
-        stdout.execute(cursor::Show).unwrap();
+        execute!(stdout, cursor::Show, terminal::EnableLineWrap).unwrap();
     }
 
     Ok(())
