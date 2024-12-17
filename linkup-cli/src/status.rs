@@ -1,5 +1,5 @@
 use colored::{ColoredString, Colorize};
-use crossterm::{cursor, execute, style::Print, terminal, ExecutableCommand};
+use crossterm::{cursor, execute, style::Print, terminal};
 use linkup::{get_additional_headers, HeaderMap, StorableDomain, TargetService};
 use serde::{Deserialize, Serialize};
 use std::{
