@@ -1,5 +1,5 @@
 use colored::{ColoredString, Colorize};
-use crossterm::{cursor, execute, style::Print, ExecutableCommand};
+use crossterm::{cursor, execute, style::Print, terminal, ExecutableCommand};
 use linkup::{get_additional_headers, HeaderMap, StorableDomain, TargetService};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -17,6 +17,8 @@ use crate::{
 };
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const MIN_WIDTH_FOR_LOCATION: usize = 110;
+const MIN_WIDTH_FOR_KIND: usize = 50;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct Status {
@@ -50,6 +52,44 @@ struct ServiceStatus {
     priority: i8,
 }
 
+impl ServiceStatus {
+    pub fn as_table_row(&self, loading_iter: usize, terminal_width: u16) -> String {
+        let terminal_width = terminal_width as usize;
+
+        let display_status = match &self.status {
+            ServerStatus::Loading => LOADING_CHARS[loading_iter].to_string().normal(),
+            status => status.colored(),
+        };
+
+        let mut status_name = ColoredString::from(self.name.clone());
+        let mut status_component_kind = ColoredString::from(self.component_kind.clone());
+        let mut status_location = ColoredString::from(self.location.clone());
+
+        if status_component_kind.deref() == "local" {
+            status_name = status_name.bright_magenta();
+            status_component_kind = status_component_kind.bright_magenta();
+            status_location = status_location.bright_magenta();
+        };
+
+        let mut output = String::with_capacity(MIN_WIDTH_FOR_LOCATION);
+        output.push_str(&format!("{:<22}", status_name));
+
+        if terminal_width > MIN_WIDTH_FOR_KIND {
+            output.push_str(&format!("{:<16}", status_component_kind));
+        }
+
+        output.push_str(&format!("{:<8}", display_status));
+
+        if terminal_width > MIN_WIDTH_FOR_LOCATION {
+            output.push_str(&status_location);
+        }
+
+        output.push('\n');
+
+        output
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum ServerStatus {
     Ok,
@@ -77,6 +117,27 @@ impl From<Result<reqwest::blocking::Response, reqwest::Error>> for ServerStatus 
             Err(_) => ServerStatus::Timeout,
         }
     }
+}
+
+fn table_header(terminal_width: u16) -> String {
+    let terminal_width = terminal_width as usize;
+
+    let mut output = String::with_capacity(110);
+    output.push_str(&format!("{:<22}", "SERVICE NAME"));
+
+    if terminal_width > MIN_WIDTH_FOR_KIND {
+        output.push_str(&format!("{:<16}", "COMPONENT KIND"));
+    }
+
+    output.push_str(&format!("{:<8}", "STATUS"));
+
+    if terminal_width > MIN_WIDTH_FOR_LOCATION {
+        output.push_str("LOCATION");
+    }
+
+    output.push('\n');
+
+    output
 }
 
 pub fn status(json: bool) -> Result<(), CliError> {
@@ -119,14 +180,12 @@ pub fn status(json: bool) -> Result<(), CliError> {
         status.session.print();
         println!();
 
-        println!(
-            "{:<20} {:<15} {:<8} LOCATION",
-            "SERVICE NAME", "COMPONENT KIND", "STATUS",
-        );
+        let mut stdout = stdout();
 
-        stdout().execute(cursor::Hide).unwrap();
+        execute!(stdout, cursor::Hide, terminal::DisableLineWrap)?;
+
         ctrlc::set_handler(move || {
-            stdout().execute(cursor::Show).unwrap();
+            execute!(std::io::stdout(), cursor::Show, terminal::EnableLineWrap).unwrap();
             std::process::exit(130);
         })
         .expect("Failed to set CTRL+C handler");
@@ -147,35 +206,26 @@ pub fn status(json: bool) -> Result<(), CliError> {
             // It has to print the services statuses at least once before we can move the cursor
             // to the start of the stuses section.
             if iteration > 0 {
-                execute!(stdout(), cursor::MoveUp(status.services.len() as u16)).unwrap();
+                // +1 to include the header since it is also dynamic based on the width of the terminal.
+                execute!(stdout, cursor::MoveUp((status.services.len() + 1) as u16))?;
             }
+
+            let (terminal_width, _) = terminal::size().unwrap();
+
+            execute!(
+                stdout,
+                terminal::Clear(terminal::ClearType::CurrentLine),
+                Print(table_header(terminal_width))
+            )?;
 
             for i in 0..status.services.len() {
                 let status = &status.services[i];
 
-                let display_status = match &status.status {
-                    ServerStatus::Loading => {
-                        LOADING_CHARS[loading_char_iteration].to_string().normal()
-                    }
-                    status => status.colored(),
-                };
-
-                let mut status_name = ColoredString::from(status.name.clone());
-                let mut status_component_kind = ColoredString::from(status.component_kind.clone());
-                let mut status_location = ColoredString::from(status.location.clone());
-
-                if status_component_kind.deref() == "local" {
-                    status_name = status_name.bright_magenta();
-                    status_component_kind = status_component_kind.bright_magenta();
-                    status_location = status_location.bright_magenta();
-                };
-
-                let display_status = &format!(
-                    "{:<20} {:<15} {:<8} {}\n",
-                    status_name, status_component_kind, display_status, status_location
-                );
-
-                execute!(stdout(), Print(display_status),).unwrap();
+                execute!(
+                    stdout,
+                    terminal::Clear(terminal::ClearType::CurrentLine),
+                    Print(status.as_table_row(loading_char_iteration, terminal_width))
+                )?;
             }
 
             if updated_services == status.services.len() {
@@ -188,7 +238,7 @@ pub fn status(json: bool) -> Result<(), CliError> {
             sleep(Duration::from_millis(50));
         }
 
-        stdout().execute(cursor::Show).unwrap();
+        stdout.execute(cursor::Show).unwrap();
     }
 
     Ok(())
