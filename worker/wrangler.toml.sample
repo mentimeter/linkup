@@ -6,5 +6,9 @@ kv_namespaces = [
   { binding = "LINKUP_SESSIONS", id = "xxx", preview_id = "xxx" },
 ]
 
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [build]
 command = "cargo install -q worker-build && worker-build --release"
