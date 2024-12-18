@@ -22,16 +22,14 @@ pub enum Error {
 }
 
 pub struct Caddy {
-    domains: Vec<String>,
     caddyfile_path: PathBuf,
     logfile_path: PathBuf,
     pidfile_path: PathBuf,
 }
 
 impl Caddy {
-    pub fn new(domains: Vec<String>) -> Self {
+    pub fn new() -> Self {
         Self {
-            domains,
             caddyfile_path: linkup_file_path("Caddyfile"),
             logfile_path: linkup_file_path("caddy-log"),
             pidfile_path: linkup_file_path("caddy-pid"),
@@ -54,15 +52,14 @@ impl Caddy {
             .unwrap();
     }
 
-    fn start(&self) -> Result<(), Error> {
+    fn start(&self, domains: &[String]) -> Result<(), Error> {
         log::debug!("Starting {}", Self::NAME);
 
         if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
             return Err(Error::MissingTlsApiTokenEnv);
         }
 
-        let domains_and_subdomains: Vec<String> = self
-            .domains
+        let domains_and_subdomains: Vec<String> = domains
             .iter()
             .map(|domain| format!("{domain}, *.{domain}"))
             .collect();
@@ -134,7 +131,7 @@ impl Caddy {
                 }}
                 {}
             }}
-    
+
             {} {{
                 reverse_proxy localhost:{}
                 tls {{
@@ -162,10 +159,10 @@ impl Caddy {
         output_str.contains("redis")
     }
 
-    fn should_start(&self) -> bool {
+    fn should_start(&self, domains: &[String]) -> bool {
         let resolvers = local_dns::list_resolvers().unwrap();
 
-        self.domains.iter().any(|domain| resolvers.contains(domain))
+        domains.iter().any(|domain| resolvers.contains(domain))
     }
 }
 
@@ -174,10 +171,12 @@ impl BackgroundService<Error> for Caddy {
 
     async fn run_with_progress(
         &self,
-        _state: &mut LocalState,
+        state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
-        if !self.should_start() {
+        let domains = &state.domain_strings();
+
+        if !self.should_start(domains) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Skipped,
@@ -199,7 +198,7 @@ impl BackgroundService<Error> for Caddy {
             return Ok(());
         }
 
-        if let Err(e) = self.start() {
+        if let Err(e) = self.start(domains) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,

@@ -58,9 +58,9 @@ pub async fn start<'a>(args: StartArgs<'_>) -> Result<(), CliError> {
     let status_update_channel = sync::mpsc::channel::<services::RunUpdate>();
 
     let local_server = services::LocalServer::new();
-    let cloudflare_tunnel = services::CloudflareTunnel::new(state.linkup.session_name.clone());
-    let caddy = services::Caddy::new(state.domain_strings());
-    let dnsmasq = services::Dnsmasq::new(state.linkup.session_name.clone(), state.domain_strings());
+    let cloudflare_tunnel = services::CloudflareTunnel::new();
+    let caddy = services::Caddy::new();
+    let dnsmasq = services::Dnsmasq::new();
 
     let mut display_thread: Option<JoinHandle<()>> = None;
     let display_channel = sync::mpsc::channel::<bool>();

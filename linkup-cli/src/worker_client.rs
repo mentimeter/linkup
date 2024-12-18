@@ -15,6 +15,8 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("request failed with status {0}: {1}")]
     Response(StatusCode, String),
+    #[error("your session is in an inconsistent state. Stop your session before trying again.")]
+    InconsistentState,
 }
 
 pub struct WorkerClient {
