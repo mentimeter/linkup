@@ -21,6 +21,7 @@ mod start;
 mod status;
 mod stop;
 mod system;
+mod uninstall;
 mod worker_client;
 
 use completion::completion;
@@ -31,6 +32,7 @@ use server::server;
 use start::{start, StartArgs};
 use status::status;
 use stop::stop;
+use uninstall::uninstall;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
@@ -251,6 +253,8 @@ enum Commands {
         print_request: bool,
     },
 
+    Uninstall,
+
     // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
     // It is called on `start` to start the local-server.
     #[clap(hide = true)]
@@ -302,6 +306,7 @@ async fn main() -> Result<()> {
             services,
             print_request,
         } => preview(&cli.config, services, *print_request).await,
+        Commands::Uninstall => uninstall(),
         Commands::Server { pidfile } => server(pidfile).await,
     }
 }
