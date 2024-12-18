@@ -18,8 +18,6 @@ pub enum Error {
 }
 
 pub struct Dnsmasq {
-    linkup_session_name: String,
-    domains: Vec<String>,
     port: u16,
     config_file_path: PathBuf,
     log_file_path: PathBuf,
@@ -27,10 +25,8 @@ pub struct Dnsmasq {
 }
 
 impl Dnsmasq {
-    pub fn new(linkup_session_name: String, domains: Vec<String>) -> Self {
+    pub fn new() -> Self {
         Self {
-            linkup_session_name,
-            domains,
             port: 8053,
             config_file_path: linkup_file_path("dnsmasq-conf"),
             log_file_path: linkup_file_path("dnsmasq-log"),
@@ -38,12 +34,12 @@ impl Dnsmasq {
         }
     }
 
-    fn setup(&self) -> Result<(), Error> {
-        let local_domains_template = self.domains.iter().fold(String::new(), |mut acc, d| {
+    fn setup(&self, domains: &[String], linkup_session_name: &str) -> Result<(), Error> {
+        let local_domains_template = domains.iter().fold(String::new(), |mut acc, d| {
             let _ = write!(
                 acc,
                 "address=/{0}.{1}/127.0.0.1\naddress=/{0}.{1}/::1\nlocal=/{0}.{1}/\n",
-                self.linkup_session_name, d,
+                linkup_session_name, d,
             );
             acc
         });
@@ -88,10 +84,10 @@ pid-file={}\n",
         Ok(())
     }
 
-    fn should_start(&self) -> bool {
+    fn should_start(&self, domains: &[String]) -> bool {
         let resolvers = local_dns::list_resolvers().unwrap();
 
-        self.domains.iter().any(|domain| resolvers.contains(domain))
+        domains.iter().any(|domain| resolvers.contains(domain))
     }
 }
 
@@ -100,10 +96,12 @@ impl BackgroundService<Error> for Dnsmasq {
 
     async fn run_with_progress(
         &self,
-        _state: &mut LocalState,
+        state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
-        if !self.should_start() {
+        let domains = &state.domain_strings();
+
+        if !self.should_start(domains) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Skipped,
@@ -125,7 +123,7 @@ impl BackgroundService<Error> for Dnsmasq {
             return Ok(());
         }
 
-        if let Err(e) = self.setup() {
+        if let Err(e) = self.setup(domains, &state.linkup.session_name) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,

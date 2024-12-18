@@ -108,8 +108,6 @@ pub enum CliError {
     StopErr(String),
     #[error("could not get status: {0}")]
     StatusErr(String),
-    #[error("your session is in an inconsistent state. Stop your session before trying again.")]
-    InconsistentState,
     #[error("no such service: {0}")]
     NoSuchService(String),
     #[error("failed to install local dns: {0}")]

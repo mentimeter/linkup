@@ -300,11 +300,22 @@ pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::E
     let server_config = ServerConfig::from(state);
     let session_name = &state.linkup.session_name;
 
-    let _ =
+    let server_session_name =
         upload_config_to_server(&state.linkup.remote, session_name, server_config.remote).await?;
-    let _ = upload_config_to_server(&local_url, session_name, server_config.local).await?;
+    let local_session_name =
+        upload_config_to_server(&local_url, &server_session_name, server_config.local).await?;
 
-    Ok(session_name.clone())
+    if server_session_name != local_session_name {
+        log::error!(
+            "Local session has name: {} and remote has name: {}",
+            &local_session_name,
+            &server_session_name
+        );
+
+        return Err(worker_client::Error::InconsistentState);
+    }
+
+    Ok(server_session_name)
 }
 
 async fn upload_config_to_server(

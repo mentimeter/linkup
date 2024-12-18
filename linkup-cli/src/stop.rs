@@ -23,13 +23,9 @@ pub fn stop(clear_env: bool) -> Result<(), CliError> {
     }
 
     services::LocalServer::new().stop().unwrap();
-    services::CloudflareTunnel::new(state.linkup.session_name.clone())
-        .stop()
-        .unwrap();
-    services::Caddy::new(state.domain_strings()).stop().unwrap();
-    services::Dnsmasq::new(state.linkup.session_name.clone(), state.domain_strings())
-        .stop()
-        .unwrap();
+    services::CloudflareTunnel::new().stop().unwrap();
+    services::Caddy::new().stop().unwrap();
+    services::Dnsmasq::new().stop().unwrap();
 
     println!("Stopped linkup");
 
