@@ -5,13 +5,13 @@ fi
 
 # region: Dependencies
 # TODO: Maybe we want this script to be able to install the dependencies as well?
-if [ ! -x "$(command -v caddy)" ]; then
-    echo "could not find 'caddy'. Please install it first."
+if ! command -v caddy &>/dev/null; then
+    echo "Error: 'caddy' is not installed. Please install it first."
     exit 1
 fi
 
-if [ ! -x "$(command -v cloudflared)" ]; then
-    echo "could not find 'cloudflared'. Please install it first."
+if ! command -v cloudflared &>/dev/null; then
+    echo "Error: 'cloudflared' is not installed. Please install it first."
     exit 1
 fi
 # endregion: Dependencies
@@ -45,11 +45,12 @@ if [[ -z "$FETCH_OS" || -z "$FETCH_ARCH" ]]; then
 fi
 
 LOOKUP_FILE_DOWNLOAD_URL="https://github.com/mentimeter/linkup/releases/download/.*/linkup-.*-$FETCH_ARCH-$FETCH_OS.tar.gz"
-FILE_DOWNLOAD_URL=$(curl -sL \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  https://api.github.com/repos/mentimeter/linkup/releases/latest \
-  | grep -Eio "$LOOKUP_FILE_DOWNLOAD_URL"
+FILE_DOWNLOAD_URL=$(
+    curl -sL \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        https://api.github.com/repos/mentimeter/linkup/releases/latest |
+        grep -Eio "$LOOKUP_FILE_DOWNLOAD_URL"
 )
 
 if [ -z "$FILE_DOWNLOAD_URL" ]; then
@@ -69,12 +70,26 @@ mkdir -p $HOME/.linkup/bin
 mv /tmp/linkup $HOME/.linkup/bin/
 echo "Linkup installed on $HOME/.linkup/bin/linkup"
 
+rm "$LOCAL_FILE_PATH"
+
 if [[ ":$PATH:" != *":$HOME/.linkup/bin:"* ]]; then
-    # TODO: Can we do this on a better way to ensure we support more different shell?
-    # Check if is ZSH and add the bin to path if so.
-    if [ -n "${ZSH_VERSION-}" ]; then
-        echo "\n# Linkup bin\nexport PATH=\$PATH:\$HOME/.linkup/bin" >> $HOME/.zshrc
-    else
-        echo "Add the following to your shell and source it again:\n\texport PATH=\$PATH:\$HOME/.linkup/bin"
-    fi
+    SHELL_NAME=$(basename "$SHELL")
+    case "$SHELL_NAME" in
+    bash)
+        PROFILE_FILE="$HOME/.bashrc"
+        ;;
+    zsh)
+        PROFILE_FILE="$HOME/.zshrc"
+        ;;
+    fish)
+        PROFILE_FILE="$HOME/.config/fish/config.fish"
+        ;;
+    *)
+        PROFILE_FILE="$HOME/.profile"
+        ;;
+    esac
+
+    echo "Adding Linkup bin to PATH in $PROFILE_FILE"
+    echo "\n# Linkup bin\nexport PATH=\$PATH:\$HOME/.linkup/bin" >>"$PROFILE_FILE"
+    echo "Please source your profile file or restart your terminal to apply the changes."
 fi
