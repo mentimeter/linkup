@@ -6,19 +6,23 @@ use crate::local_config::LocalState;
 use crate::{services, CliError};
 
 pub fn stop(clear_env: bool) -> Result<(), CliError> {
-    let state = LocalState::load()?;
+    match (LocalState::load(), clear_env) {
+        (Ok(state), true) => {
+            // Reset env vars back to what they were before
+            for service in &state.services {
+                let remove_res = match &service.directory {
+                    Some(d) => remove_service_env(d.clone(), state.linkup.config_path.clone()),
+                    None => Ok(()),
+                };
 
-    if clear_env {
-        // Reset env vars back to what they were before
-        for service in &state.services {
-            let remove_res = match &service.directory {
-                Some(d) => remove_service_env(d.clone(), state.linkup.config_path.clone()),
-                None => Ok(()),
-            };
-
-            if let Err(e) = remove_res {
-                println!("Could not remove env for service {}: {}", service.name, e);
+                if let Err(e) = remove_res {
+                    println!("Could not remove env for service {}: {}", service.name, e);
+                }
             }
+        }
+        (Ok(_), false) => (),
+        (Err(err), _) => {
+            log::warn!("Failed to fetch local state: {}", err);
         }
     }
 
