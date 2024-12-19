@@ -3,10 +3,12 @@ use std::{env, fs, io::ErrorKind, path::PathBuf};
 use clap::{builder::ValueParser, Parser, Subcommand};
 use clap_complete::Shell;
 use colored::Colorize;
+use deploy::deploy;
 use health::health;
 use thiserror::Error;
 
 mod completion;
+mod deploy;
 mod env_files;
 mod health;
 mod local_config;
@@ -132,6 +134,8 @@ pub enum CliError {
     IOError(#[from] std::io::Error),
     #[error("{0}")]
     WorkerClientErr(#[from] worker_client::Error),
+    #[error("{0}")]
+    DeployErr(#[from] deploy::DeployError),
 }
 
 #[derive(Error, Debug)]
@@ -251,6 +255,27 @@ enum Commands {
         print_request: bool,
     },
 
+    #[clap(about = "Deploy services to Cloudflare")]
+    Deploy {
+        #[arg(
+            short = 'a',
+            long = "account-id",
+            help = "Cloudflare account ID",
+            value_name = "ACCOUNT_ID"
+        )]
+        account_id: String,
+
+        #[arg(
+            short = 'z',
+            long = "zone-ids",
+            help = "Cloudflare zone IDs",
+            value_name = "ZONE_IDS",
+            num_args = 1..,
+            required = true
+        )]
+        zone_ids: Vec<String>,
+    },
+
     // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
     // It is called on `start` to start the local-server.
     #[clap(hide = true)]
@@ -302,6 +327,10 @@ async fn main() -> Result<()> {
             services,
             print_request,
         } => preview(&cli.config, services, *print_request).await,
+        Commands::Deploy {
+            account_id,
+            zone_ids,
+        } => deploy(account_id, zone_ids).await.map_err(|e| e.into()),
         Commands::Server { pidfile } => server(pidfile).await,
     }
 }
