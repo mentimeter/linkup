@@ -1,4 +1,3 @@
-use futures::FutureExt;
 use reqwest::{multipart, Client};
 use serde::Deserialize;
 use serde_json::json;
@@ -45,23 +44,26 @@ struct CloudflareApiResponse<T> {
 pub struct AccountCloudflareApi {
     account_id: String,
     zone_ids: Vec<String>,
-    api_token: String,
+    api_key: String,
     client: Client,
 }
 
 impl AccountCloudflareApi {
-    pub fn new(account_id: String, zone_ids: Vec<String>, api_token: String) -> Self {
+    pub fn new(account_id: String, zone_ids: Vec<String>, api_key: String) -> Self {
         let client = Client::new();
         Self {
             account_id,
             zone_ids,
-            api_token,
+            api_key,
             client,
         }
     }
 
-    fn auth_header(&self) -> String {
-        format!("Bearer {}", self.api_token)
+    fn key_header(&self) -> (String, String) {
+        (
+            "Authorization".to_string(),
+            format!("Bearer {}", self.api_key),
+        )
     }
 }
 
@@ -75,12 +77,17 @@ impl CloudflareApi for AccountCloudflareApi {
         let resp = self
             .client
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header(self.key_header().0, self.key_header().1)
             .send()
             .await?;
 
         if !resp.status().is_success() {
-            return Err(DeployError::UnexpectedResponse(resp.status().to_string()));
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
         }
 
         let text = resp.text().await?;
@@ -99,12 +106,17 @@ impl CloudflareApi for AccountCloudflareApi {
         let resp = self
             .client
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header(self.key_header().0, self.key_header().1)
             .send()
             .await?;
 
         if !resp.status().is_success() {
-            return Err(DeployError::UnexpectedResponse(resp.status().to_string()));
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
         }
 
         let data: CloudflareListWorkersResponse = resp.json().await?;
@@ -150,19 +162,21 @@ impl CloudflareApi for AccountCloudflareApi {
         let metadata_json = json!({
             "main_module": metadata.main_module,
             "compatibility_date": metadata.compatibility_date,
-            "bindings": bindings_json
+            "bindings": bindings_json,
         })
         .to_string();
 
         // Create multipart form
-        let mut form = multipart::Form::new().text("metadata", metadata_json);
+        let mut form = multipart::Form::new();
+
+        form = form.text("metadata", metadata_json);
 
         for part in parts {
             form = form.part(
                 part.name.clone(),
                 multipart::Part::bytes(part.data)
                     .file_name(part.name.clone()) // not strictly required
-                    .mime_str("application/javascript")
+                    .mime_str("application/javascript+module")
                     .unwrap(),
             );
         }
@@ -170,18 +184,53 @@ impl CloudflareApi for AccountCloudflareApi {
         let resp = self
             .client
             .put(&url)
-            .header("Authorization", self.auth_header())
+            .header(self.key_header().0, self.key_header().1)
             .multipart(form)
             .send()
             .await?;
 
         if !resp.status().is_success() {
-            return Err(DeployError::UnexpectedResponse(resp.status().to_string()));
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
         }
 
         // Optionally, parse the response to confirm success
         let result_data: CloudflareApiResponse<serde_json::Value> = resp.json().await?;
 
+        if !result_data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(())
+    }
+
+    async fn remove_worker_script(&self, script_name: String) -> Result<(), DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/workers/scripts/{}",
+            self.account_id, script_name
+        );
+
+        let resp = self
+            .client
+            .delete(&url)
+            .header(self.key_header().0, self.key_header().1)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let result_data: CloudflareApiResponse<serde_json::Value> = resp.json().await?;
         if !result_data.success {
             return Err(DeployError::OtherError);
         }

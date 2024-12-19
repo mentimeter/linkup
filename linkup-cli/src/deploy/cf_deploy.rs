@@ -14,6 +14,12 @@ pub enum DeployError {
 }
 
 #[derive(Debug, Clone)]
+pub struct LinkupCfResources {
+    worker_script_name: String,
+    worker_script_parts: Vec<WorkerScriptPart>,
+}
+
+#[derive(Debug, Clone)]
 pub struct WorkerScriptInfo {
     pub id: String,
 }
@@ -24,6 +30,7 @@ pub struct WorkerMetadata {
     pub compatibility_date: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct WorkerScriptPart {
     pub name: String,
     pub data: Vec<u8>,
@@ -47,6 +54,7 @@ pub trait CloudflareApi {
         metadata: WorkerMetadata,
         parts: Vec<WorkerScriptPart>,
     ) -> Result<(), DeployError>;
+    async fn remove_worker_script(&self, script_name: String) -> Result<(), DeployError>;
 }
 
 pub trait DeployNotifier {
@@ -54,32 +62,45 @@ pub trait DeployNotifier {
     fn notify(&self, message: &str);
 }
 
-const LOCAL_SCRIPT_CONTENT: &str = r#"addEventListener('fetch', event => {
-    event.respondWith(new Response("Hello from the new Worker!", {status: 200}));
-});"#;
+const LOCAL_SCRIPT_CONTENT: &str = r#"
+export default {
+	async fetch(request, env, ctx) {
+		return new Response('Hello World!');
+	},
+};
+"#;
 
 pub async fn deploy(account_id: &str, zone_ids: &[String]) -> Result<(), DeployError> {
     println!("Deploying to Cloudflare...");
     println!("Account ID: {}", account_id);
     println!("Zone IDs: {:?}", zone_ids);
 
-    let api_token = env::var("CF_API_TOKEN").expect("Missing Cloudflare API token");
+    let api_key = env::var("CLOUDFLARE_API_KEY").expect("Missing Cloudflare API token");
     let zone_ids_strings: Vec<String> = zone_ids.iter().map(|s| s.to_string()).collect();
 
     let cloudflare_api =
-        AccountCloudflareApi::new(account_id.to_string(), zone_ids_strings, api_token);
+        AccountCloudflareApi::new(account_id.to_string(), zone_ids_strings, api_key);
     let notifier = ConsoleNotifier::new();
 
-    deploy_to_cloudflare(&cloudflare_api, &notifier).await?;
+    let resources = LinkupCfResources {
+        worker_script_name: "linkup-integration-test-script".to_string(),
+        worker_script_parts: vec![WorkerScriptPart {
+            name: "index.js".to_string(),
+            data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
+        }],
+    };
+
+    deploy_to_cloudflare(&resources, &cloudflare_api, &notifier).await?;
 
     Ok(())
 }
 
 async fn deploy_to_cloudflare(
+    resources: &LinkupCfResources,
     api: &impl CloudflareApi,
     notifier: &impl DeployNotifier,
 ) -> Result<(), DeployError> {
-    let script_name = "my-worker-script".to_string();
+    let script_name = &resources.worker_script_name;
 
     let existing_info = api.get_worker_script_info(script_name.clone()).await?;
     let needs_upload = if let Some(_) = existing_info {
@@ -98,16 +119,15 @@ async fn deploy_to_cloudflare(
             let metadata = WorkerMetadata {
                 main_module: "index.js".to_string(),
                 bindings: vec![],
-                compatibility_date: "2023-01-01".to_string(),
+                compatibility_date: "2024-12-18".to_string(),
             };
 
-            let parts = vec![WorkerScriptPart {
-                name: "index.js".to_string(),
-                data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
-            }];
-
-            api.create_worker_script(script_name, metadata, parts)
-                .await?;
+            api.create_worker_script(
+                script_name.to_string(),
+                metadata,
+                resources.worker_script_parts.clone(),
+            )
+            .await?;
             notifier.notify("Worker script uploaded successfully.");
         } else {
             notifier.notify("Deployment canceled by user.");
@@ -115,6 +135,19 @@ async fn deploy_to_cloudflare(
     } else {
         notifier.notify("No changes needed. Worker script is already up to date.");
     }
+
+    Ok(())
+}
+
+pub async fn destroy_from_cloudflare(
+    resources: &LinkupCfResources,
+    api: &impl CloudflareApi,
+    notifier: &impl DeployNotifier,
+) -> Result<(), DeployError> {
+    // Remove the worker script
+    api.remove_worker_script(resources.worker_script_name.to_string())
+        .await?;
+    notifier.notify("Worker script removed successfully.");
 
     Ok(())
 }
@@ -159,6 +192,10 @@ mod tests {
             *self.create_called_with.borrow_mut() = Some((script_name, metadata, parts));
             Ok(())
         }
+
+        async fn remove_worker_script(&self, script_name: String) -> Result<(), DeployError> {
+            todo!()
+        }
     }
 
     struct TestNotifier {
@@ -178,6 +215,16 @@ mod tests {
         }
     }
 
+    fn test_resources() -> LinkupCfResources {
+        LinkupCfResources {
+            worker_script_name: "linkup-integration-test-script".to_string(),
+            worker_script_parts: vec![WorkerScriptPart {
+                name: "index.js".to_string(),
+                data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
+            }],
+        }
+    }
+
     #[tokio::test]
     async fn test_deploy_to_cloudflare_creates_script_when_none_exists() {
         let api = TestCloudflareApi {
@@ -192,11 +239,8 @@ mod tests {
             confirmations_asked: RefCell::new(0),
         };
 
-        let account_id = "test-account";
-        let zone_ids = vec!["zone1".to_string()];
-
         // Call deploy_to_cloudflare directly since deploy is async and just a wrapper
-        let result = deploy_to_cloudflare(&api, &notifier).await;
+        let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
@@ -209,10 +253,10 @@ mod tests {
         let created = api.create_called_with.borrow();
         let (script_name, metadata, parts) = created.as_ref().unwrap();
 
-        assert_eq!(script_name, "my-worker-script");
+        assert_eq!(script_name, "linkup-integration-test-script");
         assert_eq!(metadata.main_module, "index.js");
         assert_eq!(metadata.bindings.len(), 0);
-        assert_eq!(metadata.compatibility_date, "2023-01-01");
+        assert_eq!(metadata.compatibility_date, "2024-12-18");
 
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0].name, "index.js");
@@ -238,10 +282,7 @@ mod tests {
             confirmations_asked: RefCell::new(0),
         };
 
-        let account_id = "test-account";
-        let zone_ids = vec!["zone1".to_string()];
-
-        let result = deploy_to_cloudflare(&api, &notifier).await;
+        let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
@@ -254,10 +295,10 @@ mod tests {
         let created = api.create_called_with.borrow();
         let (script_name, metadata, parts) = created.as_ref().unwrap();
 
-        assert_eq!(script_name, "my-worker-script");
+        assert_eq!(script_name, "linkup-integration-test-script");
         assert_eq!(metadata.main_module, "index.js");
         assert_eq!(metadata.bindings.len(), 0);
-        assert_eq!(metadata.compatibility_date, "2023-01-01");
+        assert_eq!(metadata.compatibility_date, "2024-12-18");
 
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0].name, "index.js");
@@ -283,10 +324,7 @@ mod tests {
             confirmations_asked: RefCell::new(0),
         };
 
-        let account_id = "test-account";
-        let zone_ids = vec!["zone1".to_string()];
-
-        let result = deploy_to_cloudflare(&api, &notifier).await;
+        let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
@@ -316,10 +354,7 @@ mod tests {
             confirmations_asked: RefCell::new(0),
         };
 
-        let account_id = "test-account";
-        let zone_ids = vec!["zone1".to_string()];
-
-        let result = deploy_to_cloudflare(&api, &notifier).await;
+        let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
@@ -331,5 +366,87 @@ mod tests {
 
         let created = api.create_called_with.borrow();
         assert!(created.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_deploy_and_destroy_real_integration() {
+        let notifier = TestNotifier {
+            messages: RefCell::new(vec![]),
+            confirmation_response: true,
+            confirmations_asked: RefCell::new(0),
+        };
+
+        // Skip test if environment variables aren't set
+        let account_id = match std::env::var("CLOUDFLARE_ACCOUNT_ID") {
+            Ok(val) => val,
+            Err(_) => {
+                eprintln!("Skipping test: CLOUDFLARE_ACCOUNT_ID is not set");
+                return;
+            }
+        };
+
+        let run_integration_test = match std::env::var("LINKUP_DEPLOY_INTEGRATION_TEST") {
+            Ok(val) => val,
+            Err(_) => {
+                eprintln!("Skipping test: LINKUP_DEPLOY_INTEGRATION_TEST is not set");
+                return;
+            }
+        };
+
+        if run_integration_test != "true" {
+            eprintln!("Skipping test: LINKUP_DEPLOY_INTEGRATION_TEST is not set to 'true'");
+            return;
+        }
+
+        // Set up Cloudflare API
+        let api_key = std::env::var("CLOUDFLARE_API_KEY").expect("CLOUDFLARE_API_KEY is not set");
+        let cloudflare_api = AccountCloudflareApi::new(
+            account_id.clone(),
+            vec!["test-zone-id".to_string()],
+            api_key,
+        );
+
+        // Deploy the worker
+        let result = deploy_to_cloudflare(&test_resources(), &cloudflare_api, &notifier).await;
+        assert!(result.is_ok(), "Deploy failed: {:?}", result);
+
+        // Verify the worker exists
+        let script_name = "linkup-integration-test-script".to_string();
+        let worker_info = cloudflare_api
+            .get_worker_script_info(script_name.clone())
+            .await;
+        assert!(
+            worker_info.is_ok(),
+            "Failed to get worker script info: {:?}",
+            worker_info
+        );
+
+        let worker_exists = worker_info.unwrap().is_some();
+        assert!(
+            worker_exists,
+            "Worker script does not exist after deployment"
+        );
+
+        // Destroy the worker
+        let destroy_result =
+            destroy_from_cloudflare(&test_resources(), &cloudflare_api, &notifier).await;
+        assert!(
+            destroy_result.is_ok(),
+            "Failed to destroy worker script: {:?}",
+            destroy_result
+        );
+
+        // Verify the worker is gone
+        let worker_info = cloudflare_api
+            .get_worker_script_info(script_name.clone())
+            .await;
+        assert!(
+            worker_info.is_ok(),
+            "Failed to get worker script info after destroy: {:?}",
+            worker_info
+        );
+
+        let worker_exists = worker_info.unwrap().is_some();
+        assert!(!worker_exists, "Worker script still exists after destroy");
     }
 }
