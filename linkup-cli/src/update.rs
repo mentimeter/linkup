@@ -30,28 +30,9 @@ enum Error {
 }
 
 pub async fn update() -> Result<(), CliError> {
-    let os = env::consts::OS;
-    let arch = env::consts::ARCH;
+    if !new_version_available().await {}
 
-    let current_version =
-        Version::try_from(CURRENT_VERSION).expect("failed to parse current version");
-
-    let release = latest_release().await;
-    let latest_version = Version::try_from(release.version.as_str()).expect(&format!(
-        "failed to parse latest version: {}",
-        release.version
-    ));
-
-    if !current_version.is_outdated(&latest_version) {
-        println!(
-            "You are already on the latest version ({})!",
-            latest_version
-        );
-
-        return Ok(());
-    }
-
-    match release.asset_for(os, arch) {
+    match available_update().await {
         Some(asset) => {
             let new_exe_path = asset.download_decompressed().await.unwrap();
 
@@ -63,14 +44,18 @@ pub async fn update() -> Result<(), CliError> {
 
             fs::remove_file(bkp_exe).unwrap();
 
-            println!("Updated to {}!", latest_version);
+            println!("Finished update!");
         }
         None => {
-            println!("No binary found for {}/{} on the latest release.", os, arch);
+            println!("No new version available.");
         }
     }
 
     Ok(())
+}
+
+pub async fn new_version_available() -> bool {
+    available_update().await.is_some()
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -203,6 +188,33 @@ impl Release {
 struct CachedLatestRelease {
     time: u64,
     release: Release,
+}
+
+async fn available_update() -> Option<Asset> {
+    let os = env::consts::OS;
+    let arch = env::consts::ARCH;
+
+    let current_version =
+        Version::try_from(CURRENT_VERSION).expect("failed to parse current version");
+
+    let release = latest_release().await;
+    let latest_version = Version::try_from(release.version.as_str()).expect(&format!(
+        "failed to parse latest version: {}",
+        release.version
+    ));
+
+    match release.asset_for(os, arch) {
+        Some(asset) => {
+            if current_version.is_outdated(&latest_version) {
+                return Some(asset);
+            } else {
+                return None;
+            }
+        }
+        None => {
+            return None;
+        }
+    }
 }
 
 async fn latest_release() -> Release {
