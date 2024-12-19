@@ -194,14 +194,32 @@ async fn available_update() -> Option<Asset> {
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
 
-    let current_version =
-        Version::try_from(CURRENT_VERSION).expect("failed to parse current version");
+    let current_version = match Version::try_from(CURRENT_VERSION) {
+        Ok(version) => version,
+        Err(error) => {
+            log::error!(
+                "failed to parse current version '{}': {}",
+                CURRENT_VERSION,
+                error
+            );
+
+            return None;
+        }
+    };
 
     let release = latest_release().await;
-    let latest_version = Version::try_from(release.version.as_str()).expect(&format!(
-        "failed to parse latest version: {}",
-        release.version
-    ));
+    let latest_version = match Version::try_from(release.version.as_str()) {
+        Ok(version) => version,
+        Err(error) => {
+            log::error!(
+                "failed to parse latest version '{}': {}",
+                release.version,
+                error
+            );
+
+            return None;
+        }
+    };
 
     match release.asset_for(os, arch) {
         Some(asset) => {
