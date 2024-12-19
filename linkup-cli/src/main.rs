@@ -22,6 +22,7 @@ mod status;
 mod stop;
 mod system;
 mod uninstall;
+mod update;
 mod worker_client;
 
 use completion::completion;
@@ -33,6 +34,7 @@ use start::{start, StartArgs};
 use status::status;
 use stop::stop;
 use uninstall::uninstall;
+use update::update;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
@@ -253,6 +255,9 @@ enum Commands {
         print_request: bool,
     },
 
+    #[clap(about = "Update linkup to the latest released version.")]
+    Update,
+
     #[clap(about = "Uninstall linkup and cleanup configurations.")]
     Uninstall,
 
@@ -308,6 +313,7 @@ async fn main() -> Result<()> {
             print_request,
         } => preview(&cli.config, services, *print_request).await,
         Commands::Uninstall => uninstall(),
+        Commands::Update => update().await,
         Commands::Server { pidfile } => server(pidfile).await,
     }
 }
