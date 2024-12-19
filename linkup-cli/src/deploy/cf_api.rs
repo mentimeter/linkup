@@ -30,6 +30,28 @@ struct CloudflareErrorInfo {
     message: String,
 }
 
+#[derive(Deserialize, Debug)]
+struct KvNamespace {
+    id: String,
+    title: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct ListKvNamespacesResponse {
+    success: bool,
+    errors: Vec<CloudflareErrorInfo>,
+    messages: Vec<CloudflareErrorInfo>,
+    result: Option<Vec<KvNamespace>>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CreateKvNamespaceResponse {
+    success: bool,
+    errors: Vec<CloudflareErrorInfo>,
+    messages: Vec<CloudflareErrorInfo>,
+    result: Option<KvNamespace>,
+}
+
 /// Download Worker -> returns raw script content
 /// Cloudflare docs: GET /accounts/{account_id}/workers/scripts/{script_name}
 /// Returns the raw worker script text if successful.
@@ -212,6 +234,117 @@ impl CloudflareApi for AccountCloudflareApi {
         let url = format!(
             "https://api.cloudflare.com/client/v4/accounts/{}/workers/scripts/{}",
             self.account_id, script_name
+        );
+
+        let resp = self
+            .client
+            .delete(&url)
+            .header(self.key_header().0, self.key_header().1)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let result_data: CloudflareApiResponse<serde_json::Value> = resp.json().await?;
+        if !result_data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(())
+    }
+
+    async fn get_kv_namespace_id(
+        &self,
+        namespace_name: String,
+    ) -> Result<Option<String>, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/storage/kv/namespaces",
+            self.account_id
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .header(self.key_header().0, self.key_header().1)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let data: ListKvNamespacesResponse = resp.json().await?;
+        if !data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        if let Some(namespaces) = data.result {
+            for ns in namespaces {
+                if ns.title == namespace_name {
+                    return Ok(Some(ns.id));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    async fn create_kv_namespace(&self, namespace_name: String) -> Result<String, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/storage/kv/namespaces",
+            self.account_id
+        );
+
+        let body = serde_json::json!({
+            "title": namespace_name
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .header(self.key_header().0, self.key_header().1)
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let data: CreateKvNamespaceResponse = resp.json().await?;
+        if !data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        if let Some(ns) = data.result {
+            Ok(ns.id)
+        } else {
+            Err(DeployError::UnexpectedResponse(
+                "No namespace ID returned".to_string(),
+            ))
+        }
+    }
+
+    async fn remove_kv_namespace(&self, namespace_id: String) -> Result<(), DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/storage/kv/namespaces/{}",
+            self.account_id, namespace_id
         );
 
         let resp = self

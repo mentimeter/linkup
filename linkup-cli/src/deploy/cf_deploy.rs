@@ -17,6 +17,7 @@ pub enum DeployError {
 pub struct LinkupCfResources {
     worker_script_name: String,
     worker_script_parts: Vec<WorkerScriptPart>,
+    kv_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +56,13 @@ pub trait CloudflareApi {
         parts: Vec<WorkerScriptPart>,
     ) -> Result<(), DeployError>;
     async fn remove_worker_script(&self, script_name: String) -> Result<(), DeployError>;
+
+    async fn get_kv_namespace_id(
+        &self,
+        namespace_name: String,
+    ) -> Result<Option<String>, DeployError>;
+    async fn create_kv_namespace(&self, namespace_id: String) -> Result<String, DeployError>;
+    async fn remove_kv_namespace(&self, namespace_id: String) -> Result<(), DeployError>;
 }
 
 pub trait DeployNotifier {
@@ -88,6 +96,7 @@ pub async fn deploy(account_id: &str, zone_ids: &[String]) -> Result<(), DeployE
             name: "index.js".to_string(),
             data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
         }],
+        kv_name: "linkup-integration-test-kv".to_string(),
     };
 
     deploy_to_cloudflare(&resources, &cloudflare_api, &notifier).await?;
@@ -136,6 +145,23 @@ async fn deploy_to_cloudflare(
         notifier.notify("No changes needed. Worker script is already up to date.");
     }
 
+    // Now handle KV namespace
+    let kv_name = &resources.kv_name;
+    let kv_ns_id = api.get_kv_namespace_id(kv_name.clone()).await?;
+    if kv_ns_id.is_none() {
+        notifier.notify(&format!(
+            "KV namespace '{}' does not exist. Creating...",
+            kv_name
+        ));
+        let new_id = api.create_kv_namespace(kv_name.clone()).await?;
+        notifier.notify(&format!(
+            "KV namespace '{}' created with ID: {}",
+            kv_name, new_id
+        ));
+    } else {
+        notifier.notify(&format!("KV namespace '{}' already exists.", kv_name));
+    }
+
     Ok(())
 }
 
@@ -148,6 +174,19 @@ pub async fn destroy_from_cloudflare(
     api.remove_worker_script(resources.worker_script_name.to_string())
         .await?;
     notifier.notify("Worker script removed successfully.");
+
+    // Remove the KV namespace if it exists
+    let kv_name = &resources.kv_name;
+    let kv_ns_id = api.get_kv_namespace_id(kv_name.clone()).await?;
+    if let Some(ns_id) = kv_ns_id {
+        api.remove_kv_namespace(ns_id.clone()).await?;
+        notifier.notify(&format!("KV namespace '{}' removed successfully.", kv_name));
+    } else {
+        notifier.notify(&format!(
+            "KV namespace '{}' does not exist, nothing to remove.",
+            kv_name
+        ));
+    }
 
     Ok(())
 }
@@ -194,7 +233,22 @@ mod tests {
         }
 
         async fn remove_worker_script(&self, script_name: String) -> Result<(), DeployError> {
-            todo!()
+            Ok(())
+        }
+
+        async fn get_kv_namespace_id(
+            &self,
+            namespace_name: String,
+        ) -> Result<Option<String>, DeployError> {
+            Ok(None)
+        }
+
+        async fn create_kv_namespace(&self, namespace_id: String) -> Result<String, DeployError> {
+            Ok("new-namespace-id".to_string())
+        }
+
+        async fn remove_kv_namespace(&self, namespace_id: String) -> Result<(), DeployError> {
+            Ok(())
         }
     }
 
@@ -222,6 +276,7 @@ mod tests {
                 name: "index.js".to_string(),
                 data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
             }],
+            kv_name: "linkup-integration-test-kv".to_string(),
         }
     }
 
@@ -244,7 +299,7 @@ mod tests {
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
-        assert_eq!(messages.len(), 2);
+        assert_eq!(messages.len(), 4);
         assert_eq!(messages[0], "Worker script differs or does not exist.");
         assert_eq!(messages[1], "Worker script uploaded successfully.");
 
@@ -286,7 +341,7 @@ mod tests {
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
-        assert_eq!(messages.len(), 2);
+        assert_eq!(messages.len(), 4);
         assert_eq!(messages[0], "Worker script differs or does not exist.");
         assert_eq!(messages[1], "Worker script uploaded successfully.");
 
@@ -328,7 +383,7 @@ mod tests {
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
-        assert_eq!(messages.len(), 1);
+        assert_eq!(messages.len(), 3);
         assert_eq!(
             messages[0],
             "No changes needed. Worker script is already up to date."
@@ -358,7 +413,7 @@ mod tests {
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
-        assert_eq!(messages.len(), 2);
+        assert_eq!(messages.len(), 4);
         assert_eq!(messages[0], "Worker script differs or does not exist.");
         assert_eq!(messages[1], "Deployment canceled by user.");
 
@@ -406,47 +461,71 @@ mod tests {
             api_key,
         );
 
-        // Deploy the worker
-        let result = deploy_to_cloudflare(&test_resources(), &cloudflare_api, &notifier).await;
+        // Deploy the resources
+        let res = test_resources();
+        let result = deploy_to_cloudflare(&res, &cloudflare_api, &notifier).await;
         assert!(result.is_ok(), "Deploy failed: {:?}", result);
 
-        // Verify the worker exists
-        let script_name = "linkup-integration-test-script".to_string();
+        // Verify the worker
+        let script_name = &res.worker_script_name;
         let worker_info = cloudflare_api
             .get_worker_script_info(script_name.clone())
             .await;
         assert!(
             worker_info.is_ok(),
-            "Failed to get worker script info: {:?}",
+            "Failed to get worker info: {:?}",
             worker_info
         );
-
-        let worker_exists = worker_info.unwrap().is_some();
         assert!(
-            worker_exists,
-            "Worker script does not exist after deployment"
+            worker_info.unwrap().is_some(),
+            "Worker script not found after deploy."
         );
 
-        // Destroy the worker
-        let destroy_result =
-            destroy_from_cloudflare(&test_resources(), &cloudflare_api, &notifier).await;
+        // Verify the KV namespace
+        let kv_name = &res.kv_name;
+        let kv_ns_id = cloudflare_api.get_kv_namespace_id(kv_name.clone()).await;
+        assert!(
+            kv_ns_id.is_ok(),
+            "Failed to get kv namespace info: {:?}",
+            kv_ns_id
+        );
+        assert!(
+            kv_ns_id.unwrap().is_some(),
+            "KV namespace not found after deploy."
+        );
+
+        // Destroy resources
+        let destroy_result = destroy_from_cloudflare(&res, &cloudflare_api, &notifier).await;
         assert!(
             destroy_result.is_ok(),
-            "Failed to destroy worker script: {:?}",
+            "Destroy failed: {:?}",
             destroy_result
         );
 
-        // Verify the worker is gone
+        // Verify worker is gone
         let worker_info = cloudflare_api
             .get_worker_script_info(script_name.clone())
             .await;
         assert!(
             worker_info.is_ok(),
-            "Failed to get worker script info after destroy: {:?}",
+            "Failed to get worker info after destroy: {:?}",
             worker_info
         );
+        assert!(
+            worker_info.unwrap().is_none(),
+            "Worker script still exists after destroy"
+        );
 
-        let worker_exists = worker_info.unwrap().is_some();
-        assert!(!worker_exists, "Worker script still exists after destroy");
+        // Verify KV namespace is gone
+        let kv_ns_id = cloudflare_api.get_kv_namespace_id(kv_name.clone()).await;
+        assert!(
+            kv_ns_id.is_ok(),
+            "Failed to get kv namespace after destroy: {:?}",
+            kv_ns_id
+        );
+        assert!(
+            kv_ns_id.unwrap().is_none(),
+            "KV namespace still exists after destroy"
+        );
     }
 }
