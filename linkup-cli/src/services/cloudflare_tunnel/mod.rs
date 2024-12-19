@@ -5,7 +5,7 @@ use std::{
     fs::{self, File},
     os::unix::process::CommandExt,
     path::PathBuf,
-    process::{self, Stdio},
+    process::{self, Command, Stdio},
     time::Duration,
 };
 
@@ -161,6 +161,10 @@ impl CloudflareTunnel {
         Ok(())
     }
 
+    pub fn running_pid(&self) -> Option<String> {
+        signal::get_running_pid(&self.pidfile_path)
+    }
+
     fn url(&self, linkup_session_name: &str) -> Result<Url, Error> {
         if Self::use_paid_tunnels() {
             return Ok(Url::parse(
@@ -252,7 +256,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
             return Err(Error::InvalidSessionName(state.linkup.session_name.clone()));
         }
 
-        if signal::get_running_pid(&self.pidfile_path).is_some() {
+        if self.running_pid().is_some() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Started,
@@ -365,4 +369,16 @@ impl BackgroundService<Error> for CloudflareTunnel {
 
         Ok(())
     }
+}
+
+pub fn is_installed() -> bool {
+    let res = Command::new("command")
+        .args(["-v", "cloudflared"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .status()
+        .unwrap();
+
+    res.success()
 }

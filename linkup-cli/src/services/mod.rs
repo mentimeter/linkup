@@ -5,10 +5,13 @@ mod cloudflare_tunnel;
 mod dnsmasq;
 mod local_server;
 
-pub use caddy::Caddy;
-pub use cloudflare_tunnel::CloudflareTunnel;
-pub use dnsmasq::Dnsmasq;
 pub use local_server::LocalServer;
+pub use {caddy::is_installed as is_caddy_installed, caddy::Caddy};
+pub use {
+    cloudflare_tunnel::is_installed as is_cloudflared_installed,
+    cloudflare_tunnel::CloudflareTunnel,
+};
+pub use {dnsmasq::is_installed as is_dnsmasq_installed, dnsmasq::Dnsmasq};
 
 use crate::local_config::LocalState;
 
