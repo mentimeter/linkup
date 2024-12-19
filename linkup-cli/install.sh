@@ -6,12 +6,12 @@ fi
 # region: Dependencies
 # TODO: Maybe we want this script to be able to install the dependencies as well?
 if ! command -v caddy &>/dev/null; then
-    echo "Error: 'caddy' is not installed. Please install it first."
+    echo "Error: 'caddy' is not installed. Please install it first.\nFor more info check: https://caddyserver.com/docs/install"
     exit 1
 fi
 
 if ! command -v cloudflared &>/dev/null; then
-    echo "Error: 'cloudflared' is not installed. Please install it first."
+    echo "Error: 'cloudflared' is not installed. Please install it first.\nFor more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
     exit 1
 fi
 # endregion: Dependencies
