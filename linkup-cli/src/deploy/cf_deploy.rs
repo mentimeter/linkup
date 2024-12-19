@@ -1,41 +1,47 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::env;
+
+use crate::deploy::cf_api::AccountCloudflareApi;
+use crate::deploy::console_notify::ConsoleNotifier;
 
 #[derive(thiserror::Error, Debug)]
 pub enum DeployError {
-    #[error("Failed to deploy to Cloudflare")]
-    CloudflareError,
+    #[error("Cloudflare API error: {0}")]
+    CloudflareApiError(#[from] reqwest::Error),
+    #[error("Unexpected Cloudflare API response: {0}")]
+    UnexpectedResponse(String),
+    #[error("Other failure")]
+    OtherError,
 }
 
 #[derive(Debug, Clone)]
-struct WorkerScriptInfo {
-    created_at: String,
+pub struct WorkerScriptInfo {
+    pub id: String,
 }
 
-struct WorkerMetadata {
-    main_module: String,
-    bindings: Vec<WorkerBinding>,
-    compatibility_date: String,
+pub struct WorkerMetadata {
+    pub main_module: String,
+    pub bindings: Vec<WorkerBinding>,
+    pub compatibility_date: String,
 }
 
-struct WorkerScriptPart {
-    name: String,
-    data: Vec<u8>,
+pub struct WorkerScriptPart {
+    pub name: String,
+    pub data: Vec<u8>,
 }
 
-struct WorkerBinding {
-    type_: String,
-    name: String,
-    text: String,
+pub struct WorkerBinding {
+    pub type_: String,
+    pub name: String,
+    pub text: String,
 }
 
-trait CloudflareApi {
-    fn get_worker_script_content(&self, script_name: String) -> Result<String, DeployError>;
-    fn get_worker_script_info(
+pub trait CloudflareApi {
+    async fn get_worker_script_content(&self, script_name: String) -> Result<String, DeployError>;
+    async fn get_worker_script_info(
         &self,
         script_name: String,
     ) -> Result<Option<WorkerScriptInfo>, DeployError>;
-    fn create_worker_script(
+    async fn create_worker_script(
         &self,
         script_name: String,
         metadata: WorkerMetadata,
@@ -57,27 +63,28 @@ pub async fn deploy(account_id: &str, zone_ids: &[String]) -> Result<(), DeployE
     println!("Account ID: {}", account_id);
     println!("Zone IDs: {:?}", zone_ids);
 
-    // Here we might call deploy_to_cloudflare with a real implementation.
-    // For example:
-    // let cloudflare_api = RealCloudflareApi::new(api_token, ...);
-    // let notifier = RealNotifier::new(...);
-    // deploy_to_cloudflare(account_id, zone_ids, &cloudflare_api, &notifier)?;
+    let api_token = env::var("CF_API_TOKEN").expect("Missing Cloudflare API token");
+    let zone_ids_strings: Vec<String> = zone_ids.iter().map(|s| s.to_string()).collect();
+
+    let cloudflare_api =
+        AccountCloudflareApi::new(account_id.to_string(), zone_ids_strings, api_token);
+    let notifier = ConsoleNotifier::new();
+
+    deploy_to_cloudflare(&cloudflare_api, &notifier).await?;
 
     Ok(())
 }
 
-fn deploy_to_cloudflare(
-    account_id: &str,
-    zone_ids: &[String],
+async fn deploy_to_cloudflare(
     api: &impl CloudflareApi,
     notifier: &impl DeployNotifier,
 ) -> Result<(), DeployError> {
     let script_name = "my-worker-script".to_string();
 
-    let existing_info = api.get_worker_script_info(script_name.clone())?;
+    let existing_info = api.get_worker_script_info(script_name.clone()).await?;
     let needs_upload = if let Some(_) = existing_info {
         // The script exists, check if the content matches
-        let existing_content = api.get_worker_script_content(script_name.clone())?;
+        let existing_content = api.get_worker_script_content(script_name.clone()).await?;
         existing_content != LOCAL_SCRIPT_CONTENT
     } else {
         // Script doesn't exist, we need to create it
@@ -99,7 +106,8 @@ fn deploy_to_cloudflare(
                 data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
             }];
 
-            api.create_worker_script(script_name, metadata, parts)?;
+            api.create_worker_script(script_name, metadata, parts)
+                .await?;
             notifier.notify("Worker script uploaded successfully.");
         } else {
             notifier.notify("Deployment canceled by user.");
@@ -113,6 +121,8 @@ fn deploy_to_cloudflare(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use super::*;
 
     struct TestCloudflareApi {
@@ -122,22 +132,25 @@ mod tests {
     }
 
     impl CloudflareApi for TestCloudflareApi {
-        fn get_worker_script_content(&self, script_name: String) -> Result<String, DeployError> {
+        async fn get_worker_script_content(
+            &self,
+            script_name: String,
+        ) -> Result<String, DeployError> {
             if let Some(content) = &self.existing_content {
                 Ok(content.clone())
             } else {
-                Err(DeployError::CloudflareError)
+                Err(DeployError::OtherError)
             }
         }
 
-        fn get_worker_script_info(
+        async fn get_worker_script_info(
             &self,
             _script_name: String,
         ) -> Result<Option<WorkerScriptInfo>, DeployError> {
             Ok(self.existing_info.clone())
         }
 
-        fn create_worker_script(
+        async fn create_worker_script(
             &self,
             script_name: String,
             metadata: WorkerMetadata,
@@ -165,8 +178,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_deploy_to_cloudflare_creates_script_when_none_exists() {
+    #[tokio::test]
+    async fn test_deploy_to_cloudflare_creates_script_when_none_exists() {
         let api = TestCloudflareApi {
             existing_info: None,
             existing_content: None,
@@ -183,7 +196,7 @@ mod tests {
         let zone_ids = vec!["zone1".to_string()];
 
         // Call deploy_to_cloudflare directly since deploy is async and just a wrapper
-        let result = deploy_to_cloudflare(account_id, &zone_ids, &api, &notifier);
+        let result = deploy_to_cloudflare(&api, &notifier).await;
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
@@ -209,11 +222,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_deploy_to_cloudflare_creates_script_when_content_differs() {
+    #[tokio::test]
+    async fn test_deploy_to_cloudflare_creates_script_when_content_differs() {
         let api = TestCloudflareApi {
             existing_info: Some(WorkerScriptInfo {
-                created_at: "2023-01-01T00:00:00Z".to_string(),
+                id: "script-id".to_string(),
             }),
             existing_content: Some("old content".to_string()),
             create_called_with: RefCell::new(None),
@@ -228,7 +241,7 @@ mod tests {
         let account_id = "test-account";
         let zone_ids = vec!["zone1".to_string()];
 
-        let result = deploy_to_cloudflare(account_id, &zone_ids, &api, &notifier);
+        let result = deploy_to_cloudflare(&api, &notifier).await;
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
@@ -254,11 +267,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_deploy_to_cloudflare_no_changes_when_content_matches() {
+    #[tokio::test]
+    async fn test_deploy_to_cloudflare_no_changes_when_content_matches() {
         let api = TestCloudflareApi {
             existing_info: Some(WorkerScriptInfo {
-                created_at: "2023-01-01T00:00:00Z".to_string(),
+                id: "script-id".to_string(),
             }),
             existing_content: Some(LOCAL_SCRIPT_CONTENT.to_string()),
             create_called_with: RefCell::new(None),
@@ -273,7 +286,7 @@ mod tests {
         let account_id = "test-account";
         let zone_ids = vec!["zone1".to_string()];
 
-        let result = deploy_to_cloudflare(account_id, &zone_ids, &api, &notifier);
+        let result = deploy_to_cloudflare(&api, &notifier).await;
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
@@ -289,8 +302,8 @@ mod tests {
         assert!(created.is_none());
     }
 
-    #[test]
-    fn test_deploy_to_cloudflare_canceled_by_user() {
+    #[tokio::test]
+    async fn test_deploy_to_cloudflare_canceled_by_user() {
         let api = TestCloudflareApi {
             existing_info: None,
             existing_content: None,
@@ -306,7 +319,7 @@ mod tests {
         let account_id = "test-account";
         let zone_ids = vec!["zone1".to_string()];
 
-        let result = deploy_to_cloudflare(account_id, &zone_ids, &api, &notifier);
+        let result = deploy_to_cloudflare(&api, &notifier).await;
         assert!(result.is_ok());
 
         let messages = notifier.messages.borrow();
