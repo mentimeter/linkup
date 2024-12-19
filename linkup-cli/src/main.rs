@@ -253,6 +253,7 @@ enum Commands {
         print_request: bool,
     },
 
+    #[clap(about = "Uninstall linkup and cleanup configurations.")]
     Uninstall,
 
     // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
