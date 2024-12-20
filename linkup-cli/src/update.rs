@@ -37,10 +37,10 @@ pub async fn update() -> Result<(), CliError> {
             let current_exe = get_exe_path().expect("failed to get the current exe path");
             let bkp_exe = current_exe.with_extension("bkp");
 
-            fs::rename(&current_exe, &bkp_exe).unwrap();
-            fs::rename(&new_exe_path, &current_exe).unwrap();
-
-            fs::remove_file(bkp_exe).unwrap();
+            fs::rename(&current_exe, &bkp_exe)
+                .expect("failed to move the current exe into a backup");
+            fs::rename(&new_exe_path, &current_exe)
+                .expect("failed to move the new exe as the current exe");
 
             println!("Finished update!");
         }
