@@ -1,4 +1,4 @@
-if [ -x "$(command -v linkup)" ]; then
+if command -v linkup &>/dev/null; then
     echo "Linkup is already installed. To update it, run 'linkup update'."
     exit 0
 fi
