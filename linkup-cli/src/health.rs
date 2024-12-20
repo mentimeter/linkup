@@ -8,12 +8,13 @@ use clap::crate_version;
 use colored::Colorize;
 use serde::Serialize;
 
-use crate::{linkup_dir_path, local_config::LocalState, CliError};
+use crate::{linkup_dir_path, local_config::LocalState, services, CliError};
 
 #[derive(Debug, Serialize)]
 struct System {
     os_name: String,
     os_version: String,
+    arch: String,
 }
 
 impl System {
@@ -21,6 +22,7 @@ impl System {
         Self {
             os_name: sysinfo::System::name().unwrap(),
             os_version: sysinfo::System::os_version().unwrap(),
+            arch: env::consts::ARCH.to_string(),
         }
     }
 }
@@ -65,36 +67,58 @@ impl EnvironmentVariables {
 
 #[derive(Debug, Serialize)]
 struct BackgroudServices {
-    caddy_pids: Vec<String>,
-    dnsmasq_pids: Vec<String>,
-    cloudflared_pids: Vec<String>,
+    linkup_server: BackgroundServiceHealth,
+    caddy: BackgroundServiceHealth,
+    dnsmasq: BackgroundServiceHealth,
+    cloudflared: BackgroundServiceHealth,
+}
+
+#[derive(Debug, Serialize)]
+enum BackgroundServiceHealth {
+    NotInstalled,
+    Stopped,
+    Running(String),
 }
 
 impl BackgroudServices {
     fn load() -> Self {
-        let mut sys = sysinfo::System::new_all();
-        sys.refresh_all();
+        let linkup_server = match services::LocalServer::new().running_pid() {
+            Some(pid) => BackgroundServiceHealth::Running(pid),
+            None => BackgroundServiceHealth::Stopped,
+        };
 
-        let mut dnsmasq_pids: Vec<String> = vec![];
-        let mut caddy_pids: Vec<String> = vec![];
-        let mut cloudflared_pids: Vec<String> = vec![];
-
-        for (pid, process) in sys.processes() {
-            let process_name = process.name();
-
-            if process_name == "dnsmasq" {
-                dnsmasq_pids.push(pid.to_string());
-            } else if process_name == "caddy" {
-                caddy_pids.push(pid.to_string());
-            } else if process_name == "cloudflared" {
-                cloudflared_pids.push(pid.to_string());
+        let dnsmasq = if services::is_dnsmasq_installed() {
+            match services::Dnsmasq::new().running_pid() {
+                Some(pid) => BackgroundServiceHealth::Running(pid),
+                None => BackgroundServiceHealth::Stopped,
             }
-        }
+        } else {
+            BackgroundServiceHealth::NotInstalled
+        };
+
+        let caddy = if services::is_caddy_installed() {
+            match services::Caddy::new().running_pid() {
+                Some(pid) => BackgroundServiceHealth::Running(pid),
+                None => BackgroundServiceHealth::Stopped,
+            }
+        } else {
+            BackgroundServiceHealth::NotInstalled
+        };
+
+        let cloudflared = if services::is_cloudflared_installed() {
+            match services::CloudflareTunnel::new().running_pid() {
+                Some(pid) => BackgroundServiceHealth::Running(pid),
+                None => BackgroundServiceHealth::Stopped,
+            }
+        } else {
+            BackgroundServiceHealth::NotInstalled
+        };
 
         Self {
-            caddy_pids,
-            cloudflared_pids,
-            dnsmasq_pids,
+            linkup_server,
+            caddy,
+            dnsmasq,
+            cloudflared,
         }
     }
 }
@@ -167,46 +191,36 @@ impl Display for Health {
             "  OS: {} ({})",
             self.system.os_name, self.system.os_version,
         )?;
+        writeln!(f, "  Architecture: {}", self.system.arch)?;
 
         writeln!(f, "{}", "Session info:".bold().italic())?;
         writeln!(f, "  Name:       {}", self.session.name)?;
         writeln!(f, "  Tunnel URL: {}", self.session.tunnel_url)?;
 
         writeln!(f, "{}", "Background sevices:".bold().italic())?;
-        write!(f, "  - Caddy       ")?;
-        if !self.background_services.caddy_pids.is_empty() {
-            writeln!(
-                f,
-                "{} ({})",
-                "RUNNING".blue(),
-                self.background_services.caddy_pids.join(",")
-            )?;
-        } else {
-            writeln!(f, "{}", "NOT RUNNING".yellow())?;
+        write!(f, "  - Linkup Server  ")?;
+        match &self.background_services.linkup_server {
+            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
+            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
+            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
         }
-
-        write!(f, "  - dnsmasq     ")?;
-        if !self.background_services.dnsmasq_pids.is_empty() {
-            writeln!(
-                f,
-                "{} ({})",
-                "RUNNING".blue(),
-                self.background_services.dnsmasq_pids.join(",")
-            )?;
-        } else {
-            writeln!(f, "{}", "NOT RUNNING".yellow())?;
+        write!(f, "  - Caddy          ")?;
+        match &self.background_services.caddy {
+            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
+            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
+            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
         }
-
-        write!(f, "  - Cloudflared ")?;
-        if !self.background_services.cloudflared_pids.is_empty() {
-            writeln!(
-                f,
-                "{} ({})",
-                "RUNNING".blue(),
-                self.background_services.cloudflared_pids.join(",")
-            )?;
-        } else {
-            writeln!(f, "{}", "NOT RUNNING".yellow())?;
+        write!(f, "  - dnsmasq        ")?;
+        match &self.background_services.dnsmasq {
+            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
+            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
+            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
+        }
+        write!(f, "  - Cloudflared    ")?;
+        match &self.background_services.cloudflared {
+            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
+            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
+            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
         }
 
         writeln!(f, "{}", "Environment variables:".bold().italic())?;

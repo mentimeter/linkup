@@ -84,6 +84,10 @@ pid-file={}\n",
         Ok(())
     }
 
+    pub fn running_pid(&self) -> Option<String> {
+        signal::get_running_pid(&self.pid_file_path)
+    }
+
     fn should_start(&self, domains: &[String]) -> bool {
         let resolvers = local_dns::list_resolvers().unwrap();
 
@@ -113,7 +117,7 @@ impl BackgroundService<Error> for Dnsmasq {
 
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
-        if signal::get_running_pid(&self.pid_file_path).is_some() {
+        if self.running_pid().is_some() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Started,
@@ -147,4 +151,16 @@ impl BackgroundService<Error> for Dnsmasq {
 
         Ok(())
     }
+}
+
+pub fn is_installed() -> bool {
+    let res = Command::new("command")
+        .args(["-v", "dnsmasq"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .status()
+        .unwrap();
+
+    res.success()
 }
