@@ -30,8 +30,6 @@ enum Error {
 }
 
 pub async fn update() -> Result<(), CliError> {
-    if !new_version_available().await {}
-
     match available_update().await {
         Some(asset) => {
             let new_exe_path = asset.download_decompressed().await.unwrap();
