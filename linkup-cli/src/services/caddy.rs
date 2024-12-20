@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    linkup_dir_path, linkup_file_path, local_config::LocalState, local_dns, signal,
+    commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState, signal,
     LINKUP_CF_TLS_API_ENV_VAR,
 };
 

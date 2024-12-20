@@ -5,7 +5,10 @@ use crate::env_files::clear_env_file;
 use crate::local_config::LocalState;
 use crate::{services, CliError};
 
-pub fn stop(clear_env: bool) -> Result<(), CliError> {
+#[derive(clap::Args)]
+pub struct Args {}
+
+pub fn stop(_args: &Args, clear_env: bool) -> Result<(), CliError> {
     match (LocalState::load(), clear_env) {
         (Ok(state), true) => {
             // Reset env vars back to what they were before

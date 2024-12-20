@@ -29,7 +29,10 @@ enum Error {
     Io(#[from] std::io::Error),
 }
 
-pub async fn update() -> Result<(), CliError> {
+#[derive(clap::Args)]
+pub struct Args {}
+
+pub async fn update(_args: &Args) -> Result<(), CliError> {
     match available_update().await {
         Some(asset) => {
             let new_exe_path = asset.download_decompressed().await.unwrap();
