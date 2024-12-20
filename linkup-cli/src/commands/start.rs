@@ -23,14 +23,6 @@ const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '�
 
 #[derive(clap::Args)]
 pub struct Args {
-    // /// Path to the Linkup config to be used as base in case `fresh_state` argument is `true`.
-    // pub config_arg: &'a Option<String>,
-
-    // /// If there should not be a Cloudflare tunnel.
-    // pub no_tunnel: bool,
-
-    // /// Boolean representing if should refresh the state to what is defined on `config_arg`.
-    // pub fresh_state: bool,
     #[clap(
         short,
         long,
@@ -38,16 +30,6 @@ pub struct Args {
     )]
     pub no_tunnel: bool,
 }
-
-// impl<'a> Default for StartArgs<'a> {
-//     fn default() -> Self {
-//         Self {
-//             config_arg: &None,
-//             no_tunnel: false,
-//             fresh_state: false,
-//         }
-//     }
-// }
 
 pub async fn start<'a>(
     args: &Args,
