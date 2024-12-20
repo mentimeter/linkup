@@ -5,14 +5,16 @@ fi
 
 # region: Dependencies
 # TODO: Maybe we want this script to be able to install the dependencies as well?
-if ! command -v caddy &>/dev/null; then
-    echo "Error: 'caddy' is not installed. Please install it first.\nFor more info check: https://caddyserver.com/docs/install"
-    exit 1
+if ! command -v cloudflared &>/dev/null; then
+    echo "WARN: 'cloudflared' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
 fi
 
-if ! command -v cloudflared &>/dev/null; then
-    echo "Error: 'cloudflared' is not installed. Please install it first.\nFor more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
-    exit 1
+if ! command -v caddy &>/dev/null; then
+    echo "WARN: 'caddy' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://caddyserver.com/docs/install"
+fi
+
+if ! command -v dnsmasq &>/dev/null; then
+    echo "WARN: 'dnsmasq' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://thekelleys.org.uk/dnsmasq/doc.html"
 fi
 # endregion: Dependencies
 
