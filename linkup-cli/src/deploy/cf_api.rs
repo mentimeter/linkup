@@ -1,5 +1,5 @@
 use reqwest::{header::HeaderMap, multipart, Client};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
@@ -68,6 +68,35 @@ pub trait CloudflareApi {
         zone_id: String,
         route_id: String,
     ) -> Result<(), DeployError>;
+
+    async fn get_ruleset(
+        &self,
+        zone_id: String,
+        name: String,
+        phase: String,
+    ) -> Result<Option<String>, DeployError>;
+    async fn create_ruleset(
+        &self,
+        zone_id: String,
+        name: String,
+        phase: String,
+    ) -> Result<String, DeployError>;
+    async fn get_ruleset_rules(
+        &self,
+        zone_id: String,
+        ruleset_id: String,
+    ) -> Result<Vec<Rule>, DeployError>;
+    async fn update_ruleset_rules(
+        &self,
+        zone_id: String,
+        ruleset_id: String,
+        rules: Vec<Rule>,
+    ) -> Result<(), DeployError>;
+    async fn remove_ruleset_rules(
+        &self,
+        zone_id: String,
+        ruleset_id: String,
+    ) -> Result<(), DeployError>;
 }
 
 #[derive(Deserialize, Debug)]
@@ -87,7 +116,7 @@ struct CloudflareListWorkersResponse {
     result: Option<Vec<CloudflareWorkerScript>>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct CloudflareErrorInfo {
     code: Option<u32>,
     message: String,
@@ -191,6 +220,48 @@ struct ZoneInfo {
     id: String,
     name: String,
     status: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Rule {
+    pub action: String,
+    pub description: String,
+    pub enabled: bool,
+    pub expression: String,
+    pub action_parameters: Option<serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RulesetListResponse {
+    pub result: Option<Vec<ListRuleset>>,
+    pub success: bool,
+    pub errors: Vec<CloudflareErrorInfo>,
+    pub messages: Vec<CloudflareErrorInfo>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ListRuleset {
+    pub id: String,
+    pub name: String,
+    pub phase: String,
+    pub version: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RulesetResponse {
+    pub result: Option<Ruleset>,
+    pub success: bool,
+    pub errors: Vec<CloudflareErrorInfo>,
+    pub messages: Vec<CloudflareErrorInfo>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Ruleset {
+    pub id: String,
+    pub name: String,
+    pub phase: String,
+    pub rules: Option<Vec<Rule>>,
+    pub version: String,
 }
 
 /// Download Worker -> returns raw script content
@@ -828,5 +899,220 @@ impl CloudflareApi for AccountCloudflareApi {
         }
 
         Ok(())
+    }
+
+    async fn get_ruleset(
+        &self,
+        zone_id: String,
+        name: String,
+        phase: String,
+    ) -> Result<Option<String>, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/zones/{}/rulesets",
+            zone_id
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let data: RulesetListResponse = resp.json().await?;
+        if !data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        if let Some(rulesets) = data.result {
+            for rs in rulesets {
+                if rs.phase == phase && rs.name == name {
+                    return Ok(Some(rs.id));
+                }
+            }
+
+            Ok(None)
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn create_ruleset(
+        &self,
+        zone_id: String,
+        name: String,
+        phase: String,
+    ) -> Result<String, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/zones/{}/rulesets",
+            zone_id
+        );
+
+        let body = serde_json::json!({
+            "name": name,
+            "kind": "zone",
+            "phase": phase,
+            "rules": [],
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.api_auth.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let data: RulesetResponse = resp.json().await?;
+        if !data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        if let Some(ruleset) = data.result {
+            Ok(ruleset.id)
+        } else {
+            Err(DeployError::UnexpectedResponse(
+                "No ruleset ID returned".to_string(),
+            ))
+        }
+    }
+
+    async fn update_ruleset_rules(
+        &self,
+        zone_id: String,
+        ruleset_id: String,
+        rules: Vec<Rule>,
+    ) -> Result<(), DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/zones/{}/rulesets/{}",
+            zone_id, ruleset_id
+        );
+
+        let body = serde_json::json!({
+            "rules": rules
+        });
+
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.api_auth.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let data: RulesetResponse = resp.json().await?;
+        if !data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(())
+    }
+
+    async fn remove_ruleset_rules(
+        &self,
+        zone_id: String,
+        ruleset_id: String,
+    ) -> Result<(), DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/zones/{}/rulesets/{}",
+            zone_id, ruleset_id
+        );
+
+        let body = serde_json::json!({
+            "rules": []
+        });
+
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.api_auth.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let data: RulesetResponse = resp.json().await?;
+        if !data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(())
+    }
+
+    async fn get_ruleset_rules(
+        &self,
+        zone_id: String,
+        ruleset_id: String,
+    ) -> Result<Vec<Rule>, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/zones/{}/rulesets/{}",
+            zone_id, ruleset_id
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let data: RulesetResponse = resp.json().await?;
+        if !data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        if let Some(ruleset) = data.result {
+            if let Some(rules) = ruleset.rules {
+                Ok(rules)
+            } else {
+                Ok(vec![])
+            }
+        } else {
+            Ok(vec![])
+        }
     }
 }

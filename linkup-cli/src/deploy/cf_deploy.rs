@@ -4,7 +4,7 @@ use crate::deploy::cf_api::AccountCloudflareApi;
 use crate::deploy::cf_auth::CloudflareTokenAuth;
 use crate::deploy::console_notify::ConsoleNotifier;
 
-use super::cf_api::CloudflareApi;
+use super::cf_api::{CloudflareApi, Rule};
 
 #[derive(thiserror::Error, Debug)]
 pub enum DeployError {
@@ -27,6 +27,14 @@ pub struct TargetCfResources {
 #[derive(Debug, Clone)]
 pub struct TargectCfZoneResources {
     routes: Vec<TargectCfRoutes>,
+    cache_rules: TargetCacheRules,
+}
+
+#[derive(Debug, Clone)]
+pub struct TargetCacheRules {
+    name: String,
+    phase: String,
+    rules: Vec<Rule>,
 }
 
 #[derive(Debug, Clone)]
@@ -120,6 +128,18 @@ pub async fn deploy(account_id: &str, zone_ids: &[String]) -> Result<(), DeployE
                 route: "linkup-integraton-test".to_string(),
                 script: "linkup-integration-test-script".to_string(),
             }],
+            cache_rules: TargetCacheRules {
+                name: "linkup-integration-test-cache-rules".to_string(),
+                phase: "http_request_firewall_custom".to_string(),
+                rules: vec![Rule {
+                    action: "block".to_string(),
+                    description: "test linkup integration rule".to_string(),
+                    enabled: true,
+                    expression: "(starts_with(http.host, \"does-not-exist-host\"))".to_string(),
+                    // action_parameters: Some(serde_json::json!({"cache": false})),
+                    action_parameters: None,
+                }],
+            },
         },
     };
 
@@ -264,7 +284,70 @@ async fn deploy_to_cloudflare(
         }
     }
 
+    for zone_id in api.zone_ids() {
+        let cache_name = resources.zone_resources.cache_rules.name.clone();
+        let cache_phase = resources.zone_resources.cache_rules.phase.clone();
+        let cache_ruleset = api
+            .get_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
+            .await?;
+        println!("got ruleset {:?}", cache_ruleset);
+        let ruleset_id = if cache_ruleset.is_none() {
+            notifier.notify("Cache ruleset does not exist. Creating...");
+            println!("creating ruleset");
+            let new_ruleset_id = api
+                .create_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
+                .await?;
+            println!("created ruleset");
+            notifier.notify(&format!(
+                "Cache ruleset created with ID: {}",
+                new_ruleset_id
+            ));
+            new_ruleset_id
+        } else {
+            cache_ruleset.unwrap()
+        };
+
+        println!("got ruleset id {:?}", ruleset_id);
+        // 2. Get current rules
+        let current_rules = api
+            .get_ruleset_rules(zone_id.clone(), ruleset_id.clone())
+            .await?;
+        let desired_rules = &resources.zone_resources.cache_rules.rules;
+        println!("got rules {:?}", current_rules);
+
+        // Compare current and desired rules
+        if !rules_equal(&current_rules, &desired_rules) {
+            notifier.notify("Cache rules differ. Updating ruleset...");
+            api.update_ruleset_rules(zone_id.clone(), ruleset_id.clone(), desired_rules.clone())
+                .await?;
+            notifier.notify("Cache ruleset updated successfully.");
+        } else {
+            notifier.notify("Cache ruleset matches desired configuration. No changes needed.");
+        }
+    }
+
     Ok(())
+}
+
+// Helper function to compare sets of rules ignoring fields like `id`, `last_updated`, `ref`, `version` that might not be in `Rule` struct
+fn rules_equal(current: &Vec<Rule>, desired: &Vec<Rule>) -> bool {
+    if current.len() != desired.len() {
+        return false;
+    }
+
+    // We'll compare rules by action, description, enabled, expression, and action_parameters.
+    for (c, d) in current.iter().zip(desired.iter()) {
+        if c.action != d.action
+            || c.description != d.description
+            || c.enabled != d.enabled
+            || c.expression != d.expression
+            || c.action_parameters != d.action_parameters
+        {
+            return false;
+        }
+    }
+
+    true
 }
 
 pub async fn destroy_from_cloudflare(
@@ -353,6 +436,28 @@ pub async fn destroy_from_cloudflare(
             "Worker script '{}' does not exist, nothing to remove.",
             script_name
         ));
+    }
+
+    for zone_id in api.zone_ids() {
+        let cache_name = resources.zone_resources.cache_rules.name.clone();
+        let cache_phase = resources.zone_resources.cache_rules.phase.clone();
+        let cache_ruleset = api
+            .get_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
+            .await?;
+        if let Some(ruleset_id) = cache_ruleset {
+            notifier.notify(&format!(
+                "Removing cache ruleset '{}' in zone '{}'.",
+                cache_name, zone_id
+            ));
+            api.remove_ruleset_rules(zone_id.clone(), ruleset_id.clone())
+                .await?;
+            notifier.notify(&format!("Cache ruleset '{}' removed.", cache_name));
+        } else {
+            notifier.notify(&format!(
+                "Cache ruleset '{}' does not exist in zone '{}', nothing to remove.",
+                cache_name, zone_id
+            ));
+        }
     }
 
     Ok(())
@@ -521,6 +626,49 @@ mod tests {
         async fn get_zone_name(&self, zone_id: String) -> Result<String, DeployError> {
             Ok("example.com".to_string())
         }
+
+        async fn get_ruleset(
+            &self,
+            zone_id: String,
+            name: String,
+            phase: String,
+        ) -> Result<Option<String>, DeployError> {
+            Ok(None)
+        }
+
+        async fn create_ruleset(
+            &self,
+            zone_id: String,
+            name: String,
+            phase: String,
+        ) -> Result<String, DeployError> {
+            Ok("new-ruleset-id".to_string())
+        }
+
+        async fn update_ruleset_rules(
+            &self,
+            zone_id: String,
+            ruleset: String,
+            rules: Vec<crate::deploy::cf_api::Rule>,
+        ) -> Result<(), DeployError> {
+            Ok(())
+        }
+
+        async fn remove_ruleset_rules(
+            &self,
+            zone_id: String,
+            ruleset: String,
+        ) -> Result<(), DeployError> {
+            Ok(())
+        }
+
+        async fn get_ruleset_rules(
+            &self,
+            zone_id: String,
+            ruleset: String,
+        ) -> Result<Vec<crate::deploy::cf_api::Rule>, DeployError> {
+            Ok(vec![])
+        }
     }
 
     struct TestNotifier {
@@ -553,6 +701,18 @@ mod tests {
                     route: "linkup-integraton-test".to_string(),
                     script: "linkup-integration-test-script".to_string(),
                 }],
+                cache_rules: TargetCacheRules {
+                    name: "linkup-integration-test-cache-rules".to_string(),
+                    phase: "http_request_firewall_custom".to_string(),
+                    rules: vec![Rule {
+                        action: "block".to_string(),
+                        description: "test linkup integration rule".to_string(),
+                        enabled: true,
+                        expression: "(starts_with(http.host, \"does-not-exist-host\"))".to_string(),
+                        // action_parameters: Some(serde_json::json!({"cache": false})),
+                        action_parameters: None,
+                    }],
+                },
             },
         }
     }
@@ -792,6 +952,29 @@ mod tests {
             );
         }
 
+        // Verify cache ruleset exists
+        let ruleset_id = cloudflare_api
+            .get_ruleset(
+                zone_id.clone(),
+                res.zone_resources.cache_rules.name.clone(),
+                res.zone_resources.cache_rules.phase.clone(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            ruleset_id.is_some(),
+            "Cache ruleset should exist after deploy"
+        );
+        let ruleset_id = ruleset_id.unwrap();
+        let current_rules = cloudflare_api
+            .get_ruleset_rules(zone_id.clone(), ruleset_id.clone())
+            .await
+            .unwrap();
+        assert!(
+            rules_equal(&current_rules, &res.zone_resources.cache_rules.rules),
+            "Cache ruleset should match desired rules after deploy"
+        );
+
         // Destroy resources
         let destroy_result = destroy_from_cloudflare(&res, &cloudflare_api, &notifier).await;
         assert!(
@@ -865,5 +1048,15 @@ mod tests {
                 route_config.route
             );
         }
+
+        // After destroy
+        let current_rules = cloudflare_api
+            .get_ruleset_rules(zone_id.clone(), ruleset_id.clone())
+            .await
+            .unwrap();
+        assert!(
+            current_rules.is_empty(),
+            "Cache rules should be empty after destroy"
+        );
     }
 }
