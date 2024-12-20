@@ -1,4 +1,5 @@
 mod cf_api;
+mod cf_auth;
 mod cf_deploy;
 mod console_notify;
 
