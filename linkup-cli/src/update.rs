@@ -219,18 +219,9 @@ async fn available_update() -> Option<Asset> {
         }
     };
 
-    match release.asset_for(os, arch) {
-        Some(asset) => {
-            if current_version.is_outdated(&latest_version) {
-                return Some(asset);
-            } else {
-                return None;
-            }
-        }
-        None => {
-            return None;
-        }
-    }
+    release
+        .asset_for(os, arch)
+        .filter(|_| current_version.is_outdated(&latest_version))
 }
 
 async fn latest_release() -> Release {
@@ -244,12 +235,12 @@ async fn latest_release() -> Release {
                         log::error!("Failed to write the release data into cache: {}", error);
                     }
 
-                    return release;
+                    release
                 }
                 Err(error) => {
                     log::error!("Failed to create release cache file: {}", error);
 
-                    return release;
+                    release
                 }
             }
         }
