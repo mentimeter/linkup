@@ -35,6 +35,16 @@ pub struct TargectCfRoutes {
     script: String,
 }
 
+impl TargectCfRoutes {
+    pub fn comment(&self) -> String {
+        format!("{}-{}", self.script, self.route)
+    }
+
+    pub fn worker_route(&self, zone_name: String) -> String {
+        format!("{}.{}/*", self.route, zone_name)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkerScriptInfo {
     pub id: String,
@@ -188,60 +198,67 @@ async fn deploy_to_cloudflare(
     // Adjust logic as needed.
     for zone_id in api.zone_ids() {
         for route_config in &resources.zone_resources.routes {
-            let dns_name = &route_config.route;
+            let route = &route_config.route;
             let script = &route_config.script;
-            let comment = format!("{}-{}", script, dns_name);
-
             // DNS Record Check
-            let existing_dns = api.get_dns_record(zone_id.clone(), comment.clone()).await?;
+            let existing_dns = api
+                .get_dns_record(zone_id.clone(), route_config.comment())
+                .await?;
             if existing_dns.is_none() {
                 notifier.notify(&format!(
                     "DNS record for '{}' not found in zone '{}'. Creating...",
-                    dns_name, zone_id
+                    route, zone_id
                 ));
                 let new_record = DNSRecord {
                     id: "".to_string(),
-                    name: dns_name.clone(),
+                    name: route.clone(),
                     record_type: "CNAME".to_string(),
                     content: cname_target.clone(),
-                    comment: comment.clone(),
+                    comment: route_config.comment(),
                     proxied: true,
                 };
                 api.create_dns_record(zone_id.clone(), new_record).await?;
                 notifier.notify(&format!(
                     "DNS record for '{}' created pointing to '{}'",
-                    dns_name, cname_target
+                    route, cname_target
                 ));
             } else {
                 notifier.notify(&format!(
                     "DNS record for '{}' already exists in zone '{}'.",
-                    dns_name, zone_id
+                    route, zone_id
                 ));
             }
 
             let zone_name = api.get_zone_name(zone_id.clone()).await?;
-            let worker_route = format!("{}.{}/*", route_config.route, zone_name);
             // Worker Route Check
             let existing_route = api
-                .get_worker_route(zone_id.clone(), worker_route.clone(), script.clone())
+                .get_worker_route(
+                    zone_id.clone(),
+                    route_config.worker_route(zone_name.clone()),
+                    script.clone(),
+                )
                 .await?;
 
             if existing_route.is_none() {
                 notifier.notify(&format!(
                     "Worker route for pattern '{}' and script '{}' not found in zone '{}'. Creating...",
-                    dns_name, script, zone_id
+                    route_config.route, route_config.script, zone_id
                 ));
 
-                api.create_worker_route(zone_id.clone(), worker_route, script.clone())
-                    .await?;
+                api.create_worker_route(
+                    zone_id.clone(),
+                    route_config.worker_route(zone_name),
+                    script.clone(),
+                )
+                .await?;
                 notifier.notify(&format!(
                     "Worker route for pattern '{}' and script '{}' created",
-                    dns_name, script
+                    route_config.route, route_config.script
                 ));
             } else {
                 notifier.notify(&format!(
                     "Worker route for pattern '{}' and script '{}' already exists in zone '{}'.",
-                    dns_name, script, zone_id
+                    route_config.route, route_config.script, zone_id
                 ));
             }
         }
@@ -261,36 +278,40 @@ pub async fn destroy_from_cloudflare(
     // For each zone, remove routes and DNS records
     for zone_id in api.zone_ids() {
         for route_config in &resources.zone_resources.routes {
-            let dns_name = &route_config.route;
+            let route = &route_config.route;
             let script = &route_config.script;
-            let comment = format!("{}-{}", script, dns_name);
 
             let zone_name = api.get_zone_name(zone_id.clone()).await?;
-            let worker_route = format!("{}.{}/*", route_config.route, zone_name);
 
             // Remove Worker route if it exists
             let existing_route = api
-                .get_worker_route(zone_id.clone(), worker_route, script.clone())
+                .get_worker_route(
+                    zone_id.clone(),
+                    route_config.worker_route(zone_name.clone()),
+                    script.clone(),
+                )
                 .await?;
             if let Some(route_id) = existing_route {
                 notifier.notify(&format!(
                     "Removing worker route for pattern '{}' and script '{}' in zone '{}'.",
-                    dns_name, script, zone_id
+                    route, script, zone_id
                 ));
                 api.remove_worker_route(zone_id.clone(), route_id).await?;
                 notifier.notify(&format!(
                     "Worker route for pattern '{}' and script '{}' removed.",
-                    dns_name, script
+                    route, script
                 ));
             } else {
                 notifier.notify(&format!(
                     "No worker route for pattern '{}' and script '{}' found in zone '{}', nothing to remove.",
-                    dns_name, script, zone_id
+                    route, script, zone_id
                 ));
             }
 
             // Remove DNS record if it exists
-            let existing_dns = api.get_dns_record(zone_id.clone(), comment).await?;
+            let existing_dns = api
+                .get_dns_record(zone_id.clone(), route_config.comment())
+                .await?;
             if let Some(record) = existing_dns {
                 notifier.notify(&format!(
                     "Removing DNS record '{}' in zone '{}'.",
@@ -302,7 +323,7 @@ pub async fn destroy_from_cloudflare(
             } else {
                 notifier.notify(&format!(
                     "No DNS record for '{}' found in zone '{}', nothing to remove.",
-                    dns_name, zone_id
+                    route, zone_id
                 ));
             }
         }
@@ -598,25 +619,6 @@ mod tests {
         );
     }
 
-    // #[tokio::test]
-    // async fn test_deploy_to_cloudflare_no_changes_when_content_matches() {
-    //     let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
-
-    //     let notifier = TestNotifier {
-    //         messages: RefCell::new(vec![]),
-    //         confirmation_response: true,
-    //         confirmations_asked: RefCell::new(0),
-    //     };
-
-    //     let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
-    //     assert!(result.is_ok());
-
-    //     assert_eq!(*notifier.confirmations_asked.borrow(), 0);
-
-    //     let created = api.create_called_with.borrow();
-    //     assert!(created.is_none());
-    // }
-
     #[tokio::test]
     async fn test_deploy_to_cloudflare_canceled_by_user() {
         let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
@@ -751,9 +753,8 @@ mod tests {
 
         // Verify DNS record exists
         for route_config in &res.zone_resources.routes {
-            let comment = format!("{}-{}", route_config.script, route_config.route);
             let existing_dns = cloudflare_api
-                .get_dns_record(zone_id.clone(), comment.clone())
+                .get_dns_record(zone_id.clone(), route_config.comment())
                 .await;
             assert!(
                 existing_dns.is_ok(),
@@ -769,14 +770,12 @@ mod tests {
         }
 
         // Verify Worker route exists
+        let zone_name = cloudflare_api.get_zone_name(zone_id.clone()).await.unwrap();
         for route_config in &res.zone_resources.routes {
-            let zone_name = cloudflare_api.get_zone_name(zone_id.clone()).await.unwrap();
-            let worker_route = format!("{}.{}/*", route_config.route, zone_name);
-
             let existing_route = cloudflare_api
                 .get_worker_route(
                     zone_id.clone(),
-                    worker_route.clone(),
+                    route_config.worker_route(zone_name.clone()),
                     route_config.script.clone(),
                 )
                 .await;
@@ -829,9 +828,8 @@ mod tests {
 
         // Verify DNS record is gone
         for route_config in &res.zone_resources.routes {
-            let comment = format!("{}-{}", route_config.script, route_config.route);
             let existing_dns = cloudflare_api
-                .get_dns_record(zone_id.clone(), comment.clone())
+                .get_dns_record(zone_id.clone(), route_config.comment())
                 .await;
             assert!(
                 existing_dns.is_ok(),
@@ -851,7 +849,7 @@ mod tests {
             let existing_route = cloudflare_api
                 .get_worker_route(
                     zone_id.clone(),
-                    route_config.route.clone(),
+                    route_config.worker_route(zone_name.clone()),
                     route_config.script.clone(),
                 )
                 .await;
