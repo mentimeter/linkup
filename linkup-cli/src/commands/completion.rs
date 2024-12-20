@@ -5,11 +5,18 @@ use clap_complete::{generate, Generator, Shell};
 
 use crate::{Cli, CliError};
 
-pub fn completion(shell: &Option<Shell>) -> Result<(), CliError> {
-    if let Some(shell) = shell {
+#[derive(clap::Args)]
+pub struct Args {
+    #[arg(long, value_enum)]
+    shell: Option<Shell>,
+}
+
+pub fn completion(args: &Args) -> Result<(), CliError> {
+    if let Some(shell) = &args.shell {
         let mut cmd = Cli::command();
         print_completions(shell, &mut cmd);
     }
+
     Ok(())
 }
 fn print_completions<G: Generator + Clone>(gen: &G, cmd: &mut Command) {

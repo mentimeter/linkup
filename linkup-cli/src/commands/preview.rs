@@ -1,23 +1,34 @@
+use crate::commands::status::{format_state_domains, SessionStatus};
 use crate::local_config::{config_path, get_config};
-use crate::status::{format_state_domains, SessionStatus};
 use crate::worker_client::WorkerClient;
 use crate::CliError;
+use clap::builder::ValueParser;
 use linkup::CreatePreviewRequest;
 
-pub async fn preview(
-    config: &Option<String>,
-    services: &[(String, String)],
+#[derive(clap::Args)]
+pub struct Args {
+    #[arg(
+        help = "<service>=<url> pairs to preview.",
+        value_parser = ValueParser::new(parse_services_tuple),
+        required = true,
+        num_args = 1..,
+    )]
+    services: Vec<(String, String)>,
+
+    #[arg(long, help = "Print the request body instead of sending it.")]
     print_request: bool,
-) -> Result<(), CliError> {
+}
+
+pub async fn preview(args: &Args, config: &Option<String>) -> Result<(), CliError> {
     let config_path = config_path(config)?;
     let input_config = get_config(&config_path)?;
     let create_preview_request: CreatePreviewRequest =
-        input_config.create_preview_request(services);
+        input_config.create_preview_request(&args.services);
     let url = input_config.linkup.remote.clone();
     let create_req_json = serde_json::to_string(&create_preview_request)
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 
-    if print_request {
+    if args.print_request {
         println!("{}", create_req_json);
         return Ok(());
     }

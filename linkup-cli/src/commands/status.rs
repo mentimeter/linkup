@@ -20,6 +20,129 @@ const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '�
 const MIN_WIDTH_FOR_LOCATION: usize = 110;
 const MIN_WIDTH_FOR_KIND: usize = 50;
 
+#[derive(clap::Args)]
+pub struct Args {
+    // Output status in JSON format
+    #[arg(long)]
+    json: bool,
+
+    #[arg(short, long)]
+    all: bool,
+}
+
+pub fn status(args: &Args) -> Result<(), CliError> {
+    // TODO(augustocesar)[2024-10-28]: Remove --all/-a in a future release.
+    // Do not print the warning in case of JSON so it doesn't break any usage if the result of the command
+    // is passed on to somewhere else.
+    if args.all && !args.json {
+        let warning = "--all/-a is a noop now. All services statuses will always be shown. \
+            This arg will be removed in a future release.\n";
+        println!("{}", warning.yellow());
+    }
+
+    let state = LocalState::load()?;
+    let linkup_services = linkup_services(&state);
+    let all_services = state.services.into_iter().chain(linkup_services);
+
+    let (services_statuses, status_receiver) =
+        prepare_services_statuses(&state.linkup.session_name, all_services);
+
+    let mut status = Status {
+        session: SessionStatus {
+            name: state.linkup.session_name.clone(),
+            domains: format_state_domains(&state.linkup.session_name, &state.domains),
+        },
+        services: services_statuses,
+    };
+
+    status.services.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then(a.component_kind.cmp(&b.component_kind))
+            .then(a.name.cmp(&b.name))
+    });
+
+    if args.json {
+        status_receiver.iter().for_each(|(name, server_status)| {
+            for service_status in status.services.iter_mut() {
+                if service_status.name == name {
+                    service_status.status = server_status.clone();
+                }
+            }
+        });
+
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&status).expect("Failed to serialize status")
+        );
+    } else {
+        status.session.print();
+        println!();
+
+        let mut stdout = stdout();
+
+        execute!(stdout, cursor::Hide, terminal::DisableLineWrap)?;
+
+        ctrlc::set_handler(move || {
+            execute!(std::io::stdout(), cursor::Show, terminal::EnableLineWrap).unwrap();
+            std::process::exit(130);
+        })
+        .expect("Failed to set CTRL+C handler");
+
+        let mut iteration = 0;
+        let mut loading_char_iteration = 0;
+        let mut updated_services = 0;
+        loop {
+            while let Some((name, server_status)) = status_receiver.try_iter().next() {
+                for service_status in status.services.iter_mut() {
+                    if service_status.name == name {
+                        service_status.status = server_status.clone();
+                        updated_services += 1;
+                    }
+                }
+            }
+
+            // It has to print the services statuses at least once before we can move the cursor
+            // to the start of the stuses section.
+            if iteration > 0 {
+                // +1 to include the header since it is also dynamic based on the width of the terminal.
+                execute!(stdout, cursor::MoveUp((status.services.len() + 1) as u16))?;
+            }
+
+            let (terminal_width, _) = terminal::size().unwrap();
+
+            execute!(
+                stdout,
+                terminal::Clear(terminal::ClearType::CurrentLine),
+                Print(table_header(terminal_width))
+            )?;
+
+            for i in 0..status.services.len() {
+                let status = &status.services[i];
+
+                execute!(
+                    stdout,
+                    terminal::Clear(terminal::ClearType::CurrentLine),
+                    Print(status.as_table_row(loading_char_iteration, terminal_width))
+                )?;
+            }
+
+            if updated_services == status.services.len() {
+                break;
+            }
+
+            loading_char_iteration = (iteration + 1) % LOADING_CHARS.len();
+            iteration += 1;
+
+            sleep(Duration::from_millis(50));
+        }
+
+        execute!(stdout, cursor::Show, terminal::EnableLineWrap).unwrap();
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct Status {
     session: SessionStatus,
@@ -138,110 +261,6 @@ fn table_header(terminal_width: u16) -> String {
     output.push('\n');
 
     output
-}
-
-pub fn status(json: bool) -> Result<(), CliError> {
-    let state = LocalState::load()?;
-    let linkup_services = linkup_services(&state);
-    let all_services = state.services.into_iter().chain(linkup_services);
-
-    let (services_statuses, status_receiver) =
-        prepare_services_statuses(&state.linkup.session_name, all_services);
-
-    let mut status = Status {
-        session: SessionStatus {
-            name: state.linkup.session_name.clone(),
-            domains: format_state_domains(&state.linkup.session_name, &state.domains),
-        },
-        services: services_statuses,
-    };
-
-    status.services.sort_by(|a, b| {
-        a.priority
-            .cmp(&b.priority)
-            .then(a.component_kind.cmp(&b.component_kind))
-            .then(a.name.cmp(&b.name))
-    });
-
-    if json {
-        status_receiver.iter().for_each(|(name, server_status)| {
-            for service_status in status.services.iter_mut() {
-                if service_status.name == name {
-                    service_status.status = server_status.clone();
-                }
-            }
-        });
-
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&status).expect("Failed to serialize status")
-        );
-    } else {
-        status.session.print();
-        println!();
-
-        let mut stdout = stdout();
-
-        execute!(stdout, cursor::Hide, terminal::DisableLineWrap)?;
-
-        ctrlc::set_handler(move || {
-            execute!(std::io::stdout(), cursor::Show, terminal::EnableLineWrap).unwrap();
-            std::process::exit(130);
-        })
-        .expect("Failed to set CTRL+C handler");
-
-        let mut iteration = 0;
-        let mut loading_char_iteration = 0;
-        let mut updated_services = 0;
-        loop {
-            while let Some((name, server_status)) = status_receiver.try_iter().next() {
-                for service_status in status.services.iter_mut() {
-                    if service_status.name == name {
-                        service_status.status = server_status.clone();
-                        updated_services += 1;
-                    }
-                }
-            }
-
-            // It has to print the services statuses at least once before we can move the cursor
-            // to the start of the stuses section.
-            if iteration > 0 {
-                // +1 to include the header since it is also dynamic based on the width of the terminal.
-                execute!(stdout, cursor::MoveUp((status.services.len() + 1) as u16))?;
-            }
-
-            let (terminal_width, _) = terminal::size().unwrap();
-
-            execute!(
-                stdout,
-                terminal::Clear(terminal::ClearType::CurrentLine),
-                Print(table_header(terminal_width))
-            )?;
-
-            for i in 0..status.services.len() {
-                let status = &status.services[i];
-
-                execute!(
-                    stdout,
-                    terminal::Clear(terminal::ClearType::CurrentLine),
-                    Print(status.as_table_row(loading_char_iteration, terminal_width))
-                )?;
-            }
-
-            if updated_services == status.services.len() {
-                break;
-            }
-
-            loading_char_iteration = (iteration + 1) % LOADING_CHARS.len();
-            iteration += 1;
-
-            sleep(Duration::from_millis(50));
-        }
-
-        execute!(stdout, cursor::Show, terminal::EnableLineWrap).unwrap();
-    }
-
-    Ok(())
 }
 
 pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> Vec<String> {
