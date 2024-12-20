@@ -5,7 +5,9 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{linkup_dir_path, linkup_file_path, local_config::LocalState, local_dns, signal};
+use crate::{
+    commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState, signal,
+};
 
 use super::BackgroundService;
 

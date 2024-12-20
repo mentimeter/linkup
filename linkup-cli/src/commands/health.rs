@@ -10,6 +10,27 @@ use serde::Serialize;
 
 use crate::{linkup_dir_path, local_config::LocalState, services, CliError};
 
+#[derive(clap::Args)]
+pub struct Args {
+    // Output status in JSON format
+    #[arg(long)]
+    json: bool,
+}
+
+pub fn health(args: &Args) -> Result<(), CliError> {
+    let health = Health::load()?;
+
+    let health = if args.json {
+        serde_json::to_string_pretty(&health).unwrap()
+    } else {
+        format!("{}", health)
+    };
+
+    println!("{}", health);
+
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 struct System {
     os_name: String,
@@ -261,18 +282,4 @@ impl Display for Health {
 
         Ok(())
     }
-}
-
-pub fn health(json: bool) -> Result<(), CliError> {
-    let health = Health::load()?;
-
-    let health = if json {
-        serde_json::to_string_pretty(&health).unwrap()
-    } else {
-        format!("{}", health)
-    };
-
-    println!("{}", health);
-
-    Ok(())
 }

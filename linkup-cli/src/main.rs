@@ -1,36 +1,15 @@
 use std::{env, fs, io::ErrorKind, path::PathBuf};
 
-use clap::{builder::ValueParser, Parser, Subcommand};
-use clap_complete::Shell;
-use colored::Colorize;
-use health::health;
+use clap::{Parser, Subcommand};
 use thiserror::Error;
 
-mod completion;
+mod commands;
 mod env_files;
-mod health;
 mod local_config;
-mod local_dns;
-mod preview;
-mod remote_local;
-mod reset;
-mod server;
 mod services;
 mod signal;
-mod start;
-mod status;
-mod stop;
 mod system;
 mod worker_client;
-
-use completion::completion;
-use preview::preview;
-use remote_local::{local, remote};
-use reset::reset;
-use server::server;
-use start::{start, StartArgs};
-use status::status;
-use stop::stop;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
@@ -162,102 +141,41 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
-enum LocalDNSSubcommand {
-    Install,
-    Uninstall,
-}
-
-#[derive(Subcommand)]
 enum Commands {
     #[clap(about = "Output the health of the CLI service")]
-    Health {
-        // Output status in JSON format
-        #[arg(long)]
-        json: bool,
-    },
+    Health(commands::HealthArgs),
 
     #[clap(about = "Start a new linkup session")]
-    Start {
-        #[clap(
-            short,
-            long,
-            help = "Start linkup in partial mode without a tunnel. Not all requests will succeed."
-        )]
-        no_tunnel: bool,
-    },
+    Start(commands::StartArgs),
 
     #[clap(about = "Stop a running linkup session")]
-    Stop,
+    Stop(commands::StopArgs),
 
     #[clap(about = "Reset a linkup session")]
-    Reset,
+    Reset(commands::ResetArgs),
 
     #[clap(about = "Route session traffic to a local service")]
-    Local {
-        service_names: Vec<String>,
-        #[arg(
-            short,
-            long,
-            help = "Route all the services to local. Cannot be used with SERVICE_NAMES.",
-            conflicts_with = "service_names"
-        )]
-        all: bool,
-    },
+    Local(commands::LocalArgs),
 
     #[clap(about = "Route session traffic to a remote service")]
-    Remote {
-        service_names: Vec<String>,
-        #[arg(
-            short,
-            long,
-            help = "Route all the services to remote. Cannot be used with SERVICE_NAMES.",
-            conflicts_with = "service_names"
-        )]
-        all: bool,
-    },
+    Remote(commands::RemoteArgs),
 
     #[clap(about = "View linkup component and service status")]
-    Status {
-        // Output status in JSON format
-        #[arg(long)]
-        json: bool,
-        #[arg(short, long)]
-        all: bool,
-    },
+    Status(commands::StatusArgs),
 
     #[clap(about = "Speed up your local environment by routing traffic locally when possible")]
-    LocalDNS {
-        #[clap(subcommand)]
-        subcommand: LocalDNSSubcommand,
-    },
+    LocalDNS(commands::LocalDnsArgs),
 
     #[clap(about = "Generate completions for your shell")]
-    Completion {
-        #[arg(long, value_enum)]
-        shell: Option<Shell>,
-    },
+    Completion(commands::CompletionArgs),
 
     #[clap(about = "Create a \"permanent\" Linkup preview")]
-    Preview {
-        #[arg(
-            help = "<service>=<url> pairs to preview.",
-            value_parser = ValueParser::new(preview::parse_services_tuple),
-            required = true,
-            num_args = 1..,
-        )]
-        services: Vec<(String, String)>,
-
-        #[arg(long, help = "Print the request body instead of sending it.")]
-        print_request: bool,
-    },
+    Preview(commands::PreviewArgs),
 
     // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
     // It is called on `start` to start the local-server.
     #[clap(hide = true)]
-    Server {
-        #[arg(long)]
-        pidfile: String,
-    },
+    Server(commands::ServerArgs),
 }
 
 #[tokio::main]
@@ -267,41 +185,16 @@ async fn main() -> Result<()> {
     ensure_linkup_dir()?;
 
     match &cli.command {
-        Commands::Health { json } => health(*json),
-        Commands::Start { no_tunnel } => {
-            start(StartArgs {
-                config_arg: &cli.config,
-                no_tunnel: *no_tunnel,
-                fresh_state: true,
-            })
-            .await
-        }
-        Commands::Stop => stop(true),
-        Commands::Reset => reset().await,
-        Commands::Local { service_names, all } => local(service_names, *all).await,
-        Commands::Remote { service_names, all } => remote(service_names, *all).await,
-        Commands::Status { json, all } => {
-            // TODO(augustocesar)[2024-10-28]: Remove --all/-a in a future release.
-            // Do not print the warning in case of JSON so it doesn't break any usage if the result of the command
-            // is passed on to somewhere else.
-            if *all && !*json {
-                let warning =
-                    "--all/-a is a noop now. All services statuses will always be shown. \
-                    This arg will be removed in a future release.\n";
-                println!("{}", warning.yellow());
-            }
-
-            status(*json)
-        }
-        Commands::LocalDNS { subcommand } => match subcommand {
-            LocalDNSSubcommand::Install => local_dns::install(&cli.config),
-            LocalDNSSubcommand::Uninstall => local_dns::uninstall(&cli.config),
-        },
-        Commands::Completion { shell } => completion(shell),
-        Commands::Preview {
-            services,
-            print_request,
-        } => preview(&cli.config, services, *print_request).await,
-        Commands::Server { pidfile } => server(pidfile).await,
+        Commands::Health(args) => commands::health(args),
+        Commands::Start(args) => commands::start(args, true, &cli.config).await,
+        Commands::Stop(args) => commands::stop(args, true),
+        Commands::Reset(args) => commands::reset(args).await,
+        Commands::Local(args) => commands::local(args).await,
+        Commands::Remote(args) => commands::remote(args).await,
+        Commands::Status(args) => commands::status(args),
+        Commands::LocalDNS(args) => commands::local_dns(args, &cli.config),
+        Commands::Completion(args) => commands::completion(args),
+        Commands::Preview(args) => commands::preview(args, &cli.config).await,
+        Commands::Server(args) => commands::server(args).await,
     }
 }
