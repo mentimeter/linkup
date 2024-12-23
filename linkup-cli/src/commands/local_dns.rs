@@ -3,10 +3,31 @@ use std::{
     process::{Command, Stdio},
 };
 
+use clap::Subcommand;
+
 use crate::{
     local_config::{config_path, get_config},
     services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
 };
+
+#[derive(clap::Args)]
+pub struct Args {
+    #[clap(subcommand)]
+    pub subcommand: LocalDNSSubcommand,
+}
+
+#[derive(Subcommand)]
+pub enum LocalDNSSubcommand {
+    Install,
+    Uninstall,
+}
+
+pub fn local_dns(args: &Args, config: &Option<String>) -> Result<()> {
+    match args.subcommand {
+        LocalDNSSubcommand::Install => install(config),
+        LocalDNSSubcommand::Uninstall => uninstall(config),
+    }
+}
 
 pub fn install(config_arg: &Option<String>) -> Result<()> {
     if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {

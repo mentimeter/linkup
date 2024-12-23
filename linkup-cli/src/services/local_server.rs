@@ -95,6 +95,10 @@ impl LocalServer {
         Ok(())
     }
 
+    pub fn running_pid(&self) -> Option<String> {
+        signal::get_running_pid(&self.pidfile_path)
+    }
+
     async fn reachable(&self) -> bool {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(1))

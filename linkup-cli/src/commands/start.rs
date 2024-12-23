@@ -12,42 +12,35 @@ use colored::Colorize;
 use crossterm::{cursor, ExecutableCommand};
 
 use crate::{
+    commands::status::{format_state_domains, SessionStatus},
     env_files::write_to_env_file,
     local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
-    status::{format_state_domains, SessionStatus},
 };
 use crate::{local_config::LocalState, CliError};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-pub struct StartArgs<'a> {
-    /// Path to the Linkup config to be used as base in case `fresh_state` argument is `true`.
-    pub config_arg: &'a Option<String>,
-
-    /// If there should not be a Cloudflare tunnel.
+#[derive(clap::Args)]
+pub struct Args {
+    #[clap(
+        short,
+        long,
+        help = "Start linkup in partial mode without a tunnel. Not all requests will succeed."
+    )]
     pub no_tunnel: bool,
-
-    /// Boolean representing if should refresh the state to what is defined on `config_arg`.
-    pub fresh_state: bool,
 }
 
-impl<'a> Default for StartArgs<'a> {
-    fn default() -> Self {
-        Self {
-            config_arg: &None,
-            no_tunnel: false,
-            fresh_state: false,
-        }
-    }
-}
-
-pub async fn start<'a>(args: StartArgs<'_>) -> Result<(), CliError> {
+pub async fn start<'a>(
+    args: &Args,
+    fresh_state: bool,
+    config_arg: &Option<String>,
+) -> Result<(), CliError> {
     env_logger::init();
 
-    let mut state = if args.fresh_state {
+    let mut state = if fresh_state {
         let is_paid = services::CloudflareTunnel::use_paid_tunnels();
-        let state = load_and_save_state(args.config_arg, args.no_tunnel, is_paid)?;
+        let state = load_and_save_state(config_arg, args.no_tunnel, is_paid)?;
         set_linkup_env(state.clone())?;
 
         state

@@ -1,10 +1,8 @@
 use std::env;
 
-use crate::deploy::cf_api::AccountCloudflareApi;
-use crate::deploy::cf_auth::CloudflareTokenAuth;
-use crate::deploy::console_notify::ConsoleNotifier;
-
-use super::cf_api::{CloudflareApi, Rule};
+use super::cf_api::{AccountCloudflareApi, CloudflareApi, Rule};
+use super::cf_auth::CloudflareTokenAuth;
+use super::console_notify::ConsoleNotifier;
 
 #[derive(thiserror::Error, Debug)]
 pub enum DeployError {
@@ -99,18 +97,39 @@ export default {
 };
 "#;
 
-pub async fn deploy(account_id: &str, zone_ids: &[String]) -> Result<(), DeployError> {
+#[derive(clap::Args)]
+pub struct Args {
+    #[arg(
+        short = 'a',
+        long = "account-id",
+        help = "Cloudflare account ID",
+        value_name = "ACCOUNT_ID"
+    )]
+    account_id: String,
+
+    #[arg(
+        short = 'z',
+        long = "zone-ids",
+        help = "Cloudflare zone IDs",
+        value_name = "ZONE_IDS",
+        num_args = 1..,
+        required = true
+    )]
+    zone_ids: Vec<String>,
+}
+
+pub async fn deploy(args: &Args) -> Result<(), DeployError> {
     println!("Deploying to Cloudflare...");
-    println!("Account ID: {}", account_id);
-    println!("Zone IDs: {:?}", zone_ids);
+    println!("Account ID: {}", args.account_id);
+    println!("Zone IDs: {:?}", args.zone_ids);
 
     let api_key = env::var("CLOUDFLARE_API_KEY").expect("Missing Cloudflare API token");
-    let zone_ids_strings: Vec<String> = zone_ids.iter().map(|s| s.to_string()).collect();
+    let zone_ids_strings: Vec<String> = args.zone_ids.iter().map(|s| s.to_string()).collect();
 
     let token_auth = CloudflareTokenAuth::new(api_key);
 
     let cloudflare_api = AccountCloudflareApi::new(
-        account_id.to_string(),
+        args.account_id.to_string(),
         zone_ids_strings,
         Box::new(token_auth),
     );
@@ -467,7 +486,7 @@ pub async fn destroy_from_cloudflare(
 mod tests {
     use std::cell::RefCell;
 
-    use crate::deploy::cf_auth::CloudflareGlobalTokenAuth;
+    use crate::commands::deploy;
 
     use super::*;
 
@@ -649,7 +668,7 @@ mod tests {
             &self,
             zone_id: String,
             ruleset: String,
-            rules: Vec<crate::deploy::cf_api::Rule>,
+            rules: Vec<deploy::cf_api::Rule>,
         ) -> Result<(), DeployError> {
             Ok(())
         }
@@ -666,7 +685,7 @@ mod tests {
             &self,
             zone_id: String,
             ruleset: String,
-        ) -> Result<Vec<crate::deploy::cf_api::Rule>, DeployError> {
+        ) -> Result<Vec<deploy::cf_api::Rule>, DeployError> {
             Ok(vec![])
         }
     }
@@ -871,7 +890,8 @@ mod tests {
         let api_key = std::env::var("CLOUDFLARE_API_KEY").expect("CLOUDFLARE_API_KEY is not set");
         let email = std::env::var("CLOUDFLARE_EMAIL").expect("CLOUDFLARE_EMAIL is not set");
 
-        let global_api_auth = CloudflareGlobalTokenAuth::new(api_key.clone(), email);
+        let global_api_auth =
+            deploy::cf_auth::CloudflareGlobalTokenAuth::new(api_key.clone(), email);
         let cloudflare_api = AccountCloudflareApi::new(
             account_id.clone(),
             vec![zone_id.to_string()],

@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    linkup_dir_path, linkup_file_path, local_config::LocalState, local_dns, signal,
+    commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState, signal,
     LINKUP_CF_TLS_API_ENV_VAR,
 };
 
@@ -164,6 +164,10 @@ impl Caddy {
 
         domains.iter().any(|domain| resolvers.contains(domain))
     }
+
+    pub fn running_pid(&self) -> Option<String> {
+        signal::get_running_pid(&self.pidfile_path)
+    }
 }
 
 impl BackgroundService<Error> for Caddy {
@@ -188,7 +192,7 @@ impl BackgroundService<Error> for Caddy {
 
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
-        if signal::get_running_pid(&self.pidfile_path).is_some() {
+        if self.running_pid().is_some() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Started,
@@ -212,4 +216,16 @@ impl BackgroundService<Error> for Caddy {
 
         Ok(())
     }
+}
+
+pub fn is_installed() -> bool {
+    let res = Command::new("command")
+        .args(["-v", "caddy"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::null())
+        .status()
+        .unwrap();
+
+    res.success()
 }
