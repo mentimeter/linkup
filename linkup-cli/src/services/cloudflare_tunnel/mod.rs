@@ -244,6 +244,8 @@ impl BackgroundService<Error> for CloudflareTunnel {
                 super::RunStatus::Skipped,
                 "Requested no tunnel",
             );
+
+            return Ok(());
         }
 
         if state.linkup.session_name.is_empty() {
