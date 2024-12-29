@@ -185,8 +185,8 @@ fn flush_dns_cache() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 fn kill_dns_responder() -> Result<()> {
-    let status_kill_responder = Command::new("killall")
-        .args(["-HUP", "mDNSResponder"])
+    let status_kill_responder = Command::new("sudo")
+        .args(["killall", "-HUP", "mDNSResponder"])
         .status()
         .map_err(|_err| {
             CliError::LocalDNSInstall("Failed to run killall -HUP mDNSResponder".into())
