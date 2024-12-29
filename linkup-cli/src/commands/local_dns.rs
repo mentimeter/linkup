@@ -6,8 +6,7 @@ use std::{
 use clap::Subcommand;
 
 use crate::{
-    local_config::{config_path, get_config},
-    services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
+    is_sudo, local_config::{config_path, get_config}, services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR
 };
 
 #[derive(clap::Args)]
@@ -186,20 +185,4 @@ fn kill_dns_responder() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn is_sudo() -> bool {
-    let sudo_check = Command::new("sudo")
-        .arg("-n")
-        .arg("true")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    if let Ok(exit_status) = sudo_check {
-        return exit_status.success();
-    }
-
-    false
 }

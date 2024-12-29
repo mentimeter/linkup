@@ -1,4 +1,4 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf};
+use std::{env, fs, io::ErrorKind, path::PathBuf, process};
 
 use clap::{Parser, Subcommand};
 use thiserror::Error;
@@ -49,6 +49,19 @@ fn ensure_linkup_dir() -> Result<()> {
             ))),
         },
     }
+}
+
+fn is_sudo() -> bool {
+    let sudo_check = process::Command::new("sudo")
+        .arg("-n")
+        .arg("true")
+        .status();
+
+    if let Ok(exit_status) = sudo_check {
+        return exit_status.success();
+    }
+
+    false
 }
 
 pub type Result<T> = std::result::Result<T, CliError>;
