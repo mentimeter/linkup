@@ -374,8 +374,8 @@ impl BackgroundService<Error> for CloudflareTunnel {
 }
 
 pub fn is_installed() -> bool {
-    let res = Command::new("command")
-        .args(["-v", "cloudflared"])
+    let res = Command::new("which")
+        .args(["cloudflared"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .stdin(Stdio::null())

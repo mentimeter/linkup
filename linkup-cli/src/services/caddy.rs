@@ -219,8 +219,8 @@ impl BackgroundService<Error> for Caddy {
 }
 
 pub fn is_installed() -> bool {
-    let res = Command::new("command")
-        .args(["-v", "caddy"])
+    let res = Command::new("which")
+        .args(["caddy"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .stdin(Stdio::null())
