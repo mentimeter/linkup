@@ -13,6 +13,8 @@ use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("Failed to start the Caddy service")]
+    Starting,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Cloudflare TLS API token is required for local-dns Cloudflare TLS certificates.")]
@@ -75,7 +77,8 @@ impl Caddy {
         let stdout_file = fs::File::create(&self.stdout_file_path)?;
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
 
-        Command::new("caddy")
+        #[cfg(target_os = "macos")]
+        let status = Command::new("caddy")
             .current_dir(linkup_dir_path())
             .arg("start")
             .arg("--pidfile")
@@ -83,6 +86,28 @@ impl Caddy {
             .stdout(stdout_file)
             .stderr(stderr_file)
             .status()?;
+
+        #[cfg(target_os = "linux")]
+        let status = {
+            // To make sure that the local user is the owner of the pidfile and not root,
+            // we create it before running the caddy command.
+            let _ = fs::File::create(&self.pidfile_path)?;
+
+            Command::new("sudo")
+                .current_dir(linkup_dir_path())
+                .arg("caddy")
+                .arg("start")
+                .arg("--pidfile")
+                .arg(&self.pidfile_path)
+                .stdin(Stdio::null())
+                .stdout(stdout_file)
+                .stderr(stderr_file)
+                .status()?
+        };
+
+        if !status.success() {
+            return Err(Error::Starting);
+        }
 
         Ok(())
     }
@@ -165,7 +190,7 @@ impl Caddy {
         output_str.contains("redis")
     }
 
-    fn should_start(&self, domains: &[String]) -> bool {
+    pub fn should_start(&self, domains: &[String]) -> bool {
         let resolvers = local_dns::list_resolvers().unwrap();
 
         domains.iter().any(|domain| resolvers.contains(domain))

@@ -3,7 +3,7 @@ use std::{
     fs,
     io::stdout,
     path::{Path, PathBuf},
-    sync,
+    process, sync,
     thread::{self, sleep, JoinHandle},
     time::Duration,
 };
@@ -14,6 +14,7 @@ use crossterm::{cursor, ExecutableCommand};
 use crate::{
     commands::status::{format_state_domains, SessionStatus},
     env_files::write_to_env_file,
+    is_sudo,
     local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
 };
@@ -54,6 +55,24 @@ pub async fn start<'a>(
     let cloudflare_tunnel = services::CloudflareTunnel::new();
     let caddy = services::Caddy::new();
     let dnsmasq = services::Dnsmasq::new();
+
+    #[cfg(target_os = "linux")]
+    if caddy.should_start(&state.domain_strings()) && !is_sudo() {
+        println!(
+            "On linux binding por 443 and 80 requires sudo. And this is necessary to start caddy."
+        );
+
+        let status = process::Command::new("sudo")
+            .arg("su")
+            .stdin(process::Stdio::null())
+            .stdout(process::Stdio::null())
+            .stderr(process::Stdio::null())
+            .status()?;
+
+        if !status.success() {
+            return Err(CliError::StartErr("failed to sudo".to_string()));
+        }
+    }
 
     let mut display_thread: Option<JoinHandle<()>> = None;
     let display_channel = sync::mpsc::channel::<bool>();
