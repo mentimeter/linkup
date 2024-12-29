@@ -54,6 +54,8 @@ fn ensure_linkup_dir() -> Result<()> {
 fn is_sudo() -> bool {
     let sudo_check = process::Command::new("sudo")
         .arg("-n")
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
         .arg("true")
         .status();
 
