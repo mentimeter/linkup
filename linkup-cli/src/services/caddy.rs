@@ -37,15 +37,19 @@ impl Caddy {
     }
 
     pub fn install_extra_packages() {
-        Command::new("caddy")
-            .args(["add-package", "github.com/caddy-dns/cloudflare"])
+        Command::new("sudo")
+            .args(["caddy", "add-package", "github.com/caddy-dns/cloudflare"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .unwrap();
 
-        Command::new("caddy")
-            .args(["add-package", "github.com/pberkel/caddy-storage-redis"])
+        Command::new("sudo")
+            .args([
+                "caddy",
+                "add-package",
+                "github.com/pberkel/caddy-storage-redis",
+            ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
