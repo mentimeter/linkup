@@ -118,6 +118,8 @@ fn install_resolvers(resolve_domains: &[String]) -> Result<()> {
     }
 
     flush_dns_cache()?;
+
+    #[cfg(target_os = "macos")]
     kill_dns_responder()?;
 
     Ok(())
@@ -140,6 +142,8 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
     }
 
     flush_dns_cache()?;
+
+    #[cfg(target_os = "macos")]
     kill_dns_responder()?;
 
     Ok(())
@@ -154,8 +158,17 @@ pub fn list_resolvers() -> Result<Vec<String>> {
 }
 
 fn flush_dns_cache() -> Result<()> {
-    let status_flush = Command::new("sudo")
-        .args(["dscacheutil", "-flushcache"])
+    #[cfg(target_os = "linux")]
+    let status_flush = Command::new("resolvectl")
+        .args(["flush-caches"])
+        .status()
+        .map_err(|_err| {
+            CliError::LocalDNSInstall("Failed to run resolvectl flush-caches".into())
+        })?;
+
+    #[cfg(target_os = "macos")]
+    let status_flush = Command::new("dscacheutil")
+        .args(["-flushcache"])
         .status()
         .map_err(|_err| {
             CliError::LocalDNSInstall("Failed to run dscacheutil -flushcache".into())
@@ -163,16 +176,17 @@ fn flush_dns_cache() -> Result<()> {
 
     if !status_flush.success() {
         return Err(CliError::LocalDNSInstall(
-            "Failed to run dscacheutil -flushcache".into(),
+            "Failed flush DNS cache".into(),
         ));
     }
 
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn kill_dns_responder() -> Result<()> {
-    let status_kill_responder = Command::new("sudo")
-        .args(["killall", "-HUP", "mDNSResponder"])
+    let status_kill_responder = Command::new("killall")
+        .args(["-HUP", "mDNSResponder"])
         .status()
         .map_err(|_err| {
             CliError::LocalDNSInstall("Failed to run killall -HUP mDNSResponder".into())
