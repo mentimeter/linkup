@@ -23,7 +23,8 @@ pub enum Error {
 
 pub struct Caddy {
     caddyfile_path: PathBuf,
-    logfile_path: PathBuf,
+    stdout_file_path: PathBuf,
+    stderr_file_path: PathBuf,
     pidfile_path: PathBuf,
 }
 
@@ -31,7 +32,8 @@ impl Caddy {
     pub fn new() -> Self {
         Self {
             caddyfile_path: linkup_file_path("Caddyfile"),
-            logfile_path: linkup_file_path("caddy-log"),
+            stdout_file_path: linkup_file_path("caddy-stdout"),
+            stderr_file_path: linkup_file_path("caddy-stderr"),
             pidfile_path: linkup_file_path("caddy-pid"),
         }
     }
@@ -70,16 +72,16 @@ impl Caddy {
 
         self.write_caddyfile(&domains_and_subdomains)?;
 
-        // Clear previous log file on startup
-        fs::write(&self.logfile_path, "")?;
+        let stdout_file = fs::File::create(&self.stdout_file_path)?;
+        let stderr_file = fs::File::create(&self.stderr_file_path)?;
 
         Command::new("caddy")
             .current_dir(linkup_dir_path())
             .arg("start")
             .arg("--pidfile")
             .arg(&self.pidfile_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(stdout_file)
+            .stderr(stderr_file)
             .status()?;
 
         Ok(())
@@ -143,7 +145,7 @@ impl Caddy {
                 }}
             }}
             ",
-            self.logfile_path.display(),
+            self.stdout_file_path.display(),
             redis_storage,
             domains.join(", "),
             LINKUP_LOCAL_SERVER_PORT,
