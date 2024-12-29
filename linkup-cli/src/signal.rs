@@ -2,6 +2,7 @@ use nix::sys::signal::kill;
 use nix::unistd::Pid;
 use std::fs::{self, File};
 use std::path::Path;
+use std::process;
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -52,18 +53,16 @@ pub fn get_running_pid(file_path: &Path) -> Option<String> {
         Err(_) => return None,
     };
 
-    let pid = match u32::from_str(&pid) {
-        Ok(pid) => pid,
-        Err(_) => return None, // TODO: Do we want to be loud about this?
-    };
-
-    let system = sysinfo::System::new_with_specifics(
-        sysinfo::RefreshKind::new().with_processes(sysinfo::ProcessRefreshKind::everything()),
-    );
-
-    system
-        .process(sysinfo::Pid::from_u32(pid))
-        .map(|_| pid.to_string())
+    match process::Command::new("ps")
+        .args(["-p", &pid, "-o", "comm="])
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+    {
+        Ok(status) if status.success() => Some(pid),
+        _ => None,
+    }
 }
 
 pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), PidError> {
