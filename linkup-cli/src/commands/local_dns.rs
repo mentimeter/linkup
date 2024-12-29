@@ -179,9 +179,7 @@ fn flush_dns_cache() -> Result<()> {
         })?;
 
     if !status_flush.success() {
-        return Err(CliError::LocalDNSInstall(
-            "Failed flush DNS cache".into(),
-        ));
+        return Err(CliError::LocalDNSInstall("Failed flush DNS cache".into()));
     }
 
     Ok(())
