@@ -66,6 +66,21 @@ fn is_sudo() -> bool {
     false
 }
 
+fn sudo_su() -> Result<()> {
+    let status = process::Command::new("sudo")
+        .arg("su")
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()?;
+
+    if !status.success() {
+        return Err(CliError::StartErr("failed to sudo".to_string()));
+    }
+
+    Ok(())
+}
+
 pub type Result<T> = std::result::Result<T, CliError>;
 
 #[derive(Error, Debug)]

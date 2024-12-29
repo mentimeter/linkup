@@ -6,7 +6,9 @@ use std::{
 use clap::Subcommand;
 
 use crate::{
-    is_sudo, local_config::{config_path, get_config}, services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR
+    is_sudo,
+    local_config::{config_path, get_config},
+    services, sudo_su, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
 };
 
 #[derive(clap::Args)]
@@ -49,6 +51,8 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
         println!("  - Ensure there is a folder /etc/resolvers");
         println!("  - Create file(s) for /etc/resolver/<domain>");
         println!("  - Flush DNS cache");
+
+        sudo_su()?;
     }
 
     ensure_resolver_dir()?;

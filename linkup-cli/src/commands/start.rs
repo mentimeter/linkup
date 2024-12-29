@@ -3,7 +3,7 @@ use std::{
     fs,
     io::stdout,
     path::{Path, PathBuf},
-    process, sync,
+    sync,
     thread::{self, sleep, JoinHandle},
     time::Duration,
 };
@@ -17,6 +17,7 @@ use crate::{
     is_sudo,
     local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
+    sudo_su,
 };
 use crate::{local_config::LocalState, CliError};
 
@@ -62,16 +63,7 @@ pub async fn start<'a>(
             "On linux binding por 443 and 80 requires sudo. And this is necessary to start caddy."
         );
 
-        let status = process::Command::new("sudo")
-            .arg("su")
-            .stdin(process::Stdio::null())
-            .stdout(process::Stdio::null())
-            .stderr(process::Stdio::null())
-            .status()?;
-
-        if !status.success() {
-            return Err(CliError::StartErr("failed to sudo".to_string()));
-        }
+        sudo_su()?;
     }
 
     let mut display_thread: Option<JoinHandle<()>> = None;
