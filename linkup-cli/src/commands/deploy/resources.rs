@@ -1,6 +1,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
 
@@ -69,6 +70,7 @@ pub struct WorkerMetadata {
     pub main_module: String,
     pub bindings: Vec<WorkerKVBinding>,
     pub compatibility_date: String,
+    pub tag: String,
 }
 
 #[derive(Clone)]
@@ -257,13 +259,12 @@ impl TargetCfResources {
         api: &impl CloudflareApi,
     ) -> Result<Option<WorkerScriptPlan>, DeployError> {
         let script_name = &self.worker_script_name;
-        let existing_info = api.get_worker_script_info(script_name.clone()).await?;
+        let last_version = api.get_worker_script_version(script_name.clone()).await?;
+        let current_version = self.worker_version_hash();
 
         // Decide if we need to upload:
-        let needs_upload = if let Some(_) = existing_info {
-            let existing_content = api.get_worker_script_content(script_name.clone()).await?;
-            // For simplicity, we just compare to some known "marker"
-            existing_content != "TODO: some other string"
+        let needs_upload = if let Some(last_version) = last_version {
+            last_version != current_version
         } else {
             true
         };
@@ -278,6 +279,7 @@ impl TargetCfResources {
                     namespace_id: "<to-be-filled-on-deploy>".to_string(),
                 }],
                 compatibility_date: "2024-12-18".to_string(),
+                tag: current_version,
             };
             Ok(Some(WorkerScriptPlan::Upload {
                 script_name: script_name.clone(),
@@ -640,6 +642,28 @@ impl TargetCfResources {
         }
 
         Ok(())
+    }
+
+    pub fn worker_version_hash(&self) -> String {
+        let mut hasher = Sha256::new();
+
+        // Incorporate the "entry" file name so that changes to which file is
+        // the main module also affect the hash.
+        hasher.update(self.worker_script_entry.as_bytes());
+
+        // For each part, incorporate the part's name, content type, and raw bytes
+        // into the hash. The order is important, so if your system might reorder
+        // `worker_script_parts`, consider sorting them by name first, or do something
+        // else to keep the input stable.
+        for part in &self.worker_script_parts {
+            hasher.update(part.name.as_bytes());
+            hasher.update(part.content_type.as_bytes());
+            hasher.update(&part.data);
+        }
+
+        // Finalize the hasher and convert to a hex string
+        let hash_bytes = hasher.finalize();
+        hex::encode(hash_bytes)
     }
 }
 

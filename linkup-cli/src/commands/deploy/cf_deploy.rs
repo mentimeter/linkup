@@ -154,17 +154,6 @@ export default {
             &self.zone_ids
         }
 
-        async fn get_worker_script_content(
-            &self,
-            _script_name: String,
-        ) -> Result<String, DeployError> {
-            if let Some(content) = &self.existing_content {
-                Ok(content.clone())
-            } else {
-                Err(DeployError::OtherError)
-            }
-        }
-
         async fn get_worker_script_info(
             &self,
             _script_name: String,
@@ -322,6 +311,13 @@ export default {
             _ruleset: String,
         ) -> Result<Vec<Rule>, DeployError> {
             Ok(vec![])
+        }
+
+        async fn get_worker_script_version(
+            &self,
+            script_name: String,
+        ) -> Result<Option<String>, DeployError> {
+            Ok(None)
         }
     }
 

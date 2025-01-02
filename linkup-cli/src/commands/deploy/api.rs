@@ -11,11 +11,14 @@ use super::{
 pub trait CloudflareApi {
     fn zone_ids(&self) -> &Vec<String>;
 
-    async fn get_worker_script_content(&self, script_name: String) -> Result<String, DeployError>;
     async fn get_worker_script_info(
         &self,
         script_name: String,
     ) -> Result<Option<WorkerScriptInfo>, DeployError>;
+    async fn get_worker_script_version(
+        &self,
+        script_name: String,
+    ) -> Result<Option<String>, DeployError>;
     async fn create_worker_script(
         &self,
         script_name: String,
@@ -114,6 +117,57 @@ struct CloudflareListWorkersResponse {
     errors: Vec<CloudflareErrorInfo>,
     messages: Vec<CloudflareErrorInfo>,
     result: Option<Vec<CloudflareWorkerScript>>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CfListVersionsResponse {
+    success: bool,
+    // Only the fields we care about from the API response
+    result: CfListVersionsItems,
+}
+
+#[derive(Deserialize, Debug)]
+struct CfListVersionsItems {
+    items: Vec<CfScriptVersionMetadata>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CfScriptVersionMetadata {
+    /// The ID of a particular worker version, e.g., "d9a8f2cc7ed7435d90b3f2947b83673b"
+    pub id: String,
+    // Possibly other fields like `created_on`, etc.
+}
+
+#[derive(Deserialize, Debug)]
+struct CfSingleVersionResponse {
+    success: bool,
+    // In some CF docs, "result" can be an object containing script+metadata
+    result: CfSingleVersionResult,
+}
+
+#[derive(Deserialize, Debug)]
+struct CfSingleVersionResult {
+    // The actual script content is in the bindings
+    resources: CfSingleVersionResources,
+}
+
+#[derive(Deserialize, Debug)]
+struct CfSingleVersionResources {
+    // Possibly other fields like size, usage model, etc.
+    #[serde(default)]
+    pub bindings: Vec<CfBinding>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CfBinding {
+    #[serde(rename = "type")]
+    pub type_: String,
+
+    pub name: String,
+
+    #[serde(default)]
+    pub text: Option<String>,
+    // Possibly other fields like namespace_id, secret text, etc.
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -255,6 +309,8 @@ pub struct Ruleset {
     pub version: String,
 }
 
+const WORKER_VERSION_TAG: &str = "LINKUP_VERSION_TAG";
+
 /// Download Worker -> returns raw script content
 /// Cloudflare docs: GET /accounts/{account_id}/workers/scripts/{script_name}
 /// Returns the raw worker script text if successful.
@@ -292,32 +348,6 @@ impl AccountCloudflareApi {
 impl CloudflareApi for AccountCloudflareApi {
     fn zone_ids(&self) -> &Vec<String> {
         &self.zone_ids
-    }
-
-    async fn get_worker_script_content(&self, script_name: String) -> Result<String, DeployError> {
-        let url = format!(
-            "https://api.cloudflare.com/client/v4/accounts/{}/workers/scripts/{}",
-            self.account_id, script_name
-        );
-
-        let resp = self
-            .client
-            .get(&url)
-            .headers(self.api_auth.headers())
-            .send()
-            .await?;
-
-        if !resp.status().is_success() {
-            let status = resp.status().to_string();
-            let text = resp.text().await?;
-            return Err(DeployError::UnexpectedResponse(format!(
-                "{}: {}",
-                status, text
-            )));
-        }
-
-        let text = resp.text().await?;
-        Ok(text)
     }
 
     async fn get_worker_script_info(
@@ -361,6 +391,99 @@ impl CloudflareApi for AccountCloudflareApi {
         Ok(None)
     }
 
+    async fn get_worker_script_version(
+        &self,
+        script_name: String,
+    ) -> Result<Option<String>, DeployError> {
+        // 1) Get the list of versions
+        let list_versions_url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/workers/scripts/{}/versions",
+            self.account_id, script_name
+        );
+
+        let resp = self
+            .client
+            .get(&list_versions_url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if resp.status() == 404 {
+            // If the script doesn't exist, we can't get a version
+            return Ok(None);
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        // Parse JSON for the list of versions
+        let list_data: CfListVersionsResponse = resp.json().await?;
+        if !list_data.success {
+            // The request returned 200 but CF said "success = false"
+            return Ok(None);
+        }
+
+        // If there are no versions at all, we have nothing to examine
+        if list_data.result.items.is_empty() {
+            return Ok(None);
+        }
+
+        // For simplicity, let's assume the first in `result` is the *newest* version.
+        // If the API is unsorted, you might need to pick by `created_on` or similar.
+        let latest_version_id = &list_data.result.items[0].id;
+
+        // 2) Get details for that specific version
+        let version_info_url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/workers/scripts/{}/versions/{}",
+            self.account_id, script_name, latest_version_id
+        );
+
+        let resp2 = self
+            .client
+            .get(&version_info_url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if !resp2.status().is_success() {
+            let status = resp2.status().to_string();
+            let text = resp2.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let version_data: CfSingleVersionResponse = resp2.json().await?;
+        if !version_data.success {
+            return Ok(None);
+        }
+
+        // 3) Look for our plaintext binding
+        let binding = version_data
+            .result
+            .resources
+            .bindings
+            .iter()
+            .find(|b| b.name == WORKER_VERSION_TAG && b.type_ == "plain_text");
+
+        if let Some(found) = binding {
+            // Return the text if present
+            if let Some(text_value) = &found.text {
+                return Ok(Some(text_value.clone()));
+            }
+        }
+
+        // Otherwise, we didn't find the binding or there's no text
+        Ok(None)
+    }
+
     async fn create_worker_script(
         &self,
         script_name: String,
@@ -373,7 +496,7 @@ impl CloudflareApi for AccountCloudflareApi {
         );
 
         // Prepare metadata JSON
-        let bindings_json: Vec<serde_json::Value> = metadata
+        let mut bindings_json: Vec<serde_json::Value> = metadata
             .bindings
             .iter()
             .map(|b| {
@@ -384,6 +507,14 @@ impl CloudflareApi for AccountCloudflareApi {
                 })
             })
             .collect();
+
+        let tag_binding = json!({
+            "type": "plain_text",
+            "name": WORKER_VERSION_TAG,
+            "text": metadata.tag,
+        });
+
+        bindings_json.push(tag_binding);
 
         let metadata_json = json!({
             "main_module": metadata.main_module,
