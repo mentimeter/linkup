@@ -5,7 +5,7 @@ use crate::commands::deploy::resources::cf_resources;
 use super::api::{AccountCloudflareApi, CloudflareApi};
 use super::auth::CloudflareGlobalTokenAuth;
 use super::console_notify::ConsoleNotifier;
-use super::resources::{DNSRecord, Rule, TargetCfResources, WorkerKVBinding, WorkerMetadata};
+use super::resources::TargetCfResources;
 
 #[derive(thiserror::Error, Debug)]
 pub enum DeployError {
@@ -102,208 +102,6 @@ pub async fn deploy_to_cloudflare(
     Ok(())
 }
 
-// async fn deploy_to_cloudflare(
-//     resources: &TargetCfResources,
-//     api: &impl CloudflareApi,
-//     notifier: &impl DeployNotifier,
-// ) -> Result<(), DeployError> {
-//     // Handle KV namespace
-//     let kv_name = &resources.kv_name;
-//     let kv_ns_id = api.get_kv_namespace_id(kv_name.clone()).await?;
-//     let kv_ns_id = if kv_ns_id.is_none() {
-//         notifier.notify(&format!(
-//             "KV namespace '{}' does not exist. Creating...",
-//             kv_name
-//         ));
-//         let new_id = api.create_kv_namespace(kv_name.clone()).await?;
-//         notifier.notify(&format!(
-//             "KV namespace '{}' created with ID: {}",
-//             kv_name, new_id
-//         ));
-//         new_id
-//     } else {
-//         notifier.notify(&format!("KV namespace '{}' already exists.", kv_name));
-//         kv_ns_id.unwrap()
-//     };
-
-//     let script_name = &resources.worker_script_name;
-//     let existing_info = api.get_worker_script_info(script_name.clone()).await?;
-//     let needs_upload = if let Some(_) = existing_info {
-//         let existing_content = api.get_worker_script_content(script_name.clone()).await?;
-//         existing_content != "TODO: some other string"
-//     } else {
-//         true
-//     };
-
-//     if needs_upload {
-//         notifier.notify("Worker script differs or does not exist.");
-//         let confirmed = notifier.ask_confirmation();
-//         if confirmed {
-//             let metadata = WorkerMetadata {
-//                 main_module: resources.worker_script_entry.clone(),
-//                 bindings: vec![WorkerKVBinding {
-//                     type_: "kv_namespace".to_string(),
-//                     name: "LINKUP_SESSIONS".to_string(),
-//                     namespace_id: kv_ns_id.clone(),
-//                 }],
-//                 compatibility_date: "2024-12-18".to_string(),
-//             };
-
-//             api.create_worker_script(
-//                 script_name.to_string(),
-//                 metadata,
-//                 resources.worker_script_parts.clone(),
-//             )
-//             .await?;
-//             notifier.notify("Worker script uploaded successfully.");
-//         } else {
-//             notifier.notify("Deployment canceled by user.");
-//             return Ok(());
-//         }
-//     } else {
-//         notifier.notify("No changes needed. Worker script is already up to date.");
-//     }
-
-//     // Determine subdomain for script
-//     let subdomain = api.get_worker_subdomain().await?;
-//     let cname_target = if let Some(sub) = subdomain {
-//         format!("{}.{}.workers.dev", script_name, sub)
-//     } else {
-//         format!("{}.workers.dev", script_name)
-//     };
-
-//     // For each zone, ensure DNS record and Worker route.
-//     for zone_id in api.zone_ids() {
-//         for dns_record in &resources.zone_resources.dns_records {
-//             let route = &dns_record.route;
-//             // DNS Record Check
-//             let existing_dns = api
-//                 .get_dns_record(zone_id.clone(), dns_record.comment())
-//                 .await?;
-//             if existing_dns.is_none() {
-//                 notifier.notify(&format!(
-//                     "DNS record for '{}' not found in zone '{}'. Creating..",
-//                     route, zone_id
-//                 ));
-//                 let new_record = DNSRecord {
-//                     id: "".to_string(),
-//                     name: route.clone(),
-//                     record_type: "CNAME".to_string(),
-//                     content: cname_target.clone(),
-//                     comment: dns_record.comment(),
-//                     proxied: true,
-//                 };
-//                 api.create_dns_record(zone_id.clone(), new_record).await?;
-//                 notifier.notify(&format!(
-//                     "DNS record for '{}' created pointing to '{}'",
-//                     route, cname_target
-//                 ));
-//             } else {
-//                 notifier.notify(&format!(
-//                     "DNS record for '{}' already exists in zone '{}'.",
-//                     route, zone_id
-//                 ));
-//             }
-//         }
-
-//         for route_config in &resources.zone_resources.routes {
-//             let zone_name = api.get_zone_name(zone_id.clone()).await?;
-//             let script = &route_config.script;
-//             // Worker Route Check
-//             let existing_route = api
-//                 .get_worker_route(
-//                     zone_id.clone(),
-//                     route_config.worker_route(zone_name.clone()),
-//                     script.clone(),
-//                 )
-//                 .await?;
-
-//             if existing_route.is_none() {
-//                 notifier.notify(&format!(
-//                     "Worker route for pattern '{}' and script '{}' not found in zone '{}'. Creating...",
-//                     route_config.route, route_config.script, zone_id
-//                 ));
-
-//                 api.create_worker_route(
-//                     zone_id.clone(),
-//                     route_config.worker_route(zone_name),
-//                     script.clone(),
-//                 )
-//                 .await?;
-//                 notifier.notify(&format!(
-//                     "Worker route for pattern '{}' and script '{}' created",
-//                     route_config.route, route_config.script
-//                 ));
-//             } else {
-//                 notifier.notify(&format!(
-//                     "Worker route for pattern '{}' and script '{}' already exists in zone '{}'.",
-//                     route_config.route, route_config.script, zone_id
-//                 ));
-//             }
-//         }
-//     }
-
-//     for zone_id in api.zone_ids() {
-//         let cache_name = resources.zone_resources.cache_rules.name.clone();
-//         let cache_phase = resources.zone_resources.cache_rules.phase.clone();
-//         let cache_ruleset = api
-//             .get_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
-//             .await?;
-//         let ruleset_id = if cache_ruleset.is_none() {
-//             notifier.notify("Cache ruleset does not exist. Creating...");
-//             let new_ruleset_id = api
-//                 .create_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
-//                 .await?;
-//             notifier.notify(&format!(
-//                 "Cache ruleset created with ID: {}",
-//                 new_ruleset_id
-//             ));
-//             new_ruleset_id
-//         } else {
-//             cache_ruleset.unwrap()
-//         };
-
-//         // 2. Get current rules
-//         let current_rules = api
-//             .get_ruleset_rules(zone_id.clone(), ruleset_id.clone())
-//             .await?;
-//         let desired_rules = &resources.zone_resources.cache_rules.rules;
-
-//         // Compare current and desired rules
-//         if !rules_equal(&current_rules, &desired_rules) {
-//             notifier.notify("Cache rules differ. Updating ruleset...");
-//             api.update_ruleset_rules(zone_id.clone(), ruleset_id.clone(), desired_rules.clone())
-//                 .await?;
-//             notifier.notify("Cache ruleset updated successfully.");
-//         } else {
-//             notifier.notify("Cache ruleset matches desired configuration. No changes needed.");
-//         }
-//     }
-
-//     Ok(())
-// }
-
-// // Helper function to compare sets of rules ignoring fields like `id`, `last_updated`, `ref`, `version` that might not be in `Rule` struct
-// fn rules_equal(current: &Vec<Rule>, desired: &Vec<Rule>) -> bool {
-//     if current.len() != desired.len() {
-//         return false;
-//     }
-
-//     // We'll compare rules by action, description, enabled, expression, and action_parameters.
-//     for (c, d) in current.iter().zip(desired.iter()) {
-//         if c.action != d.action
-//             || c.description != d.description
-//             || c.enabled != d.enabled
-//             || c.expression != d.expression
-//             || c.action_parameters != d.action_parameters
-//         {
-//             return false;
-//         }
-//     }
-
-//     true
-// }
-
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -312,8 +110,8 @@ mod tests {
         self,
         cf_destroy::destroy_from_cloudflare,
         resources::{
-            rules_equal, TargectCfZoneResources, TargetCacheRules, TargetDNSRecord,
-            TargetWorkerRoute, WorkerScriptInfo, WorkerScriptPart,
+            rules_equal, DNSRecord, Rule, TargectCfZoneResources, TargetCacheRules,
+            TargetDNSRecord, TargetWorkerRoute, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart,
         },
     };
 
@@ -358,7 +156,7 @@ export default {
 
         async fn get_worker_script_content(
             &self,
-            script_name: String,
+            _script_name: String,
         ) -> Result<String, DeployError> {
             if let Some(content) = &self.existing_content {
                 Ok(content.clone())
@@ -384,22 +182,22 @@ export default {
             Ok(())
         }
 
-        async fn remove_worker_script(&self, script_name: String) -> Result<(), DeployError> {
+        async fn remove_worker_script(&self, _script_name: String) -> Result<(), DeployError> {
             Ok(())
         }
 
         async fn get_kv_namespace_id(
             &self,
-            namespace_name: String,
+            _namespace_name: String,
         ) -> Result<Option<String>, DeployError> {
             Ok(Some("existing-namespace-id".to_string()))
         }
 
-        async fn create_kv_namespace(&self, namespace_id: String) -> Result<String, DeployError> {
+        async fn create_kv_namespace(&self, _namespace_id: String) -> Result<String, DeployError> {
             Ok("new-namespace-id".to_string())
         }
 
-        async fn remove_kv_namespace(&self, namespace_id: String) -> Result<(), DeployError> {
+        async fn remove_kv_namespace(&self, _namespace_id: String) -> Result<(), DeployError> {
             Ok(())
         }
 
@@ -475,53 +273,53 @@ export default {
         ) -> Result<(), DeployError> {
             let mut routes = self.worker_routes.borrow_mut();
             routes
-                .retain(|(z, p, s)| !(z == &zone_id && format!("route-id-for-{}", p) == route_id));
+                .retain(|(z, p, _s)| !(z == &zone_id && format!("route-id-for-{}", p) == route_id));
             Ok(())
         }
 
-        async fn get_zone_name(&self, zone_id: String) -> Result<String, DeployError> {
+        async fn get_zone_name(&self, _zone_id: String) -> Result<String, DeployError> {
             Ok("example.com".to_string())
         }
 
         async fn get_ruleset(
             &self,
-            zone_id: String,
-            name: String,
-            phase: String,
+            _zone_id: String,
+            _name: String,
+            _phase: String,
         ) -> Result<Option<String>, DeployError> {
             Ok(None)
         }
 
         async fn create_ruleset(
             &self,
-            zone_id: String,
-            name: String,
-            phase: String,
+            _zone_id: String,
+            _name: String,
+            _phase: String,
         ) -> Result<String, DeployError> {
             Ok("new-ruleset-id".to_string())
         }
 
         async fn update_ruleset_rules(
             &self,
-            zone_id: String,
-            ruleset: String,
-            rules: Vec<Rule>,
+            _zone_id: String,
+            _ruleset: String,
+            _rules: Vec<Rule>,
         ) -> Result<(), DeployError> {
             Ok(())
         }
 
         async fn remove_ruleset_rules(
             &self,
-            zone_id: String,
-            ruleset: String,
+            _zone_id: String,
+            _ruleset: String,
         ) -> Result<(), DeployError> {
             Ok(())
         }
 
         async fn get_ruleset_rules(
             &self,
-            zone_id: String,
-            ruleset: String,
+            _zone_id: String,
+            _ruleset: String,
         ) -> Result<Vec<Rule>, DeployError> {
             Ok(vec![])
         }

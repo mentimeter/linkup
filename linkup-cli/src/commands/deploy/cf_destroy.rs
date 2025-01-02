@@ -62,112 +62,29 @@ pub async fn destroy_from_cloudflare(
     api: &impl CloudflareApi,
     notifier: &impl DeployNotifier,
 ) -> Result<(), DeployError> {
-    let script_name = &resources.worker_script_name;
-    let kv_name = &resources.kv_name;
+    // 1) Check which resources actually exist and need removal
+    let plan = resources.check_destroy_plan(api).await?;
 
-    // For each zone, remove routes and DNS records
-    for zone_id in api.zone_ids() {
-        for route_config in &resources.zone_resources.routes {
-            let route = &route_config.route;
-            let script = &route_config.script;
-
-            let zone_name = api.get_zone_name(zone_id.clone()).await?;
-
-            // Remove Worker route if it exists
-            let existing_route = api
-                .get_worker_route(
-                    zone_id.clone(),
-                    route_config.worker_route(zone_name.clone()),
-                    script.clone(),
-                )
-                .await?;
-            if let Some(route_id) = existing_route {
-                notifier.notify(&format!(
-                    "Removing worker route for pattern '{}' and script '{}' in zone '{}'.",
-                    route, script, zone_id
-                ));
-                api.remove_worker_route(zone_id.clone(), route_id).await?;
-                notifier.notify(&format!(
-                    "Worker route for pattern '{}' and script '{}' removed.",
-                    route, script
-                ));
-            } else {
-                notifier.notify(&format!(
-                    "No worker route for pattern '{}' and script '{}' found in zone '{}', nothing to remove.",
-                    route, script, zone_id
-                ));
-            }
-        }
-        for dns_record in &resources.zone_resources.dns_records {
-            let route = &dns_record.route;
-            // Remove DNS record if it exists
-            let existing_dns = api
-                .get_dns_record(zone_id.clone(), dns_record.comment())
-                .await?;
-            if let Some(record) = existing_dns {
-                notifier.notify(&format!(
-                    "Removing DNS record '{}' in zone '{}'.",
-                    record.name, zone_id
-                ));
-                api.remove_dns_record(zone_id.clone(), record.id.clone())
-                    .await?;
-                notifier.notify(&format!("DNS record '{}' removed.", record.name));
-            } else {
-                notifier.notify(&format!(
-                    "No DNS record for '{}' found in zone '{}', nothing to remove.",
-                    route, zone_id
-                ));
-            }
-        }
+    // 2) If nothing to remove, just notify and return
+    if plan.is_empty() {
+        notifier.notify("No resources to remove! Everything is already gone.");
+        return Ok(());
     }
 
-    // Remove the Worker script - must happen before kv delete
-    let existing_info = api.get_worker_script_info(script_name.clone()).await?;
-    if existing_info.is_some() {
-        notifier.notify(&format!("Removing worker script '{}'...", script_name));
-        api.remove_worker_script(script_name.to_string()).await?;
-        notifier.notify("Worker script removed successfully.");
-    } else {
-        notifier.notify(&format!(
-            "Worker script '{}' does not exist, nothing to remove.",
-            script_name
-        ));
+    // 3) Otherwise, show or summarize the plan, ask user confirmation
+    notifier.notify("The following resources will be removed:");
+    // You can do something fancier; here we just debug-print
+    notifier.notify(&format!("{:#?}", plan));
+
+    if !notifier.ask_confirmation() {
+        notifier.notify("Destroy canceled by user.");
+        return Ok(());
     }
 
-    // Remove the KV namespace if it exists
-    let kv_ns_id = api.get_kv_namespace_id(kv_name.clone()).await?;
-    if let Some(ns_id) = kv_ns_id {
-        notifier.notify(&format!("Removing KV namespace '{}'...", kv_name));
-        api.remove_kv_namespace(ns_id.clone()).await?;
-        notifier.notify(&format!("KV namespace '{}' removed successfully.", kv_name));
-    } else {
-        notifier.notify(&format!(
-            "KV namespace '{}' does not exist, nothing to remove.",
-            kv_name
-        ));
-    }
+    // 4) Execute the plan
+    resources.execute_destroy_plan(api, &plan, notifier).await?;
 
-    for zone_id in api.zone_ids() {
-        let cache_name = resources.zone_resources.cache_rules.name.clone();
-        let cache_phase = resources.zone_resources.cache_rules.phase.clone();
-        let cache_ruleset = api
-            .get_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
-            .await?;
-        if let Some(ruleset_id) = cache_ruleset {
-            notifier.notify(&format!(
-                "Removing cache ruleset '{}' in zone '{}'.",
-                cache_name, zone_id
-            ));
-            api.remove_ruleset_rules(zone_id.clone(), ruleset_id.clone())
-                .await?;
-            notifier.notify(&format!("Cache ruleset '{}' removed.", cache_name));
-        } else {
-            notifier.notify(&format!(
-                "Cache ruleset '{}' does not exist in zone '{}', nothing to remove.",
-                cache_name, zone_id
-            ));
-        }
-    }
+    notifier.notify("Destroy completed successfully.");
 
     Ok(())
 }

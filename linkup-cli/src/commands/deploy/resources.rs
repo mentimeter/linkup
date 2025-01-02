@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
@@ -69,11 +71,30 @@ pub struct WorkerMetadata {
     pub compatibility_date: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WorkerScriptPart {
     pub name: String,
     pub content_type: String,
     pub data: Vec<u8>,
+}
+
+impl fmt::Debug for WorkerScriptPart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WorkerScriptPart")
+            .field("name", &self.name)
+            .field("content_type", &self.content_type)
+            .finish()
+    }
+}
+
+impl fmt::Display for WorkerScriptPart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "WorkerScriptPart {{ name: {}, content_type: {} }}",
+            self.name, self.content_type
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +178,35 @@ pub struct RulesetPlan {
     /// True if we need to create a new ruleset, false if we only need to update existing.
     pub create_new: bool,
     pub rules: Vec<Rule>,
+}
+
+#[derive(Debug, Default)]
+pub struct DestroyPlan {
+    /// Name of worker script that should be removed (if any).
+    pub remove_worker_script: Option<String>,
+
+    /// ID of the KV namespace that should be removed (if any).
+    pub remove_kv_namespace: Option<String>,
+
+    /// (zone_id, dns_record_id) for each DNS record to remove.
+    pub remove_dns_records: Vec<(String, String)>,
+
+    /// (zone_id, route_id) for each worker route to remove.
+    pub remove_worker_routes: Vec<(String, String)>,
+
+    /// (zone_id, ruleset_id) for each cache ruleset to remove.
+    pub remove_rulesets: Vec<(String, String)>,
+}
+
+impl DestroyPlan {
+    /// Return true if nothing needs to be removed.
+    pub fn is_empty(&self) -> bool {
+        self.remove_worker_script.is_none()
+            && self.remove_kv_namespace.is_none()
+            && self.remove_dns_records.is_empty()
+            && self.remove_worker_routes.is_empty()
+            && self.remove_rulesets.is_empty()
+    }
 }
 
 const LINKUP_SCRIPT_NAME: &str = "linkup-worker";
@@ -464,6 +514,129 @@ impl TargetCfResources {
             ));
             api.update_ruleset_rules(zone_id.clone(), final_id, rules.clone())
                 .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Gather all the resources that actually exist and need to be removed.
+    pub async fn check_destroy_plan(
+        &self,
+        api: &impl CloudflareApi,
+    ) -> Result<DestroyPlan, DeployError> {
+        let mut plan = DestroyPlan::default();
+
+        // 1) Worker script
+        let script_name = &self.worker_script_name;
+        let existing_info = api.get_worker_script_info(script_name.clone()).await?;
+        if existing_info.is_some() {
+            plan.remove_worker_script = Some(script_name.clone());
+        }
+
+        // 2) KV namespace
+        let kv_name = &self.kv_name;
+        if let Some(ns_id) = api.get_kv_namespace_id(kv_name.clone()).await? {
+            plan.remove_kv_namespace = Some(ns_id);
+        }
+
+        // 3) DNS records
+        for zone_id in api.zone_ids() {
+            for dns_record in &self.zone_resources.dns_records {
+                let record_tag = dns_record.comment();
+                if let Some(existing_dns) = api.get_dns_record(zone_id.clone(), record_tag).await? {
+                    // We store (zone_id, record_id) so we know exactly which to remove
+                    plan.remove_dns_records
+                        .push((zone_id.clone(), existing_dns.id));
+                }
+            }
+        }
+
+        // 4) Worker routes
+        for zone_id in api.zone_ids() {
+            let zone_name = api.get_zone_name(zone_id.clone()).await?;
+            for route_config in &self.zone_resources.routes {
+                let pattern = route_config.worker_route(zone_name.clone());
+                let script_name = route_config.script.clone();
+                if let Some(route_id) = api
+                    .get_worker_route(zone_id.clone(), pattern, script_name)
+                    .await?
+                {
+                    plan.remove_worker_routes.push((zone_id.clone(), route_id));
+                }
+            }
+        }
+
+        // 5) Cache ruleset
+        let cache_name = &self.zone_resources.cache_rules.name;
+        let cache_phase = &self.zone_resources.cache_rules.phase;
+        for zone_id in api.zone_ids() {
+            if let Some(ruleset_id) = api
+                .get_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
+                .await?
+            {
+                plan.remove_rulesets.push((zone_id.clone(), ruleset_id));
+            }
+        }
+
+        Ok(plan)
+    }
+
+    pub async fn execute_destroy_plan(
+        &self,
+        api: &impl CloudflareApi,
+        plan: &DestroyPlan,
+        notifier: &impl DeployNotifier,
+    ) -> Result<(), DeployError> {
+        // Remove routes and DNS records *first* to avoid orphan references:
+
+        // 1) Worker routes
+        for (zone_id, route_id) in &plan.remove_worker_routes {
+            notifier.notify(&format!(
+                "Removing worker route with ID '{}' in zone '{}'.",
+                route_id, zone_id
+            ));
+            api.remove_worker_route(zone_id.clone(), route_id.clone())
+                .await?;
+            notifier.notify(&format!("Worker route '{}' removed.", route_id));
+        }
+
+        // 2) DNS records
+        for (zone_id, record_id) in &plan.remove_dns_records {
+            notifier.notify(&format!(
+                "Removing DNS record with ID '{}' in zone '{}'.",
+                record_id, zone_id
+            ));
+            api.remove_dns_record(zone_id.clone(), record_id.clone())
+                .await?;
+            notifier.notify(&format!("DNS record '{}' removed.", record_id));
+        }
+
+        // 3) Worker script
+        if let Some(script_name) = &plan.remove_worker_script {
+            notifier.notify(&format!("Removing worker script '{}'...", script_name));
+            api.remove_worker_script(script_name.clone()).await?;
+            notifier.notify("Worker script removed successfully.");
+        }
+
+        // 4) KV namespace
+        if let Some(ns_id) = &plan.remove_kv_namespace {
+            notifier.notify(&format!("Removing KV namespace '{}'...", self.kv_name));
+            api.remove_kv_namespace(ns_id.clone()).await?;
+            notifier.notify(&format!(
+                "KV namespace '{}' removed successfully.",
+                self.kv_name
+            ));
+        }
+
+        // 5) Cache rulesets
+        for (zone_id, ruleset_id) in &plan.remove_rulesets {
+            notifier.notify(&format!(
+                "Removing cache ruleset with ID '{}' in zone '{}'.",
+                ruleset_id, zone_id
+            ));
+            api.remove_ruleset_rules(zone_id.clone(), ruleset_id.clone())
+                .await?;
+            notifier.notify(&format!("Cache ruleset '{}' removed.", ruleset_id));
         }
 
         Ok(())
