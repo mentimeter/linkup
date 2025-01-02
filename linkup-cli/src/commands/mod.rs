@@ -12,7 +12,7 @@ pub mod status;
 pub mod stop;
 
 pub use {completion::completion, completion::Args as CompletionArgs};
-pub use {deploy::deploy, deploy::DeployArgs, deploy::DeployError};
+pub use {deploy::deploy, deploy::DeployArgs};
 pub use {deploy::destroy, deploy::DestroyArgs};
 pub use {health::health, health::Args as HealthArgs};
 pub use {local::local, local::Args as LocalArgs};

@@ -1,13 +1,10 @@
-use std::env;
-
 use crate::commands::deploy::{
-    api::AccountCloudflareApi, auth::CloudflareGlobalTokenAuth, console_notify::ConsoleNotifier,
+    api::AccountCloudflareApi, auth::get_auth, console_notify::ConsoleNotifier,
     resources::cf_resources,
 };
 
 use super::{
-    api::CloudflareApi, cf_deploy::DeployNotifier, resources::TargetCfResources, DeployArgs,
-    DeployError,
+    api::CloudflareApi, cf_deploy::DeployNotifier, resources::TargetCfResources, DeployError,
 };
 
 #[derive(clap::Args)]
@@ -36,18 +33,11 @@ pub async fn destroy(args: &DestroyArgs) -> Result<(), DeployError> {
     println!("Account ID: {}", args.account_id);
     println!("Zone IDs: {:?}", args.zone_ids);
 
-    let api_key = env::var("CLOUDFLARE_API_KEY").expect("Missing Cloudflare API token");
-    let email = env::var("CLOUDFLARE_EMAIL").expect("Missing Cloudflare email");
+    let auth = get_auth()?;
     let zone_ids_strings: Vec<String> = args.zone_ids.iter().map(|s| s.to_string()).collect();
 
-    // let token_auth = CloudflareTokenAuth::new(api_key);
-    let global_key_auth = CloudflareGlobalTokenAuth::new(api_key, email);
-
-    let cloudflare_api = AccountCloudflareApi::new(
-        args.account_id.to_string(),
-        zone_ids_strings,
-        Box::new(global_key_auth),
-    );
+    let cloudflare_api =
+        AccountCloudflareApi::new(args.account_id.to_string(), zone_ids_strings, auth);
     let notifier = ConsoleNotifier::new();
 
     let resources = cf_resources();

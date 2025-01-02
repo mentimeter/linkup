@@ -1,14 +1,14 @@
-use std::env;
-
+use crate::commands::deploy::auth::get_auth;
 use crate::commands::deploy::resources::cf_resources;
 
 use super::api::{AccountCloudflareApi, CloudflareApi};
-use super::auth::CloudflareGlobalTokenAuth;
 use super::console_notify::ConsoleNotifier;
 use super::resources::TargetCfResources;
 
 #[derive(thiserror::Error, Debug)]
 pub enum DeployError {
+    #[error("No authentication method found, please set CLOUDFLARE_API_KEY and CLOUDFLARE_EMAIL or CLOUDFLARE_API_TOKEN")]
+    NoAuthenticationError,
     #[error("Cloudflare API error: {0}")]
     CloudflareApiError(#[from] reqwest::Error),
     #[error("Unexpected Cloudflare API response: {0}")]
@@ -49,18 +49,11 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
     println!("Account ID: {}", args.account_id);
     println!("Zone IDs: {:?}", args.zone_ids);
 
-    let api_key = env::var("CLOUDFLARE_API_KEY").expect("Missing Cloudflare API token");
-    let email = env::var("CLOUDFLARE_EMAIL").expect("Missing Cloudflare email");
+    let auth = get_auth()?;
     let zone_ids_strings: Vec<String> = args.zone_ids.iter().map(|s| s.to_string()).collect();
 
-    // let token_auth = CloudflareTokenAuth::new(api_key);
-    let global_key_auth = CloudflareGlobalTokenAuth::new(api_key, email);
-
-    let cloudflare_api = AccountCloudflareApi::new(
-        args.account_id.to_string(),
-        zone_ids_strings,
-        Box::new(global_key_auth),
-    );
+    let cloudflare_api =
+        AccountCloudflareApi::new(args.account_id.to_string(), zone_ids_strings, auth);
     let notifier = ConsoleNotifier::new();
 
     let resources = cf_resources();
@@ -129,7 +122,6 @@ export default {
         zone_ids: Vec<String>,
 
         pub existing_info: Option<WorkerScriptInfo>,
-        pub existing_content: Option<String>,
         pub create_called_with: RefCell<Option<(String, WorkerMetadata, Vec<WorkerScriptPart>)>>,
 
         pub dns_records: RefCell<Vec<DNSRecord>>,
@@ -141,7 +133,6 @@ export default {
             Self {
                 zone_ids,
                 existing_info: None,
-                existing_content: None,
                 create_called_with: RefCell::new(None),
                 dns_records: RefCell::new(vec![]),
                 worker_routes: RefCell::new(vec![]),
@@ -315,7 +306,7 @@ export default {
 
         async fn get_worker_script_version(
             &self,
-            script_name: String,
+            _script_name: String,
         ) -> Result<Option<String>, DeployError> {
             Ok(None)
         }

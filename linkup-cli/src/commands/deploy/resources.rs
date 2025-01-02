@@ -31,14 +31,6 @@ impl TargetDNSRecord {
     pub fn comment(&self) -> String {
         format!("{}-{}", self.script, self.route)
     }
-
-    pub fn target(&self, worker_subdomain: Option<String>) -> String {
-        if let Some(sub) = worker_subdomain {
-            format!("{}.{}.workers.dev", self.script, sub)
-        } else {
-            format!("{}.workers.dev", self.script)
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -61,9 +53,7 @@ pub struct TargetCacheRules {
 }
 
 #[derive(Debug, Clone)]
-pub struct WorkerScriptInfo {
-    pub id: String,
-}
+pub struct WorkerScriptInfo {}
 
 #[derive(Debug, Clone)]
 pub struct WorkerMetadata {
@@ -444,41 +434,38 @@ impl TargetCfResources {
         // 3) Reconcile DNS records
         //    We only have a plan for *missing* records, so each DnsRecordPlan must be created.
         for dns_plan in &plan.dns_actions {
-            if let DnsRecordPlan::Create { zone_id, record } = dns_plan {
-                let final_record = {
-                    let mut r = record.clone();
-                    // Fill in the correct content from the subdomain (if any)
-                    let cname_target = if let Some(sub) = &worker_subdomain {
-                        format!("{}.{}.workers.dev", self.worker_script_name, sub)
-                    } else {
-                        format!("{}.workers.dev", self.worker_script_name)
-                    };
-                    r.content = cname_target;
-                    r
+            let DnsRecordPlan::Create { zone_id, record } = dns_plan;
+            let final_record = {
+                let mut r = record.clone();
+                // Fill in the correct content from the subdomain (if any)
+                let cname_target = if let Some(sub) = &worker_subdomain {
+                    format!("{}.{}.workers.dev", self.worker_script_name, sub)
+                } else {
+                    format!("{}.workers.dev", self.worker_script_name)
                 };
-                notifier.notify(&format!(
-                    "Creating DNS record '{}' in zone {} -> {}",
-                    final_record.name, zone_id, final_record.content
-                ));
-                api.create_dns_record(zone_id.clone(), final_record).await?;
-            }
+                r.content = cname_target;
+                r
+            };
+            notifier.notify(&format!(
+                "Creating DNS record '{}' in zone {} -> {}",
+                final_record.name, zone_id, final_record.content
+            ));
+            api.create_dns_record(zone_id.clone(), final_record).await?;
         }
 
         // 4) Reconcile Worker Routes
         for route_plan in &plan.route_actions {
-            if let WorkerRoutePlan::Create {
+            let WorkerRoutePlan::Create {
                 zone_id,
                 pattern,
                 script_name,
-            } = route_plan
-            {
-                notifier.notify(&format!(
-                    "Creating route '{}' in zone {} -> script '{}'",
-                    pattern, zone_id, script_name
-                ));
-                api.create_worker_route(zone_id.clone(), pattern.clone(), script_name.clone())
-                    .await?;
-            }
+            } = route_plan;
+            notifier.notify(&format!(
+                "Creating route '{}' in zone {} -> script '{}'",
+                pattern, zone_id, script_name
+            ));
+            api.create_worker_route(zone_id.clone(), pattern.clone(), script_name.clone())
+                .await?;
         }
 
         // 5) Reconcile Cache Rulesets
@@ -679,7 +666,7 @@ impl DeployPlan {
 }
 
 /// Compare rules by their relevant fields only.
-pub fn rules_equal(current: &Vec<Rule>, desired: &Vec<Rule>) -> bool {
+pub fn rules_equal(current: &[Rule], desired: &[Rule]) -> bool {
     if current.len() != desired.len() {
         return false;
     }

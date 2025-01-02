@@ -105,17 +105,11 @@ pub trait CloudflareApi {
 #[derive(Deserialize, Debug)]
 struct CloudflareWorkerScript {
     id: String,
-    // Other fields omitted for brevity.
-    // According to Cloudflare docs, we might have: created_on, modified_on, etc.
-    #[serde(rename = "created_on")]
-    created_on: String,
 }
 
 #[derive(Deserialize, Debug)]
 struct CloudflareListWorkersResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
     result: Option<Vec<CloudflareWorkerScript>>,
 }
 
@@ -185,16 +179,12 @@ struct KvNamespace {
 #[derive(Deserialize, Debug)]
 struct ListKvNamespacesResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
     result: Option<Vec<KvNamespace>>,
 }
 
 #[derive(Deserialize, Debug)]
 struct CreateKvNamespaceResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
     result: Option<KvNamespace>,
 }
 
@@ -212,17 +202,12 @@ struct DnsRecordResult {
 #[derive(Deserialize, Debug)]
 struct ListDnsRecordsResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
     result: Option<Vec<DnsRecordResult>>,
 }
 
 #[derive(Deserialize, Debug)]
 struct CreateDnsRecordResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
-    result: Option<DnsRecordResult>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -235,24 +220,17 @@ struct WorkerRoute {
 #[derive(Deserialize, Debug)]
 struct ListWorkerRoutesResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
     result: Option<Vec<WorkerRoute>>,
 }
 
 #[derive(Deserialize, Debug)]
 struct CreateWorkerRouteResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
-    result: Option<WorkerRoute>,
 }
 
 #[derive(serde::Deserialize, Debug)]
 struct GetSubdomainResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
     result: Option<SubdomainResult>,
 }
 
@@ -264,24 +242,18 @@ struct SubdomainResult {
 #[derive(Deserialize, Debug)]
 struct CloudflareZoneResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
     result: Option<ZoneInfo>,
 }
 
 #[derive(Deserialize, Debug)]
 struct ZoneInfo {
-    id: String,
     name: String,
-    status: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RulesetListResponse {
     pub result: Option<Vec<ListRuleset>>,
     pub success: bool,
-    pub errors: Vec<CloudflareErrorInfo>,
-    pub messages: Vec<CloudflareErrorInfo>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -296,8 +268,6 @@ pub struct ListRuleset {
 pub struct RulesetResponse {
     pub result: Option<Ruleset>,
     pub success: bool,
-    pub errors: Vec<CloudflareErrorInfo>,
-    pub messages: Vec<CloudflareErrorInfo>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -311,15 +281,9 @@ pub struct Ruleset {
 
 const WORKER_VERSION_TAG: &str = "LINKUP_VERSION_TAG";
 
-/// Download Worker -> returns raw script content
-/// Cloudflare docs: GET /accounts/{account_id}/workers/scripts/{script_name}
-/// Returns the raw worker script text if successful.
 #[derive(Deserialize, Debug)]
-struct CloudflareApiResponse<T> {
+struct CloudflareApiResponse {
     success: bool,
-    errors: Vec<CloudflareErrorInfo>,
-    messages: Vec<CloudflareErrorInfo>,
-    result: Option<T>,
 }
 
 pub struct AccountCloudflareApi {
@@ -384,7 +348,7 @@ impl CloudflareApi for AccountCloudflareApi {
         if let Some(scripts) = data.result {
             for script in scripts {
                 if script.id == script_name {
-                    return Ok(Some(WorkerScriptInfo { id: script.id }));
+                    return Ok(Some(WorkerScriptInfo {}));
                 }
             }
         }
@@ -556,7 +520,7 @@ impl CloudflareApi for AccountCloudflareApi {
         }
 
         // Optionally, parse the response to confirm success
-        let result_data: CloudflareApiResponse<serde_json::Value> = resp.json().await?;
+        let result_data: CloudflareApiResponse = resp.json().await?;
 
         if !result_data.success {
             return Err(DeployError::OtherError);
@@ -587,7 +551,7 @@ impl CloudflareApi for AccountCloudflareApi {
             )));
         }
 
-        let result_data: CloudflareApiResponse<serde_json::Value> = resp.json().await?;
+        let result_data: CloudflareApiResponse = resp.json().await?;
         if !result_data.success {
             return Err(DeployError::OtherError);
         }
@@ -698,7 +662,7 @@ impl CloudflareApi for AccountCloudflareApi {
             )));
         }
 
-        let result_data: CloudflareApiResponse<serde_json::Value> = resp.json().await?;
+        let result_data: CloudflareApiResponse = resp.json().await?;
         if !result_data.success {
             return Err(DeployError::OtherError);
         }
@@ -861,7 +825,7 @@ impl CloudflareApi for AccountCloudflareApi {
             )));
         }
 
-        let result_data: CloudflareApiResponse<serde_json::Value> = resp.json().await?;
+        let result_data: CloudflareApiResponse = resp.json().await?;
         if !result_data.success {
             return Err(DeployError::OtherError);
         }
@@ -1015,7 +979,7 @@ impl CloudflareApi for AccountCloudflareApi {
             )));
         }
 
-        let result_data: CloudflareApiResponse<serde_json::Value> = resp.json().await?;
+        let result_data: CloudflareApiResponse = resp.json().await?;
         if !result_data.success {
             return Err(DeployError::OtherError);
         }

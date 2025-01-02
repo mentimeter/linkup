@@ -1,4 +1,8 @@
+use std::env;
+
 use reqwest::header::HeaderMap;
+
+use super::DeployError;
 
 pub trait CloudflareApiAuth {
     fn headers(&self) -> HeaderMap;
@@ -48,5 +52,17 @@ impl CloudflareApiAuth for CloudflareTokenAuth {
             reqwest::header::HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap(),
         );
         headers
+    }
+}
+
+pub fn get_auth() -> Result<Box<dyn CloudflareApiAuth>, DeployError> {
+    let api_key = env::var("CLOUDFLARE_API_KEY");
+    let email = env::var("CLOUDFLARE_EMAIL");
+    let api_token = env::var("CLOUDFLARE_API_TOKEN");
+
+    match (api_key, email, api_token) {
+        (Ok(api_key), Ok(email), _) => Ok(Box::new(CloudflareGlobalTokenAuth::new(api_key, email))),
+        (_, _, Ok(api_token)) => Ok(Box::new(CloudflareTokenAuth::new(api_token))),
+        _ => Err(DeployError::NoAuthenticationError),
     }
 }
