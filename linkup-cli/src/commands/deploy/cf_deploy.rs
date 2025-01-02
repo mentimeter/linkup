@@ -1,5 +1,7 @@
 use std::env;
 
+use crate::commands::deploy::cf_auth::CloudflareGlobalTokenAuth;
+
 use super::cf_api::{AccountCloudflareApi, CloudflareApi, Rule};
 use super::console_notify::ConsoleNotifier;
 
@@ -136,8 +138,9 @@ pub struct Args {
     zone_ids: Vec<String>,
 }
 
-const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../worker/build/worker/shim.mjs");
-const LINKUP_WORKER_INDEX_WASM: &[u8] = include_bytes!("../../../worker/build/worker/index.wasm");
+const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../../worker/build/worker/shim.mjs");
+const LINKUP_WORKER_INDEX_WASM: &[u8] =
+    include_bytes!("../../../../worker/build/worker/index.wasm");
 
 pub async fn deploy(args: &Args) -> Result<(), DeployError> {
     // pub async fn deploy(account_id: &str, zone_ids: &[String]) -> Result<(), DeployError> {
@@ -286,18 +289,17 @@ async fn deploy_to_cloudflare(
         format!("{}.workers.dev", script_name)
     };
 
-    // For each zone, ensure DNS record and Worker route
+    // For each zone, ensure DNS record and Worker route.
     for zone_id in api.zone_ids() {
-        for route_config in &resources.zone_resources.routes {
-            let route = &route_config.route;
-            let script = &route_config.script;
+        for dns_record in &resources.zone_resources.dns_records {
+            let route = &dns_record.route;
             // DNS Record Check
             let existing_dns = api
-                .get_dns_record(zone_id.clone(), route_config.comment())
+                .get_dns_record(zone_id.clone(), dns_record.comment())
                 .await?;
             if existing_dns.is_none() {
                 notifier.notify(&format!(
-                    "DNS record for '{}' not found in zone '{}'. Creating...",
+                    "DNS record for '{}' not found in zone '{}'. Creating..",
                     route, zone_id
                 ));
                 let new_record = DNSRecord {
@@ -305,7 +307,7 @@ async fn deploy_to_cloudflare(
                     name: route.clone(),
                     record_type: "CNAME".to_string(),
                     content: cname_target.clone(),
-                    comment: route_config.comment(),
+                    comment: dns_record.comment(),
                     proxied: true,
                 };
                 api.create_dns_record(zone_id.clone(), new_record).await?;
@@ -319,8 +321,11 @@ async fn deploy_to_cloudflare(
                     route, zone_id
                 ));
             }
+        }
 
+        for route_config in &resources.zone_resources.routes {
             let zone_name = api.get_zone_name(zone_id.clone()).await?;
+            let script = &route_config.script;
             // Worker Route Check
             let existing_route = api
                 .get_worker_route(
@@ -461,10 +466,12 @@ pub async fn destroy_from_cloudflare(
                     route, script, zone_id
                 ));
             }
-
+        }
+        for dns_record in &resources.zone_resources.dns_records {
+            let route = &dns_record.route;
             // Remove DNS record if it exists
             let existing_dns = api
-                .get_dns_record(zone_id.clone(), route_config.comment())
+                .get_dns_record(zone_id.clone(), dns_record.comment())
                 .await?;
             if let Some(record) = existing_dns {
                 notifier.notify(&format!(
@@ -483,6 +490,19 @@ pub async fn destroy_from_cloudflare(
         }
     }
 
+    // Remove the Worker script - must happen before kv delete
+    let existing_info = api.get_worker_script_info(script_name.clone()).await?;
+    if existing_info.is_some() {
+        notifier.notify(&format!("Removing worker script '{}'...", script_name));
+        api.remove_worker_script(script_name.to_string()).await?;
+        notifier.notify("Worker script removed successfully.");
+    } else {
+        notifier.notify(&format!(
+            "Worker script '{}' does not exist, nothing to remove.",
+            script_name
+        ));
+    }
+
     // Remove the KV namespace if it exists
     let kv_ns_id = api.get_kv_namespace_id(kv_name.clone()).await?;
     if let Some(ns_id) = kv_ns_id {
@@ -493,19 +513,6 @@ pub async fn destroy_from_cloudflare(
         notifier.notify(&format!(
             "KV namespace '{}' does not exist, nothing to remove.",
             kv_name
-        ));
-    }
-
-    // Remove the Worker script
-    let existing_info = api.get_worker_script_info(script_name.clone()).await?;
-    if existing_info.is_some() {
-        notifier.notify(&format!("Removing worker script '{}'...", script_name));
-        api.remove_worker_script(script_name.to_string()).await?;
-        notifier.notify("Worker script removed successfully.");
-    } else {
-        notifier.notify(&format!(
-            "Worker script '{}' does not exist, nothing to remove.",
-            script_name
         ));
     }
 
@@ -770,8 +777,12 @@ mod tests {
             }],
             kv_name: "linkup-integration-test-kv".to_string(),
             zone_resources: TargectCfZoneResources {
+                dns_records: vec![TargetDNSRecord {
+                    route: "linkup-integration-test".to_string(),
+                    script: "linkup-integration-test-script".to_string(),
+                }],
                 routes: vec![TargetWorkerRoute {
-                    route: "linkup-integraton-test".to_string(),
+                    route: "linkup-integration-test".to_string(),
                     script: "linkup-integration-test-script".to_string(),
                 }],
                 cache_rules: TargetCacheRules {
@@ -810,7 +821,7 @@ mod tests {
 
         assert_eq!(script_name, "linkup-integration-test-script");
         assert_eq!(metadata.main_module, "index.js");
-        assert_eq!(metadata.bindings.len(), 0);
+        assert_eq!(metadata.bindings.len(), 1);
         assert_eq!(metadata.compatibility_date, "2024-12-18");
 
         assert_eq!(parts.len(), 1);
@@ -841,7 +852,7 @@ mod tests {
 
         assert_eq!(script_name, "linkup-integration-test-script");
         assert_eq!(metadata.main_module, "index.js");
-        assert_eq!(metadata.bindings.len(), 0);
+        assert_eq!(metadata.bindings.len(), 1);
         assert_eq!(metadata.compatibility_date, "2024-12-18");
 
         assert_eq!(parts.len(), 1);
@@ -890,7 +901,7 @@ mod tests {
         // Check DNS record created
         let dns_records = api.dns_records.borrow();
         assert_eq!(dns_records.len(), 1);
-        assert_eq!(dns_records[0].name, "linkup-integraton-test");
+        assert_eq!(dns_records[0].name, "linkup-integration-test");
         assert!(dns_records[0]
             .content
             .contains("linkup-integration-test-script.workers.dev"));
@@ -898,7 +909,7 @@ mod tests {
         // Check route created
         let routes = api.worker_routes.borrow();
         assert_eq!(routes.len(), 1);
-        assert_eq!(routes[0].1, "linkup-integraton-test");
+        assert_eq!(routes[0].1, "linkup-integration-test.example.com/*");
         assert_eq!(routes[0].2, "linkup-integration-test-script");
     }
 
@@ -914,7 +925,7 @@ mod tests {
         let account_id = match std::env::var("CLOUDFLARE_ACCOUNT_ID") {
             Ok(val) => val,
             Err(_) => {
-                eprintln!("Skipping test: CLOUDFLARE_ACCOUNT_ID is not set");
+                eprintln!("Skipping test: CLOUDFLARE_ACCOUNT_ID is not set.");
                 return;
             }
         };
@@ -936,7 +947,7 @@ mod tests {
         };
 
         if run_integration_test != "true" {
-            eprintln!("Skipping test: LINKUP_DEPLOY_INTEGRATION_TEST is not set to 'true'");
+            eprintln!("Skipping test: LINKUP_DEPLOY_INTEGRATION_TEST is not set to 'true'.");
             return;
         }
 
@@ -986,20 +997,20 @@ mod tests {
         );
 
         // Verify DNS record exists
-        for route_config in &res.zone_resources.routes {
+        for dns_record in &res.zone_resources.dns_records {
             let existing_dns = cloudflare_api
-                .get_dns_record(zone_id.clone(), route_config.comment())
+                .get_dns_record(zone_id.clone(), dns_record.comment())
                 .await;
             assert!(
                 existing_dns.is_ok(),
                 "Failed to get DNS record for '{}': {:?}",
-                route_config.route,
+                dns_record.route,
                 existing_dns
             );
             assert!(
                 existing_dns.unwrap().is_some(),
                 "DNS record for '{}' not found after deploy.",
-                route_config.route
+                dns_record.route
             );
         }
 
@@ -1084,20 +1095,20 @@ mod tests {
         );
 
         // Verify DNS record is gone
-        for route_config in &res.zone_resources.routes {
+        for dns_record in &res.zone_resources.dns_records {
             let existing_dns = cloudflare_api
-                .get_dns_record(zone_id.clone(), route_config.comment())
+                .get_dns_record(zone_id.clone(), dns_record.comment())
                 .await;
             assert!(
                 existing_dns.is_ok(),
                 "Failed to get DNS record for '{}' after destroy: {:?}",
-                route_config.route,
+                dns_record.route,
                 existing_dns
             );
             assert!(
                 existing_dns.unwrap().is_none(),
                 "DNS record for '{}' still exists after destroy.",
-                route_config.route
+                dns_record.route
             );
         }
 
