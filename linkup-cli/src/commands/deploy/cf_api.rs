@@ -389,7 +389,7 @@ impl CloudflareApi for AccountCloudflareApi {
                 json!({
                     "type": b.type_,
                     "name": b.name,
-                    "text": b.text
+                    "namespace_id": b.namespace_id,
                 })
             })
             .collect();
@@ -411,7 +411,7 @@ impl CloudflareApi for AccountCloudflareApi {
                 part.name.clone(),
                 multipart::Part::bytes(part.data)
                     .file_name(part.name.clone()) // not strictly required
-                    .mime_str("application/javascript+module")
+                    .mime_str(&part.content_type)
                     .unwrap(),
             );
         }

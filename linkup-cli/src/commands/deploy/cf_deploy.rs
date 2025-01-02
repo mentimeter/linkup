@@ -1,7 +1,6 @@
 use std::env;
 
 use super::cf_api::{AccountCloudflareApi, CloudflareApi, Rule};
-use super::cf_auth::CloudflareTokenAuth;
 use super::console_notify::ConsoleNotifier;
 
 #[derive(thiserror::Error, Debug)]
@@ -18,14 +17,48 @@ pub enum DeployError {
 pub struct TargetCfResources {
     worker_script_name: String,
     worker_script_parts: Vec<WorkerScriptPart>,
+    worker_script_entry: String,
     kv_name: String,
     zone_resources: TargectCfZoneResources,
 }
 
 #[derive(Debug, Clone)]
 pub struct TargectCfZoneResources {
-    routes: Vec<TargectCfRoutes>,
+    dns_records: Vec<TargetDNSRecord>,
+    routes: Vec<TargetWorkerRoute>,
     cache_rules: TargetCacheRules,
+}
+
+#[derive(Debug, Clone)]
+pub struct TargetDNSRecord {
+    route: String,
+    script: String,
+}
+
+impl TargetDNSRecord {
+    pub fn comment(&self) -> String {
+        format!("{}-{}", self.script, self.route)
+    }
+
+    pub fn target(&self, worker_subdomain: Option<String>) -> String {
+        if let Some(sub) = worker_subdomain {
+            format!("{}.{}.workers.dev", self.script, sub)
+        } else {
+            format!("{}.workers.dev", self.script)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TargetWorkerRoute {
+    route: String,
+    script: String,
+}
+
+impl TargetWorkerRoute {
+    pub fn worker_route(&self, zone_name: String) -> String {
+        format!("{}.{}/*", self.route, zone_name)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -36,42 +69,27 @@ pub struct TargetCacheRules {
 }
 
 #[derive(Debug, Clone)]
-pub struct TargectCfRoutes {
-    route: String,
-    script: String,
-}
-
-impl TargectCfRoutes {
-    pub fn comment(&self) -> String {
-        format!("{}-{}", self.script, self.route)
-    }
-
-    pub fn worker_route(&self, zone_name: String) -> String {
-        format!("{}.{}/*", self.route, zone_name)
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct WorkerScriptInfo {
     pub id: String,
 }
 
 pub struct WorkerMetadata {
     pub main_module: String,
-    pub bindings: Vec<WorkerBinding>,
+    pub bindings: Vec<WorkerKVBinding>,
     pub compatibility_date: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct WorkerScriptPart {
     pub name: String,
+    pub content_type: String,
     pub data: Vec<u8>,
 }
 
-pub struct WorkerBinding {
+pub struct WorkerKVBinding {
     pub type_: String,
     pub name: String,
-    pub text: String,
+    pub namespace_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -118,45 +136,76 @@ pub struct Args {
     zone_ids: Vec<String>,
 }
 
+const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../worker/build/worker/shim.mjs");
+const LINKUP_WORKER_INDEX_WASM: &[u8] = include_bytes!("../../../worker/build/worker/index.wasm");
+
 pub async fn deploy(args: &Args) -> Result<(), DeployError> {
+    // pub async fn deploy(account_id: &str, zone_ids: &[String]) -> Result<(), DeployError> {
     println!("Deploying to Cloudflare...");
     println!("Account ID: {}", args.account_id);
     println!("Zone IDs: {:?}", args.zone_ids);
 
     let api_key = env::var("CLOUDFLARE_API_KEY").expect("Missing Cloudflare API token");
+    let email = env::var("CLOUDFLARE_EMAIL").expect("Missing Cloudflare email");
     let zone_ids_strings: Vec<String> = args.zone_ids.iter().map(|s| s.to_string()).collect();
 
-    let token_auth = CloudflareTokenAuth::new(api_key);
+    // let token_auth = CloudflareTokenAuth::new(api_key);
+    let global_key_auth = CloudflareGlobalTokenAuth::new(api_key, email);
 
     let cloudflare_api = AccountCloudflareApi::new(
         args.account_id.to_string(),
         zone_ids_strings,
-        Box::new(token_auth),
+        Box::new(global_key_auth),
     );
     let notifier = ConsoleNotifier::new();
 
+    let linkup_script_name = "linkup-worker";
     let resources = TargetCfResources {
-        worker_script_name: "linkup-integration-test-script".to_string(),
-        worker_script_parts: vec![WorkerScriptPart {
-            name: "index.js".to_string(),
-            data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
-        }],
-        kv_name: "linkup-integration-test-kv".to_string(),
+        worker_script_name: linkup_script_name.to_string(),
+        worker_script_entry: "shim.mjs".to_string(),
+        worker_script_parts: vec![
+            WorkerScriptPart {
+                name: "shim.mjs".to_string(),
+                data: LINKUP_WORKER_SHIM.to_vec(),
+                content_type: "application/javascript+module".to_string(),
+            },
+            WorkerScriptPart {
+                name: "index.wasm".to_string(),
+                data: LINKUP_WORKER_INDEX_WASM.to_vec(),
+                content_type: "application/wasm".to_string(),
+            },
+        ],
+        kv_name: "linkup-session-kv".to_string(),
         zone_resources: TargectCfZoneResources {
-            routes: vec![TargectCfRoutes {
-                route: "linkup-integraton-test".to_string(),
-                script: "linkup-integration-test-script".to_string(),
-            }],
+            dns_records: vec![
+                TargetDNSRecord {
+                    route: "*".to_string(),
+                    script: linkup_script_name.to_string(),
+                },
+                TargetDNSRecord {
+                    route: "@".to_string(),
+                    script: linkup_script_name.to_string(),
+                },
+            ],
+            routes: vec![
+                TargetWorkerRoute {
+                    route: "*.".to_string(),
+                    script: linkup_script_name.to_string(),
+                },
+                TargetWorkerRoute {
+                    route: "".to_string(),
+                    script: linkup_script_name.to_string(),
+                },
+            ],
             cache_rules: TargetCacheRules {
-                name: "linkup-integration-test-cache-rules".to_string(),
-                phase: "http_request_firewall_custom".to_string(),
+                name: "default".to_string(),
+                phase: "http_request_cache_settings".to_string(),
                 rules: vec![Rule {
-                    action: "block".to_string(),
-                    description: "test linkup integration rule".to_string(),
+                    action: "set_cache_settings".to_string(),
+                    description: "linkup cache rule - do not cache tunnel requests".to_string(),
                     enabled: true,
-                    expression: "(starts_with(http.host, \"does-not-exist-host\"))".to_string(),
-                    // action_parameters: Some(serde_json::json!({"cache": false})),
-                    action_parameters: None,
+                    expression: "(starts_with(http.host, \"tunnel-\"))".to_string(),
+                    action_parameters: Some(serde_json::json!({"cache": false})),
                 }],
             },
         },
@@ -172,8 +221,26 @@ async fn deploy_to_cloudflare(
     api: &impl CloudflareApi,
     notifier: &impl DeployNotifier,
 ) -> Result<(), DeployError> {
-    let script_name = &resources.worker_script_name;
+    // Handle KV namespace
+    let kv_name = &resources.kv_name;
+    let kv_ns_id = api.get_kv_namespace_id(kv_name.clone()).await?;
+    let kv_ns_id = if kv_ns_id.is_none() {
+        notifier.notify(&format!(
+            "KV namespace '{}' does not exist. Creating...",
+            kv_name
+        ));
+        let new_id = api.create_kv_namespace(kv_name.clone()).await?;
+        notifier.notify(&format!(
+            "KV namespace '{}' created with ID: {}",
+            kv_name, new_id
+        ));
+        new_id
+    } else {
+        notifier.notify(&format!("KV namespace '{}' already exists.", kv_name));
+        kv_ns_id.unwrap()
+    };
 
+    let script_name = &resources.worker_script_name;
     let existing_info = api.get_worker_script_info(script_name.clone()).await?;
     let needs_upload = if let Some(_) = existing_info {
         let existing_content = api.get_worker_script_content(script_name.clone()).await?;
@@ -187,8 +254,12 @@ async fn deploy_to_cloudflare(
         let confirmed = notifier.ask_confirmation();
         if confirmed {
             let metadata = WorkerMetadata {
-                main_module: "index.js".to_string(),
-                bindings: vec![],
+                main_module: resources.worker_script_entry.clone(),
+                bindings: vec![WorkerKVBinding {
+                    type_: "kv_namespace".to_string(),
+                    name: "LINKUP_SESSIONS".to_string(),
+                    namespace_id: kv_ns_id.clone(),
+                }],
                 compatibility_date: "2024-12-18".to_string(),
             };
 
@@ -207,23 +278,6 @@ async fn deploy_to_cloudflare(
         notifier.notify("No changes needed. Worker script is already up to date.");
     }
 
-    // Handle KV namespace
-    let kv_name = &resources.kv_name;
-    let kv_ns_id = api.get_kv_namespace_id(kv_name.clone()).await?;
-    if kv_ns_id.is_none() {
-        notifier.notify(&format!(
-            "KV namespace '{}' does not exist. Creating...",
-            kv_name
-        ));
-        let new_id = api.create_kv_namespace(kv_name.clone()).await?;
-        notifier.notify(&format!(
-            "KV namespace '{}' created with ID: {}",
-            kv_name, new_id
-        ));
-    } else {
-        notifier.notify(&format!("KV namespace '{}' already exists.", kv_name));
-    }
-
     // Determine subdomain for script
     let subdomain = api.get_worker_subdomain().await?;
     let cname_target = if let Some(sub) = subdomain {
@@ -233,8 +287,6 @@ async fn deploy_to_cloudflare(
     };
 
     // For each zone, ensure DNS record and Worker route
-    // Assuming route = DNS name (e.g. "linkup-integraton-test" means "linkup-integraton-test.example.com")
-    // Adjust logic as needed.
     for zone_id in api.zone_ids() {
         for route_config in &resources.zone_resources.routes {
             let route = &route_config.route;
@@ -710,13 +762,15 @@ mod tests {
     fn test_resources() -> TargetCfResources {
         TargetCfResources {
             worker_script_name: "linkup-integration-test-script".to_string(),
+            worker_script_entry: "index.js".to_string(),
             worker_script_parts: vec![WorkerScriptPart {
                 name: "index.js".to_string(),
                 data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
+                content_type: "application/javascript+module".to_string(),
             }],
             kv_name: "linkup-integration-test-kv".to_string(),
             zone_resources: TargectCfZoneResources {
-                routes: vec![TargectCfRoutes {
+                routes: vec![TargetWorkerRoute {
                     route: "linkup-integraton-test".to_string(),
                     script: "linkup-integration-test-script".to_string(),
                 }],
