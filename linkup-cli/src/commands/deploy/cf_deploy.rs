@@ -528,7 +528,7 @@ export default {
                     script: "linkup-integration-test-script".to_string(),
                 }],
                 routes: vec![TargetWorkerRoute {
-                    route: "linkup-integration-test".to_string(),
+                    route: "linkup-integration-test.".to_string(),
                     script: "linkup-integration-test-script".to_string(),
                 }],
                 cache_rules: TargetCacheRules {

@@ -44,7 +44,7 @@ pub struct TargetWorkerRoute {
 
 impl TargetWorkerRoute {
     pub fn worker_route(&self, zone_name: String) -> String {
-        format!("{}.{}/*", self.route, zone_name)
+        format!("{}{}/*", self.route, zone_name)
     }
 }
 
