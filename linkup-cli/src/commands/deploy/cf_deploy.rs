@@ -1,8 +1,7 @@
 use std::env;
 
-use crate::commands::deploy::cf_auth::CloudflareGlobalTokenAuth;
-
 use super::cf_api::{AccountCloudflareApi, CloudflareApi, Rule};
+use super::cf_auth::CloudflareGlobalTokenAuth;
 use super::console_notify::ConsoleNotifier;
 
 #[derive(thiserror::Error, Debug)]
