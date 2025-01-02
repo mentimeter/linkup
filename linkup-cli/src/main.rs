@@ -177,6 +177,9 @@ enum Commands {
     #[clap(about = "Deploy services to Cloudflare")]
     Deploy(commands::DeployArgs),
 
+    #[clap(about = "Destroy/remove linkup installation from Cloudflare")]
+    Destroy(commands::DestroyArgs),
+
     // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
     // It is called on `start` to start the local-server.
     #[clap(hide = true)]
@@ -202,5 +205,6 @@ async fn main() -> Result<()> {
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
         Commands::Server(args) => commands::server(args).await,
         Commands::Deploy(args) => commands::deploy(args).await.map_err(CliError::from),
+        Commands::Destroy(args) => commands::destroy(args).await.map_err(CliError::from),
     }
 }

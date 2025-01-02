@@ -1,10 +1,10 @@
-use reqwest::{header::HeaderMap, multipart, Client};
+use reqwest::{multipart, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
-    cf_auth::CloudflareApiAuth,
-    cf_deploy::{DNSRecord, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart},
+    auth::CloudflareApiAuth,
+    resources::{DNSRecord, Rule, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart},
     DeployError,
 };
 
@@ -220,15 +220,6 @@ struct ZoneInfo {
     id: String,
     name: String,
     status: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Rule {
-    pub action: String,
-    pub description: String,
-    pub enabled: bool,
-    pub expression: String,
-    pub action_parameters: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

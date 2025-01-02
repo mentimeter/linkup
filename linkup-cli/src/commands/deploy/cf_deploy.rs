@@ -1,8 +1,11 @@
 use std::env;
 
-use super::cf_api::{AccountCloudflareApi, CloudflareApi, Rule};
-use super::cf_auth::CloudflareGlobalTokenAuth;
+use crate::commands::deploy::resources::cf_resources;
+
+use super::api::{AccountCloudflareApi, CloudflareApi};
+use super::auth::CloudflareGlobalTokenAuth;
 use super::console_notify::ConsoleNotifier;
+use super::resources::{DNSRecord, Rule, TargetCfResources, WorkerKVBinding, WorkerMetadata};
 
 #[derive(thiserror::Error, Debug)]
 pub enum DeployError {
@@ -14,110 +17,13 @@ pub enum DeployError {
     OtherError,
 }
 
-#[derive(Debug, Clone)]
-pub struct TargetCfResources {
-    worker_script_name: String,
-    worker_script_parts: Vec<WorkerScriptPart>,
-    worker_script_entry: String,
-    kv_name: String,
-    zone_resources: TargectCfZoneResources,
-}
-
-#[derive(Debug, Clone)]
-pub struct TargectCfZoneResources {
-    dns_records: Vec<TargetDNSRecord>,
-    routes: Vec<TargetWorkerRoute>,
-    cache_rules: TargetCacheRules,
-}
-
-#[derive(Debug, Clone)]
-pub struct TargetDNSRecord {
-    route: String,
-    script: String,
-}
-
-impl TargetDNSRecord {
-    pub fn comment(&self) -> String {
-        format!("{}-{}", self.script, self.route)
-    }
-
-    pub fn target(&self, worker_subdomain: Option<String>) -> String {
-        if let Some(sub) = worker_subdomain {
-            format!("{}.{}.workers.dev", self.script, sub)
-        } else {
-            format!("{}.workers.dev", self.script)
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TargetWorkerRoute {
-    route: String,
-    script: String,
-}
-
-impl TargetWorkerRoute {
-    pub fn worker_route(&self, zone_name: String) -> String {
-        format!("{}.{}/*", self.route, zone_name)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TargetCacheRules {
-    name: String,
-    phase: String,
-    rules: Vec<Rule>,
-}
-
-#[derive(Debug, Clone)]
-pub struct WorkerScriptInfo {
-    pub id: String,
-}
-
-pub struct WorkerMetadata {
-    pub main_module: String,
-    pub bindings: Vec<WorkerKVBinding>,
-    pub compatibility_date: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct WorkerScriptPart {
-    pub name: String,
-    pub content_type: String,
-    pub data: Vec<u8>,
-}
-
-pub struct WorkerKVBinding {
-    pub type_: String,
-    pub name: String,
-    pub namespace_id: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct DNSRecord {
-    pub id: String,
-    pub name: String,
-    pub record_type: String,
-    pub content: String,
-    pub comment: String,
-    pub proxied: bool,
-}
-
 pub trait DeployNotifier {
     fn ask_confirmation(&self) -> bool;
     fn notify(&self, message: &str);
 }
 
-const LOCAL_SCRIPT_CONTENT: &str = r#"
-export default {
-	async fetch(request, env, ctx) {
-		return new Response('Hello World!');
-	},
-};
-"#;
-
 #[derive(clap::Args)]
-pub struct Args {
+pub struct DeployArgs {
     #[arg(
         short = 'a',
         long = "account-id",
@@ -137,11 +43,7 @@ pub struct Args {
     zone_ids: Vec<String>,
 }
 
-const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../../worker/build/worker/shim.mjs");
-const LINKUP_WORKER_INDEX_WASM: &[u8] =
-    include_bytes!("../../../../worker/build/worker/index.wasm");
-
-pub async fn deploy(args: &Args) -> Result<(), DeployError> {
+pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
     // pub async fn deploy(account_id: &str, zone_ids: &[String]) -> Result<(), DeployError> {
     println!("Deploying to Cloudflare...");
     println!("Account ID: {}", args.account_id);
@@ -161,57 +63,7 @@ pub async fn deploy(args: &Args) -> Result<(), DeployError> {
     );
     let notifier = ConsoleNotifier::new();
 
-    let linkup_script_name = "linkup-worker";
-    let resources = TargetCfResources {
-        worker_script_name: linkup_script_name.to_string(),
-        worker_script_entry: "shim.mjs".to_string(),
-        worker_script_parts: vec![
-            WorkerScriptPart {
-                name: "shim.mjs".to_string(),
-                data: LINKUP_WORKER_SHIM.to_vec(),
-                content_type: "application/javascript+module".to_string(),
-            },
-            WorkerScriptPart {
-                name: "index.wasm".to_string(),
-                data: LINKUP_WORKER_INDEX_WASM.to_vec(),
-                content_type: "application/wasm".to_string(),
-            },
-        ],
-        kv_name: "linkup-session-kv".to_string(),
-        zone_resources: TargectCfZoneResources {
-            dns_records: vec![
-                TargetDNSRecord {
-                    route: "*".to_string(),
-                    script: linkup_script_name.to_string(),
-                },
-                TargetDNSRecord {
-                    route: "@".to_string(),
-                    script: linkup_script_name.to_string(),
-                },
-            ],
-            routes: vec![
-                TargetWorkerRoute {
-                    route: "*.".to_string(),
-                    script: linkup_script_name.to_string(),
-                },
-                TargetWorkerRoute {
-                    route: "".to_string(),
-                    script: linkup_script_name.to_string(),
-                },
-            ],
-            cache_rules: TargetCacheRules {
-                name: "default".to_string(),
-                phase: "http_request_cache_settings".to_string(),
-                rules: vec![Rule {
-                    action: "set_cache_settings".to_string(),
-                    description: "linkup cache rule - do not cache tunnel requests".to_string(),
-                    enabled: true,
-                    expression: "(starts_with(http.host, \"tunnel-\"))".to_string(),
-                    action_parameters: Some(serde_json::json!({"cache": false})),
-                }],
-            },
-        },
-    };
+    let resources = cf_resources();
 
     deploy_to_cloudflare(&resources, &cloudflare_api, &notifier).await?;
 
@@ -246,7 +98,7 @@ async fn deploy_to_cloudflare(
     let existing_info = api.get_worker_script_info(script_name.clone()).await?;
     let needs_upload = if let Some(_) = existing_info {
         let existing_content = api.get_worker_script_content(script_name.clone()).await?;
-        existing_content != LOCAL_SCRIPT_CONTENT
+        existing_content != "TODO: some other string"
     } else {
         true
     };
@@ -365,14 +217,11 @@ async fn deploy_to_cloudflare(
         let cache_ruleset = api
             .get_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
             .await?;
-        println!("got ruleset {:?}", cache_ruleset);
         let ruleset_id = if cache_ruleset.is_none() {
             notifier.notify("Cache ruleset does not exist. Creating...");
-            println!("creating ruleset");
             let new_ruleset_id = api
                 .create_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
                 .await?;
-            println!("created ruleset");
             notifier.notify(&format!(
                 "Cache ruleset created with ID: {}",
                 new_ruleset_id
@@ -382,13 +231,11 @@ async fn deploy_to_cloudflare(
             cache_ruleset.unwrap()
         };
 
-        println!("got ruleset id {:?}", ruleset_id);
         // 2. Get current rules
         let current_rules = api
             .get_ruleset_rules(zone_id.clone(), ruleset_id.clone())
             .await?;
         let desired_rules = &resources.zone_resources.cache_rules.rules;
-        println!("got rules {:?}", current_rules);
 
         // Compare current and desired rules
         if !rules_equal(&current_rules, &desired_rules) {
@@ -425,128 +272,28 @@ fn rules_equal(current: &Vec<Rule>, desired: &Vec<Rule>) -> bool {
     true
 }
 
-pub async fn destroy_from_cloudflare(
-    resources: &TargetCfResources,
-    api: &impl CloudflareApi,
-    notifier: &impl DeployNotifier,
-) -> Result<(), DeployError> {
-    let script_name = &resources.worker_script_name;
-    let kv_name = &resources.kv_name;
-
-    // For each zone, remove routes and DNS records
-    for zone_id in api.zone_ids() {
-        for route_config in &resources.zone_resources.routes {
-            let route = &route_config.route;
-            let script = &route_config.script;
-
-            let zone_name = api.get_zone_name(zone_id.clone()).await?;
-
-            // Remove Worker route if it exists
-            let existing_route = api
-                .get_worker_route(
-                    zone_id.clone(),
-                    route_config.worker_route(zone_name.clone()),
-                    script.clone(),
-                )
-                .await?;
-            if let Some(route_id) = existing_route {
-                notifier.notify(&format!(
-                    "Removing worker route for pattern '{}' and script '{}' in zone '{}'.",
-                    route, script, zone_id
-                ));
-                api.remove_worker_route(zone_id.clone(), route_id).await?;
-                notifier.notify(&format!(
-                    "Worker route for pattern '{}' and script '{}' removed.",
-                    route, script
-                ));
-            } else {
-                notifier.notify(&format!(
-                    "No worker route for pattern '{}' and script '{}' found in zone '{}', nothing to remove.",
-                    route, script, zone_id
-                ));
-            }
-        }
-        for dns_record in &resources.zone_resources.dns_records {
-            let route = &dns_record.route;
-            // Remove DNS record if it exists
-            let existing_dns = api
-                .get_dns_record(zone_id.clone(), dns_record.comment())
-                .await?;
-            if let Some(record) = existing_dns {
-                notifier.notify(&format!(
-                    "Removing DNS record '{}' in zone '{}'.",
-                    record.name, zone_id
-                ));
-                api.remove_dns_record(zone_id.clone(), record.id.clone())
-                    .await?;
-                notifier.notify(&format!("DNS record '{}' removed.", record.name));
-            } else {
-                notifier.notify(&format!(
-                    "No DNS record for '{}' found in zone '{}', nothing to remove.",
-                    route, zone_id
-                ));
-            }
-        }
-    }
-
-    // Remove the Worker script - must happen before kv delete
-    let existing_info = api.get_worker_script_info(script_name.clone()).await?;
-    if existing_info.is_some() {
-        notifier.notify(&format!("Removing worker script '{}'...", script_name));
-        api.remove_worker_script(script_name.to_string()).await?;
-        notifier.notify("Worker script removed successfully.");
-    } else {
-        notifier.notify(&format!(
-            "Worker script '{}' does not exist, nothing to remove.",
-            script_name
-        ));
-    }
-
-    // Remove the KV namespace if it exists
-    let kv_ns_id = api.get_kv_namespace_id(kv_name.clone()).await?;
-    if let Some(ns_id) = kv_ns_id {
-        notifier.notify(&format!("Removing KV namespace '{}'...", kv_name));
-        api.remove_kv_namespace(ns_id.clone()).await?;
-        notifier.notify(&format!("KV namespace '{}' removed successfully.", kv_name));
-    } else {
-        notifier.notify(&format!(
-            "KV namespace '{}' does not exist, nothing to remove.",
-            kv_name
-        ));
-    }
-
-    for zone_id in api.zone_ids() {
-        let cache_name = resources.zone_resources.cache_rules.name.clone();
-        let cache_phase = resources.zone_resources.cache_rules.phase.clone();
-        let cache_ruleset = api
-            .get_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
-            .await?;
-        if let Some(ruleset_id) = cache_ruleset {
-            notifier.notify(&format!(
-                "Removing cache ruleset '{}' in zone '{}'.",
-                cache_name, zone_id
-            ));
-            api.remove_ruleset_rules(zone_id.clone(), ruleset_id.clone())
-                .await?;
-            notifier.notify(&format!("Cache ruleset '{}' removed.", cache_name));
-        } else {
-            notifier.notify(&format!(
-                "Cache ruleset '{}' does not exist in zone '{}', nothing to remove.",
-                cache_name, zone_id
-            ));
-        }
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
 
-    use crate::commands::deploy;
+    use crate::commands::deploy::{
+        self,
+        cf_destroy::destroy_from_cloudflare,
+        resources::{
+            TargectCfZoneResources, TargetCacheRules, TargetDNSRecord, TargetWorkerRoute,
+            WorkerScriptInfo, WorkerScriptPart,
+        },
+    };
 
     use super::*;
+
+    const LOCAL_SCRIPT_CONTENT: &str = r#"
+export default {
+	async fetch(request, env, ctx) {
+		return new Response('Hello World!');
+	},
+};
+"#;
 
     struct TestCloudflareApi {
         zone_ids: Vec<String>,
@@ -726,7 +473,7 @@ mod tests {
             &self,
             zone_id: String,
             ruleset: String,
-            rules: Vec<deploy::cf_api::Rule>,
+            rules: Vec<Rule>,
         ) -> Result<(), DeployError> {
             Ok(())
         }
@@ -743,7 +490,7 @@ mod tests {
             &self,
             zone_id: String,
             ruleset: String,
-        ) -> Result<Vec<deploy::cf_api::Rule>, DeployError> {
+        ) -> Result<Vec<Rule>, DeployError> {
             Ok(vec![])
         }
     }
@@ -954,8 +701,7 @@ mod tests {
         let api_key = std::env::var("CLOUDFLARE_API_KEY").expect("CLOUDFLARE_API_KEY is not set");
         let email = std::env::var("CLOUDFLARE_EMAIL").expect("CLOUDFLARE_EMAIL is not set");
 
-        let global_api_auth =
-            deploy::cf_auth::CloudflareGlobalTokenAuth::new(api_key.clone(), email);
+        let global_api_auth = deploy::auth::CloudflareGlobalTokenAuth::new(api_key.clone(), email);
         let cloudflare_api = AccountCloudflareApi::new(
             account_id.clone(),
             vec![zone_id.to_string()],
