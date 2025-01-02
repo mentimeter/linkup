@@ -199,7 +199,7 @@ async fn available_update() -> Option<Asset> {
         Ok(version) => version,
         Err(error) => {
             log::error!(
-                "failed to parse current version '{}': {}",
+                "Failed to parse current version '{}': {}",
                 CURRENT_VERSION,
                 error
             );
@@ -208,30 +208,18 @@ async fn available_update() -> Option<Asset> {
         }
     };
 
-    let release = latest_release().await;
-    let latest_version = match Version::try_from(release.version.as_str()) {
-        Ok(version) => version,
-        Err(error) => {
-            log::error!(
-                "failed to parse latest version '{}': {}",
-                release.version,
-                error
-            );
-
-            return None;
-        }
-    };
-
-    release
-        .asset_for(os, arch)
-        .filter(|_| current_version.is_outdated(&latest_version))
-}
-
-async fn latest_release() -> Release {
-    match cached_latest_release().await {
+    let latest_release = match cached_latest_release().await {
         Some(cached_latest_release) => cached_latest_release.release,
         None => {
-            let release = fetch_latest_release().await;
+            let release = match fetch_latest_release().await {
+                Ok(release) => release,
+                Err(error) => {
+                    log::error!("Failed to fetch the latest release: {}", error);
+
+                    return None;
+                }
+            };
+
             match fs::File::create(linkup_file_path(CACHED_LATEST_RELEASE_FILE)) {
                 Ok(new_file) => {
                     if let Err(error) = serde_json::to_writer_pretty(new_file, &release) {
@@ -247,10 +235,29 @@ async fn latest_release() -> Release {
                 }
             }
         }
+    };
+
+    let latest_version = match Version::try_from(latest_release.version.as_str()) {
+        Ok(version) => version,
+        Err(error) => {
+            log::error!(
+                "Failed to parse latest version '{}': {}",
+                latest_release.version,
+                error
+            );
+
+            return None;
+        }
+    };
+
+    if !current_version.is_outdated(&latest_version) {
+        return None;
     }
+
+    latest_release.asset_for(os, arch)
 }
 
-async fn fetch_latest_release() -> Release {
+async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/latest"
         .parse()
         .unwrap();
@@ -267,8 +274,12 @@ async fn fetch_latest_release() -> Release {
         HeaderValue::from_str("2022-11-28").unwrap(),
     );
 
-    let client = reqwest::Client::new();
-    client.execute(req).await.unwrap().json().await.unwrap()
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(1))
+        .build()
+        .unwrap();
+
+    client.execute(req).await?.json().await
 }
 
 async fn cached_latest_release() -> Option<CachedLatestRelease> {
