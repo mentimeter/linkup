@@ -142,6 +142,8 @@ pub enum CliError {
     IOError(#[from] std::io::Error),
     #[error("{0}")]
     WorkerClientErr(#[from] worker_client::Error),
+    #[error("{0}")]
+    DeployErr(#[from] commands::deploy::DeployError),
 }
 
 #[derive(Error, Debug)]
@@ -209,6 +211,12 @@ enum Commands {
     #[clap(about = "Uninstall linkup and cleanup configurations.")]
     Uninstall(commands::UninstallArgs),
 
+    #[clap(about = "Deploy services to Cloudflare")]
+    Deploy(commands::DeployArgs),
+
+    #[clap(about = "Destroy/remove linkup installation from Cloudflare")]
+    Destroy(commands::DestroyArgs),
+
     // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
     // It is called on `start` to start the local-server.
     #[clap(hide = true)]
@@ -242,5 +250,7 @@ async fn main() -> Result<()> {
         Commands::Server(args) => commands::server(args).await,
         Commands::Uninstall(args) => commands::uninstall(args),
         Commands::Update(args) => commands::update(args).await,
+        Commands::Deploy(args) => commands::deploy(args).await.map_err(CliError::from),
+        Commands::Destroy(args) => commands::destroy(args).await.map_err(CliError::from),
     }
 }

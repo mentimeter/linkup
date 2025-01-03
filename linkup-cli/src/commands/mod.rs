@@ -1,4 +1,5 @@
 pub mod completion;
+pub mod deploy;
 pub mod health;
 pub mod local;
 pub mod local_dns;
@@ -13,6 +14,8 @@ pub mod uninstall;
 pub mod update;
 
 pub use {completion::completion, completion::Args as CompletionArgs};
+pub use {deploy::deploy, deploy::DeployArgs};
+pub use {deploy::destroy, deploy::DestroyArgs};
 pub use {health::health, health::Args as HealthArgs};
 pub use {local::local, local::Args as LocalArgs};
 pub use {local_dns::local_dns, local_dns::Args as LocalDnsArgs};
