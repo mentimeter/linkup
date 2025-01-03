@@ -92,6 +92,6 @@ if [[ ":$PATH:" != *":$HOME/.linkup/bin:"* ]]; then
     esac
 
     echo "Adding Linkup bin to PATH in $PROFILE_FILE"
-    echo "\n# Linkup bin\nexport PATH=\$PATH:\$HOME/.linkup/bin" >>"$PROFILE_FILE"
+    echo -e "\n# Linkup bin\nexport PATH=\$PATH:\$HOME/.linkup/bin" >>"$PROFILE_FILE"
     echo "Please source your profile file or restart your terminal to apply the changes."
 fi
