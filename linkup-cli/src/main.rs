@@ -1,4 +1,4 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf};
+use std::{env, fs, io::ErrorKind, path::PathBuf, process};
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -50,6 +50,36 @@ fn ensure_linkup_dir() -> Result<()> {
             ))),
         },
     }
+}
+
+fn is_sudo() -> bool {
+    let sudo_check = process::Command::new("sudo")
+        .arg("-n")
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .arg("true")
+        .status();
+
+    if let Ok(exit_status) = sudo_check {
+        return exit_status.success();
+    }
+
+    false
+}
+
+fn sudo_su() -> Result<()> {
+    let status = process::Command::new("sudo")
+        .arg("su")
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()?;
+
+    if !status.success() {
+        return Err(CliError::StartErr("failed to sudo".to_string()));
+    }
+
+    Ok(())
 }
 
 pub type Result<T> = std::result::Result<T, CliError>;

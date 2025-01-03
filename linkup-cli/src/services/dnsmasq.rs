@@ -170,8 +170,8 @@ impl BackgroundService<Error> for Dnsmasq {
 }
 
 pub fn is_installed() -> bool {
-    let res = Command::new("command")
-        .args(["-v", "dnsmasq"])
+    let res = Command::new("which")
+        .args(["dnsmasq"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .stdin(Stdio::null())

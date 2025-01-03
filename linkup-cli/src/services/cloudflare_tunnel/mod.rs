@@ -167,10 +167,10 @@ impl CloudflareTunnel {
 
     fn url(&self, linkup_session_name: &str) -> Result<Url, Error> {
         if Self::use_paid_tunnels() {
-            return Ok(Url::parse(
+            Ok(Url::parse(
                 format!("https://tunnel-{}.mentimeter.dev", linkup_session_name).as_str(),
             )
-            .expect("Failed to parse tunnel URL"));
+            .expect("Failed to parse tunnel URL"))
         } else {
             let tunnel_url_re = Regex::new(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
                 .expect("Failed to compile regex");
@@ -374,8 +374,8 @@ impl BackgroundService<Error> for CloudflareTunnel {
 }
 
 pub fn is_installed() -> bool {
-    let res = Command::new("command")
-        .args(["-v", "cloudflared"])
+    let res = Command::new("which")
+        .args(["cloudflared"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .stdin(Stdio::null())

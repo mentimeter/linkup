@@ -76,6 +76,7 @@ struct EnvironmentVariables {
     cf_api_token: bool,
     cf_zone_id: bool,
     cf_account_id: bool,
+    cert_storage_redis_url: bool,
 }
 
 impl EnvironmentVariables {
@@ -84,6 +85,7 @@ impl EnvironmentVariables {
             cf_api_token: env::var("LINKUP_CF_API_TOKEN").is_ok(),
             cf_zone_id: env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok(),
             cf_account_id: env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok(),
+            cert_storage_redis_url: env::var("LINKUP_CERT_STORAGE_REDIS_URL").is_ok(),
         }
     }
 }
@@ -285,6 +287,13 @@ impl Display for Health {
 
         write!(f, "  - LINKUP_CLOUDFLARE_ACCOUNT_ID  ")?;
         if self.environment_variables.cf_account_id {
+            writeln!(f, "{}", "OK".blue())?;
+        } else {
+            writeln!(f, "{}", "MISSING".yellow())?;
+        }
+
+        write!(f, "  - LINKUP_CERT_STORAGE_REDIS_URL ")?;
+        if self.environment_variables.cert_storage_redis_url {
             writeln!(f, "{}", "OK".blue())?;
         } else {
             writeln!(f, "{}", "MISSING".yellow())?;
