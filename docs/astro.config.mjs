@@ -2,28 +2,36 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
+
 // https://astro.build/config
 export default defineConfig({
 	integrations: [
 		starlight({
-			title: 'Linkup Docs',
+			title: 'Linkup',
 			social: {
 				github: 'https://github.com/mentimeter/linkup',
 			},
 			sidebar: [
 				{
-					label: 'Deploy',
-					autogenerate: { directory: 'deploy' },
+					label: 'How To Guides',
+					autogenerate: { directory: 'how-to' },
 				},
 				{
-					label: 'Install',
-					autogenerate: { directory: 'install' },
+					label: 'Tutorials',
+					autogenerate: { directory: 'tutorials' },
 				},
 				{
-					label: 'Run',
-					autogenerate: { directory: 'run' },
+					label: 'Explanations',
+					autogenerate: { directory: 'explanation' },
+				},
+				{
+					label: 'Reference',
+					autogenerate: { directory: 'reference' },
 				},
 			],
+			customCss: [
+        './src/styles/custom.css',
+      ],
 		}),
 	],
 });

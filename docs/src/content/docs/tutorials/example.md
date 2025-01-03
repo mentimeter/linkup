@@ -1,5 +1,5 @@
 ---
-title: Example Reference
+title: A tutorial on how to use Linkup
 description: A reference page in my new Starlight docs site.
 ---
 

@@ -12,7 +12,7 @@ Engineers often need a complete copy of a system to develop on, even though they
 
 Linkup lets you create many "virtual copies" of a system, each with a different set of services running locally and remotely. We call each unique virtual copy a _linkup session_.
 
-![linkup-routing](./docs/linkup-routing.svg)
+![linkup-routing](./docs/src/assets/linkup-routing.svg)
 
 For example, Peter here can use a local copy of their web development server, but they can use the remote / shared backend server without having to run anything locally.
 
