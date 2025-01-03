@@ -21,6 +21,8 @@ pub enum Error {
     MissingTlsApiTokenEnv,
     #[error("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.")]
     MissingRedisInstalation,
+    #[error("Failed to stop pid: {0}")]
+    StoppingPid(#[from] signal::PidError),
 }
 
 pub struct Caddy {
@@ -115,12 +117,7 @@ impl Caddy {
     pub fn stop(&self) -> Result<(), Error> {
         log::debug!("Stopping {}", Self::NAME);
 
-        Command::new("caddy")
-            .current_dir(linkup_dir_path())
-            .arg("stop")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()?;
+        signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGTERM)?;
 
         Ok(())
     }
