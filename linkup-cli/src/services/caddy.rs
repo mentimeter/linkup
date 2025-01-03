@@ -190,7 +190,7 @@ impl Caddy {
         output_str.contains("redis")
     }
 
-    fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
+    pub fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
         let resolvers = local_dns::list_resolvers()?;
 
         Ok(domains.iter().any(|domain| resolvers.contains(domain)))

@@ -14,10 +14,8 @@ use crossterm::{cursor, ExecutableCommand};
 use crate::{
     commands::status::{format_state_domains, SessionStatus},
     env_files::write_to_env_file,
-    is_sudo,
     local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
-    sudo_su,
 };
 use crate::{local_config::LocalState, CliError};
 
@@ -58,12 +56,22 @@ pub async fn start<'a>(
     let dnsmasq = services::Dnsmasq::new();
 
     #[cfg(target_os = "linux")]
-    if caddy.should_start(&state.domain_strings()) && !is_sudo() {
-        println!(
-            "On linux binding port 443 and 80 requires sudo. And this is necessary to start caddy."
-        );
+    {
+        use crate::{is_sudo, sudo_su};
+        match (caddy.should_start(&state.domain_strings()), is_sudo()) {
+            // Should start Caddy and is not sudo
+            (Ok(true), false) => {
+                println!(
+                    "On linux binding port 443 and 80 requires sudo. And this is necessary to start caddy."
+                );
 
-        sudo_su()?;
+                sudo_su()?;
+            }
+            // Should not start Caddy or should start Caddy but is already sudo
+            (Ok(false), _) | (Ok(true), true) => (),
+            // Can't check if should start Caddy
+            (Err(error), _) => log::error!("Failed to check if should start Caddy: {}", error),
+        }
     }
 
     let mut display_thread: Option<JoinHandle<()>> = None;
