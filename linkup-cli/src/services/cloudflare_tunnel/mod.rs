@@ -128,7 +128,7 @@ impl CloudflareTunnel {
         }
 
         if create_tunnel {
-            println!("Creating tunnel...");
+            log::debug!("Creating tunnel...");
 
             tunnel_id = paid_tunnel::create_tunnel(&tunnel_name).await.unwrap();
             paid_tunnel::create_dns_record(&tunnel_id, &tunnel_name)
