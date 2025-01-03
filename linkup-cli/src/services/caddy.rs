@@ -13,17 +13,22 @@ use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("Failed to start the Caddy service")]
+    Starting,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Cloudflare TLS API token is required for local-dns Cloudflare TLS certificates.")]
     MissingTlsApiTokenEnv,
     #[error("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.")]
     MissingRedisInstalation,
+    #[error("Failed to stop pid: {0}")]
+    StoppingPid(#[from] signal::PidError),
 }
 
 pub struct Caddy {
     caddyfile_path: PathBuf,
-    logfile_path: PathBuf,
+    stdout_file_path: PathBuf,
+    stderr_file_path: PathBuf,
     pidfile_path: PathBuf,
 }
 
@@ -31,21 +36,26 @@ impl Caddy {
     pub fn new() -> Self {
         Self {
             caddyfile_path: linkup_file_path("Caddyfile"),
-            logfile_path: linkup_file_path("caddy-log"),
+            stdout_file_path: linkup_file_path("caddy-stdout"),
+            stderr_file_path: linkup_file_path("caddy-stderr"),
             pidfile_path: linkup_file_path("caddy-pid"),
         }
     }
 
     pub fn install_extra_packages() {
-        Command::new("caddy")
-            .args(["add-package", "github.com/caddy-dns/cloudflare"])
+        Command::new("sudo")
+            .args(["caddy", "add-package", "github.com/caddy-dns/cloudflare"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .unwrap();
 
-        Command::new("caddy")
-            .args(["add-package", "github.com/pberkel/caddy-storage-redis"])
+        Command::new("sudo")
+            .args([
+                "caddy",
+                "add-package",
+                "github.com/pberkel/caddy-storage-redis",
+            ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -66,17 +76,40 @@ impl Caddy {
 
         self.write_caddyfile(&domains_and_subdomains)?;
 
-        // Clear previous log file on startup
-        fs::write(&self.logfile_path, "")?;
+        let stdout_file = fs::File::create(&self.stdout_file_path)?;
+        let stderr_file = fs::File::create(&self.stderr_file_path)?;
 
-        Command::new("caddy")
+        #[cfg(target_os = "macos")]
+        let status = Command::new("caddy")
             .current_dir(linkup_dir_path())
             .arg("start")
             .arg("--pidfile")
             .arg(&self.pidfile_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(stdout_file)
+            .stderr(stderr_file)
             .status()?;
+
+        #[cfg(target_os = "linux")]
+        let status = {
+            // To make sure that the local user is the owner of the pidfile and not root,
+            // we create it before running the caddy command.
+            let _ = fs::File::create(&self.pidfile_path)?;
+
+            Command::new("sudo")
+                .current_dir(linkup_dir_path())
+                .arg("caddy")
+                .arg("start")
+                .arg("--pidfile")
+                .arg(&self.pidfile_path)
+                .stdin(Stdio::null())
+                .stdout(stdout_file)
+                .stderr(stderr_file)
+                .status()?
+        };
+
+        if !status.success() {
+            return Err(Error::Starting);
+        }
 
         Ok(())
     }
@@ -84,12 +117,7 @@ impl Caddy {
     pub fn stop(&self) -> Result<(), Error> {
         log::debug!("Stopping {}", Self::NAME);
 
-        Command::new("caddy")
-            .current_dir(linkup_dir_path())
-            .arg("stop")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()?;
+        signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGTERM)?;
 
         Ok(())
     }
@@ -139,7 +167,7 @@ impl Caddy {
                 }}
             }}
             ",
-            self.logfile_path.display(),
+            self.stdout_file_path.display(),
             redis_storage,
             domains.join(", "),
             LINKUP_LOCAL_SERVER_PORT,
@@ -159,10 +187,10 @@ impl Caddy {
         output_str.contains("redis")
     }
 
-    fn should_start(&self, domains: &[String]) -> bool {
-        let resolvers = local_dns::list_resolvers().unwrap();
+    pub fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
+        let resolvers = local_dns::list_resolvers()?;
 
-        domains.iter().any(|domain| resolvers.contains(domain))
+        Ok(domains.iter().any(|domain| resolvers.contains(domain)))
     }
 
     pub fn running_pid(&self) -> Option<String> {
@@ -180,14 +208,28 @@ impl BackgroundService<Error> for Caddy {
     ) -> Result<(), Error> {
         let domains = &state.domain_strings();
 
-        if !self.should_start(domains) {
-            self.notify_update_with_details(
-                &status_sender,
-                super::RunStatus::Skipped,
-                "Local DNS not installed",
-            );
+        match self.should_start(domains) {
+            Ok(true) => (),
+            Ok(false) => {
+                self.notify_update_with_details(
+                    &status_sender,
+                    super::RunStatus::Skipped,
+                    "Local DNS not installed",
+                );
 
-            return Ok(());
+                return Ok(());
+            }
+            Err(err) => {
+                self.notify_update_with_details(
+                    &status_sender,
+                    super::RunStatus::Skipped,
+                    "Failed to read resolvers folder",
+                );
+
+                log::warn!("Failed to read resolvers folder: {}", err);
+
+                return Ok(());
+            }
         }
 
         self.notify_update(&status_sender, super::RunStatus::Starting);
@@ -219,8 +261,8 @@ impl BackgroundService<Error> for Caddy {
 }
 
 pub fn is_installed() -> bool {
-    let res = Command::new("command")
-        .args(["-v", "caddy"])
+    let res = Command::new("which")
+        .args(["caddy"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .stdin(Stdio::null())

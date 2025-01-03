@@ -1,6 +1,7 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf};
+use std::{env, fs, io::ErrorKind, path::PathBuf, process};
 
 use clap::{Parser, Subcommand};
+use colored::Colorize;
 use thiserror::Error;
 
 mod commands;
@@ -49,6 +50,36 @@ fn ensure_linkup_dir() -> Result<()> {
             ))),
         },
     }
+}
+
+fn is_sudo() -> bool {
+    let sudo_check = process::Command::new("sudo")
+        .arg("-n")
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .arg("true")
+        .status();
+
+    if let Ok(exit_status) = sudo_check {
+        return exit_status.success();
+    }
+
+    false
+}
+
+fn sudo_su() -> Result<()> {
+    let status = process::Command::new("sudo")
+        .arg("su")
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()?;
+
+    if !status.success() {
+        return Err(CliError::StartErr("failed to sudo".to_string()));
+    }
+
+    Ok(())
 }
 
 pub type Result<T> = std::result::Result<T, CliError>;
@@ -174,6 +205,12 @@ enum Commands {
     #[clap(about = "Create a \"permanent\" Linkup preview")]
     Preview(commands::PreviewArgs),
 
+    #[clap(about = "Update linkup to the latest released version.")]
+    Update(commands::UpdateArgs),
+
+    #[clap(about = "Uninstall linkup and cleanup configurations.")]
+    Uninstall(commands::UninstallArgs),
+
     #[clap(about = "Deploy services to Cloudflare")]
     Deploy(commands::DeployArgs),
 
@@ -188,6 +225,13 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    if commands::update::new_version_available().await {
+        println!(
+            "{}",
+            "⚠️ New version of linkup is available! Run `linkup update` to update it.".yellow()
+        );
+    }
+
     let cli = Cli::parse();
 
     ensure_linkup_dir()?;
@@ -204,6 +248,8 @@ async fn main() -> Result<()> {
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
         Commands::Server(args) => commands::server(args).await,
+        Commands::Uninstall(args) => commands::uninstall(args),
+        Commands::Update(args) => commands::update(args).await,
         Commands::Deploy(args) => commands::deploy(args).await.map_err(CliError::from),
         Commands::Destroy(args) => commands::destroy(args).await.map_err(CliError::from),
     }

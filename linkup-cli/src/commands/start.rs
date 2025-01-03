@@ -55,6 +55,25 @@ pub async fn start<'a>(
     let caddy = services::Caddy::new();
     let dnsmasq = services::Dnsmasq::new();
 
+    #[cfg(target_os = "linux")]
+    {
+        use crate::{is_sudo, sudo_su};
+        match (caddy.should_start(&state.domain_strings()), is_sudo()) {
+            // Should start Caddy and is not sudo
+            (Ok(true), false) => {
+                println!(
+                    "On linux binding port 443 and 80 requires sudo. And this is necessary to start caddy."
+                );
+
+                sudo_su()?;
+            }
+            // Should not start Caddy or should start Caddy but is already sudo
+            (Ok(false), _) | (Ok(true), true) => (),
+            // Can't check if should start Caddy
+            (Err(error), _) => log::error!("Failed to check if should start Caddy: {}", error),
+        }
+    }
+
     let mut display_thread: Option<JoinHandle<()>> = None;
     let display_channel = sync::mpsc::channel::<bool>();
 

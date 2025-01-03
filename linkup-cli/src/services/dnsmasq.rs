@@ -90,10 +90,10 @@ pid-file={}\n",
         signal::get_running_pid(&self.pid_file_path)
     }
 
-    fn should_start(&self, domains: &[String]) -> bool {
-        let resolvers = local_dns::list_resolvers().unwrap();
+    fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
+        let resolvers = local_dns::list_resolvers()?;
 
-        domains.iter().any(|domain| resolvers.contains(domain))
+        Ok(domains.iter().any(|domain| resolvers.contains(domain)))
     }
 }
 
@@ -107,14 +107,28 @@ impl BackgroundService<Error> for Dnsmasq {
     ) -> Result<(), Error> {
         let domains = &state.domain_strings();
 
-        if !self.should_start(domains) {
-            self.notify_update_with_details(
-                &status_sender,
-                super::RunStatus::Skipped,
-                "Local DNS not installed",
-            );
+        match self.should_start(domains) {
+            Ok(true) => (),
+            Ok(false) => {
+                self.notify_update_with_details(
+                    &status_sender,
+                    super::RunStatus::Skipped,
+                    "Local DNS not installed",
+                );
 
-            return Ok(());
+                return Ok(());
+            }
+            Err(err) => {
+                self.notify_update_with_details(
+                    &status_sender,
+                    super::RunStatus::Skipped,
+                    "Failed to read resolvers folder",
+                );
+
+                log::warn!("Failed to read resolvers folder: {}", err);
+
+                return Ok(());
+            }
         }
 
         self.notify_update(&status_sender, super::RunStatus::Starting);
@@ -156,8 +170,8 @@ impl BackgroundService<Error> for Dnsmasq {
 }
 
 pub fn is_installed() -> bool {
-    let res = Command::new("command")
-        .args(["-v", "dnsmasq"])
+    let res = Command::new("which")
+        .args(["dnsmasq"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .stdin(Stdio::null())

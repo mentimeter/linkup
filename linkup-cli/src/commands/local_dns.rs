@@ -6,8 +6,9 @@ use std::{
 use clap::Subcommand;
 
 use crate::{
+    is_sudo,
     local_config::{config_path, get_config},
-    services, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
+    services, sudo_su, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
 };
 
 #[derive(clap::Args)]
@@ -50,6 +51,8 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
         println!("  - Ensure there is a folder /etc/resolvers");
         println!("  - Create file(s) for /etc/resolver/<domain>");
         println!("  - Flush DNS cache");
+
+        sudo_su()?;
     }
 
     ensure_resolver_dir()?;
@@ -119,6 +122,8 @@ fn install_resolvers(resolve_domains: &[String]) -> Result<()> {
     }
 
     flush_dns_cache()?;
+
+    #[cfg(target_os = "macos")]
     kill_dns_responder()?;
 
     Ok(())
@@ -141,36 +146,55 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
     }
 
     flush_dns_cache()?;
+
+    #[cfg(target_os = "macos")]
     kill_dns_responder()?;
 
     Ok(())
 }
 
-pub fn list_resolvers() -> Result<Vec<String>> {
-    let resolvers = fs::read_dir("/etc/resolver/")?
-        .map(|f| f.unwrap().file_name().into_string().unwrap())
+pub fn list_resolvers() -> std::result::Result<Vec<String>, std::io::Error> {
+    let resolvers_dir = match fs::read_dir("/etc/resolver/") {
+        Ok(read_dir) => read_dir,
+        Err(err) => match err.kind() {
+            std::io::ErrorKind::NotFound => return Ok(vec![]),
+            _ => return Err(err),
+        },
+    };
+
+    let resolvers = resolvers_dir
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.file_name().into_string().ok())
         .collect();
 
     Ok(resolvers)
 }
 
 fn flush_dns_cache() -> Result<()> {
-    let status_flush = Command::new("sudo")
-        .args(["dscacheutil", "-flushcache"])
+    #[cfg(target_os = "linux")]
+    let status_flush = Command::new("resolvectl")
+        .args(["flush-caches"])
+        .status()
+        .map_err(|_err| {
+            CliError::LocalDNSInstall("Failed to run resolvectl flush-caches".into())
+        })?;
+
+    #[cfg(target_os = "macos")]
+    let status_flush = Command::new("dscacheutil")
+        .args(["-flushcache"])
         .status()
         .map_err(|_err| {
             CliError::LocalDNSInstall("Failed to run dscacheutil -flushcache".into())
         })?;
 
     if !status_flush.success() {
-        return Err(CliError::LocalDNSInstall(
-            "Failed to run dscacheutil -flushcache".into(),
-        ));
+        return Err(CliError::LocalDNSInstall("Failed flush DNS cache".into()));
     }
 
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn kill_dns_responder() -> Result<()> {
     let status_kill_responder = Command::new("sudo")
         .args(["killall", "-HUP", "mDNSResponder"])
@@ -186,20 +210,4 @@ fn kill_dns_responder() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn is_sudo() -> bool {
-    let sudo_check = Command::new("sudo")
-        .arg("-n")
-        .arg("true")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    if let Ok(exit_status) = sudo_check {
-        return exit_status.success();
-    }
-
-    false
 }

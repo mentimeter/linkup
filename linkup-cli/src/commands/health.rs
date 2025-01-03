@@ -10,6 +10,8 @@ use serde::Serialize;
 
 use crate::{linkup_dir_path, local_config::LocalState, services, CliError};
 
+use super::local_dns;
+
 #[derive(clap::Args)]
 pub struct Args {
     // Output status in JSON format
@@ -74,6 +76,7 @@ struct EnvironmentVariables {
     cf_api_token: bool,
     cf_zone_id: bool,
     cf_account_id: bool,
+    cert_storage_redis_url: bool,
 }
 
 impl EnvironmentVariables {
@@ -82,6 +85,7 @@ impl EnvironmentVariables {
             cf_api_token: env::var("LINKUP_CF_API_TOKEN").is_ok(),
             cf_zone_id: env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok(),
             cf_account_id: env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok(),
+            cert_storage_redis_url: env::var("LINKUP_CERT_STORAGE_REDIS_URL").is_ok(),
         }
     }
 }
@@ -148,6 +152,7 @@ impl BackgroudServices {
 struct Linkup {
     version: String,
     config_location: String,
+    config_exists: bool,
     config_content: Vec<String>,
 }
 
@@ -161,6 +166,7 @@ impl Linkup {
         Ok(Self {
             version: crate_version!().to_string(),
             config_location: dir_path.to_str().unwrap_or_default().to_string(),
+            config_exists: dir_path.exists(),
             config_content: files,
         })
     }
@@ -174,9 +180,7 @@ struct LocalDNS {
 impl LocalDNS {
     fn load() -> Result<Self, CliError> {
         Ok(Self {
-            resolvers: fs::read_dir("/etc/resolver/")?
-                .map(|f| f.unwrap().file_name().into_string().unwrap())
-                .collect(),
+            resolvers: local_dns::list_resolvers()?,
         })
     }
 }
@@ -184,7 +188,7 @@ impl LocalDNS {
 #[derive(Debug, Serialize)]
 struct Health {
     system: System,
-    session: Session,
+    session: Option<Session>,
     environment_variables: EnvironmentVariables,
     background_services: BackgroudServices,
     linkup: Linkup,
@@ -193,9 +197,18 @@ struct Health {
 
 impl Health {
     pub fn load() -> Result<Self, CliError> {
+        let session = match Session::load() {
+            Ok(session) => Some(session),
+            Err(CliError::NoState(_)) => None,
+            Err(error) => {
+                log::error!("Failed to load Session: {}", error);
+                None
+            }
+        };
+
         Ok(Self {
             system: System::load(),
-            session: Session::load()?,
+            session,
             environment_variables: EnvironmentVariables::load(),
             background_services: BackgroudServices::load(),
             linkup: Linkup::load()?,
@@ -215,8 +228,20 @@ impl Display for Health {
         writeln!(f, "  Architecture: {}", self.system.arch)?;
 
         writeln!(f, "{}", "Session info:".bold().italic())?;
-        writeln!(f, "  Name:       {}", self.session.name)?;
-        writeln!(f, "  Tunnel URL: {}", self.session.tunnel_url)?;
+        writeln!(
+            f,
+            "  Name:       {}",
+            self.session
+                .as_ref()
+                .map_or("NONE".yellow(), |session| session.name.normal())
+        )?;
+        writeln!(
+            f,
+            "  Tunnel URL: {}",
+            self.session
+                .as_ref()
+                .map_or("NONE".yellow(), |session| session.tunnel_url.normal())
+        )?;
 
         writeln!(f, "{}", "Background sevices:".bold().italic())?;
         write!(f, "  - Linkup Server  ")?;
@@ -246,22 +271,29 @@ impl Display for Health {
 
         writeln!(f, "{}", "Environment variables:".bold().italic())?;
 
-        write!(f, "  - LINKUP_CF_API_TOKEN          ")?;
+        write!(f, "  - LINKUP_CF_API_TOKEN           ")?;
         if self.environment_variables.cf_api_token {
             writeln!(f, "{}", "OK".blue())?;
         } else {
             writeln!(f, "{}", "MISSING".yellow())?;
         }
 
-        write!(f, "  - LINKUP_CLOUDFLARE_ZONE_ID    ")?;
+        write!(f, "  - LINKUP_CLOUDFLARE_ZONE_ID     ")?;
         if self.environment_variables.cf_zone_id {
             writeln!(f, "{}", "OK".blue())?;
         } else {
             writeln!(f, "{}", "MISSING".yellow())?;
         }
 
-        write!(f, "  - LINKUP_CLOUDFLARE_ACCOUNT_ID ")?;
+        write!(f, "  - LINKUP_CLOUDFLARE_ACCOUNT_ID  ")?;
         if self.environment_variables.cf_account_id {
+            writeln!(f, "{}", "OK".blue())?;
+        } else {
+            writeln!(f, "{}", "MISSING".yellow())?;
+        }
+
+        write!(f, "  - LINKUP_CERT_STORAGE_REDIS_URL ")?;
+        if self.environment_variables.cert_storage_redis_url {
             writeln!(f, "{}", "OK".blue())?;
         } else {
             writeln!(f, "{}", "MISSING".yellow())?;
@@ -269,15 +301,30 @@ impl Display for Health {
 
         writeln!(f, "{}", "Linkup:".bold().italic())?;
         writeln!(f, "  Version: {}", self.linkup.version)?;
-        writeln!(f, "  Config location: {}", self.linkup.config_location)?;
-        writeln!(f, "  Config contents:")?;
-        for file in &self.linkup.config_content {
-            writeln!(f, "    - {}", file)?;
+        writeln!(
+            f,
+            "  Config folder location: {}",
+            self.linkup.config_location
+        )?;
+        writeln!(f, "  Config folder exists: {}", self.linkup.config_exists)?;
+        write!(f, "  Config folder contents:")?;
+        if self.linkup.config_content.is_empty() {
+            writeln!(f, " {}", "EMPTY".yellow())?;
+        } else {
+            writeln!(f)?;
+            for file in &self.linkup.config_content {
+                writeln!(f, "    - {}", file)?;
+            }
         }
 
-        writeln!(f, "{}", "Local DNS resolvers:".bold().italic())?;
-        for file in &self.local_dns.resolvers {
-            writeln!(f, "    - {}", file)?;
+        write!(f, "{}", "Local DNS resolvers:".bold().italic())?;
+        if self.local_dns.resolvers.is_empty() {
+            writeln!(f, " {}", "EMPTY".yellow())?;
+        } else {
+            writeln!(f)?;
+            for file in &self.local_dns.resolvers {
+                writeln!(f, "    - {}", file)?;
+            }
         }
 
         Ok(())
