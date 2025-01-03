@@ -190,10 +190,10 @@ impl Caddy {
         output_str.contains("redis")
     }
 
-    pub fn should_start(&self, domains: &[String]) -> bool {
-        let resolvers = local_dns::list_resolvers().unwrap();
+    fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
+        let resolvers = local_dns::list_resolvers()?;
 
-        domains.iter().any(|domain| resolvers.contains(domain))
+        Ok(domains.iter().any(|domain| resolvers.contains(domain)))
     }
 
     pub fn running_pid(&self) -> Option<String> {
@@ -211,14 +211,28 @@ impl BackgroundService<Error> for Caddy {
     ) -> Result<(), Error> {
         let domains = &state.domain_strings();
 
-        if !self.should_start(domains) {
-            self.notify_update_with_details(
-                &status_sender,
-                super::RunStatus::Skipped,
-                "Local DNS not installed",
-            );
+        match self.should_start(domains) {
+            Ok(true) => (),
+            Ok(false) => {
+                self.notify_update_with_details(
+                    &status_sender,
+                    super::RunStatus::Skipped,
+                    "Local DNS not installed",
+                );
 
-            return Ok(());
+                return Ok(());
+            }
+            Err(err) => {
+                self.notify_update_with_details(
+                    &status_sender,
+                    super::RunStatus::Skipped,
+                    "Failed to read resolvers folder",
+                );
+
+                log::warn!("Failed to read resolvers folder: {}", err);
+
+                return Ok(());
+            }
         }
 
         self.notify_update(&status_sender, super::RunStatus::Starting);

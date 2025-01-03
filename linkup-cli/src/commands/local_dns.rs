@@ -153,9 +153,18 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub fn list_resolvers() -> Result<Vec<String>> {
-    let resolvers = fs::read_dir("/etc/resolver/")?
-        .map(|f| f.unwrap().file_name().into_string().unwrap())
+pub fn list_resolvers() -> std::result::Result<Vec<String>, std::io::Error> {
+    let resolvers_dir = match fs::read_dir("/etc/resolver/") {
+        Ok(read_dir) => read_dir,
+        Err(err) => match err.kind() {
+            std::io::ErrorKind::NotFound => return Ok(vec![]),
+            _ => return Err(err),
+        },
+    };
+
+    let resolvers = resolvers_dir
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.file_name().into_string().ok())
         .collect();
 
     Ok(resolvers)
