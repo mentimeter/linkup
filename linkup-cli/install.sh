@@ -32,7 +32,7 @@ if [[ "$OS" == "Darwin"* ]]; then
         FETCH_ARCH='x86_64'
     fi
 elif [[ "$OS" == "Linux"* ]]; then
-    FETCH_OS='unknown-linux'
+    FETCH_OS='unknown-linux-gnu'
 
     if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
         FETCH_ARCH='aarch64'
