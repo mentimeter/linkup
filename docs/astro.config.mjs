@@ -14,16 +14,16 @@ export default defineConfig({
       },
       sidebar: [
         {
+          label: "Explanations",
+          autogenerate: { directory: "explanation" },
+        },
+        {
           label: "How To Guides",
-          autogenerate: { directory: "how-to" },
+          autogenerate: { directory: "guides" },
         },
         {
           label: "Tutorials",
           autogenerate: { directory: "tutorials" },
-        },
-        {
-          label: "Explanations",
-          autogenerate: { directory: "explanation" },
         },
         {
           label: "Reference",
