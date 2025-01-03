@@ -1,22 +1,22 @@
 #!/bin/sh
 
 if command -v -- "linkup" >/dev/null 2>&1; then
-    printf "Linkup is already installed. To update it, run 'linkup update'."
+    printf '%s\n' "Linkup is already installed. To update it, run 'linkup update'." 1>&2
     exit 0
 fi
 
 # region: Dependencies
 # TODO: Maybe we want this script to be able to install the dependencies as well?
 if ! command -v -- "cloudflared" >/dev/null 2>&1; then
-    printf "WARN: 'cloudflared' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+    printf '%s\n' "WARN: 'cloudflared' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" 1>&2
 fi
 
 if ! command -v -- "caddy" >/dev/null 2>&1; then
-    printf "WARN: 'caddy' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://caddyserver.com/docs/install"
+    printf '%s\n' "WARN: 'caddy' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://caddyserver.com/docs/install" 1>&2
 fi
 
 if ! command -v -- "dnsmasq" >/dev/null 2>&1; then
-    printf "WARN: 'dnsmasq' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://thekelleys.org.uk/dnsmasq/doc.html"
+    printf '%s\n' "WARN: 'dnsmasq' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://thekelleys.org.uk/dnsmasq/doc.html" 1>&2
 fi
 # endregion: Dependencies
 
@@ -51,7 +51,7 @@ Linux*)
 esac
 
 if [ -z "$FETCH_OS" ] || [ -z "$FETCH_ARCH" ]; then
-    printf "Unsupported OS/Arch combination: $OS/$ARCH"
+    printf '%s\n' "Unsupported OS/Arch combination: $OS/$ARCH" 1>&2
     exit 1
 fi
 
@@ -65,21 +65,21 @@ FILE_DOWNLOAD_URL=$(
 )
 
 if [ -z "$FILE_DOWNLOAD_URL" ]; then
-    printf "Could not find file with pattern '$LOOKUP_FILE_DOWNLOAD_URL' on the latest GitHub release."
+    printf '%s\n' "Could not find file with pattern '$LOOKUP_FILE_DOWNLOAD_URL' on the latest GitHub release." 1>&2
     exit 1
 fi
 
-printf "Downloading: $FILE_DOWNLOAD_URL"
+printf '%s\n' "Downloading: $FILE_DOWNLOAD_URL" 1>&2
 curl -sLO --output-dir "/tmp" $FILE_DOWNLOAD_URL
 
 LOCAL_FILE_PATH="/tmp/$(basename $FILE_DOWNLOAD_URL)"
 
-printf "Decompressing $LOCAL_FILE_PATH"
+printf '%s\n' "Decompressing $LOCAL_FILE_PATH" 1>&2
 tar -xzf $LOCAL_FILE_PATH -C /tmp
 
 mkdir -p $HOME/.linkup/bin
 mv /tmp/linkup $HOME/.linkup/bin/
-printf "Linkup installed on $HOME/.linkup/bin/linkup"
+printf '%s\n' "Linkup installed on $HOME/.linkup/bin/linkup" 1>&2
 
 rm "$LOCAL_FILE_PATH"
 
@@ -104,8 +104,8 @@ case ":$PATH:" in
         ;;
     esac
 
-    printf "Adding Linkup bin to PATH in $PROFILE_FILE"
+    printf '%s\n' "Adding Linkup bin to PATH in $PROFILE_FILE" 1>&2
     printf "\n# Linkup bin\nexport PATH=\$PATH:\$HOME/.linkup/bin" >>"$PROFILE_FILE"
-    printf "Please source your profile file or restart your terminal to apply the changes."
+    printf '%s\n' "Please source your profile file or restart your terminal to apply the changes." 1>&2
     ;;
 esac
