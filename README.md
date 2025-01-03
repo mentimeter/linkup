@@ -1,7 +1,9 @@
 
 <h1  align="center" style="font-size: 3em;">🔗 Linkup</h1>
 
-<img src="https://img.shields.io/badge/documentation-available-brightgreen" alt="Documentation">
+<a href="https://mentimeter.github.io/linkup">
+  <img src="https://img.shields.io/badge/documentation-available-brightgreen" alt="Documentation">
+</a>
 
 <br/>
 
