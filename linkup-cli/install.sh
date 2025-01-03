@@ -26,7 +26,7 @@ FETCH_ARCH=''
 if [[ "$OS" == "Darwin"* ]]; then
     FETCH_OS='apple-darwin'
 
-    if [[ "$ARCH" == "arm64" ]]; then
+    if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
         FETCH_ARCH='aarch64'
     elif [[ "$arch" == "x86_64" ]]; then
         FETCH_ARCH='x86_64'
@@ -34,7 +34,7 @@ if [[ "$OS" == "Darwin"* ]]; then
 elif [[ "$OS" == "Linux"* ]]; then
     FETCH_OS='unknown-linux'
 
-    if [[ "$ARCH" == "arm64" ]]; then
+    if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
         FETCH_ARCH='aarch64'
     elif [[ "$arch" == "x86_64" ]]; then
         FETCH_ARCH='x86_64'
