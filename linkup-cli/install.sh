@@ -1,19 +1,19 @@
-if command -v linkup &>/dev/null; then
+if command -v -- "linkup" >/dev/null 2>&1; then
     echo "Linkup is already installed. To update it, run 'linkup update'."
     exit 0
 fi
 
 # region: Dependencies
 # TODO: Maybe we want this script to be able to install the dependencies as well?
-if ! command -v cloudflared &>/dev/null; then
+if ! command -v -- "cloudflared" >/dev/null 2>&1; then
     echo "WARN: 'cloudflared' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
 fi
 
-if ! command -v caddy &>/dev/null; then
+if ! command -v -- "caddy" >/dev/null 2>&1; then
     echo "WARN: 'caddy' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://caddyserver.com/docs/install"
 fi
 
-if ! command -v dnsmasq &>/dev/null; then
+if ! command -v -- "dnsmasq" >/dev/null 2>&1; then
     echo "WARN: 'dnsmasq' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://thekelleys.org.uk/dnsmasq/doc.html"
 fi
 # endregion: Dependencies
