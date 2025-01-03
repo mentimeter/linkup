@@ -60,7 +60,7 @@ pub async fn start<'a>(
     #[cfg(target_os = "linux")]
     if caddy.should_start(&state.domain_strings()) && !is_sudo() {
         println!(
-            "On linux binding por 443 and 80 requires sudo. And this is necessary to start caddy."
+            "On linux binding port 443 and 80 requires sudo. And this is necessary to start caddy."
         );
 
         sudo_su()?;
