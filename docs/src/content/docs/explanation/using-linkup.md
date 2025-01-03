@@ -1,3 +1,7 @@
+---
+title: Using Linkup
+description: How to use Linkup to develop and test your services locally.
+---
 # Running linkup
 
 Normally, starting linkup looks like this:
