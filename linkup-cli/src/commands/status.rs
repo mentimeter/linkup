@@ -275,10 +275,10 @@ pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> V
         .map(|d| d.domain.clone())
         .collect::<Vec<String>>();
 
-    return filtered_domains
+    filtered_domains
         .iter()
         .map(|domain| format!("https://{}.{}", session_name, domain.clone()))
-        .collect();
+        .collect()
 }
 
 fn linkup_services(state: &LocalState) -> Vec<LocalService> {
