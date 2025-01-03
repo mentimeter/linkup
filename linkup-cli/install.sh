@@ -23,25 +23,32 @@ ARCH=$(uname -m)
 
 FETCH_OS=''
 FETCH_ARCH=''
-if [[ "$OS" == "Darwin"* ]]; then
+case "$OS" in
+Darwin*)
     FETCH_OS='apple-darwin'
-
-    if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
+    case "$ARCH" in
+    arm64 | aarch64)
         FETCH_ARCH='aarch64'
-    elif [[ "$arch" == "x86_64" ]]; then
+        ;;
+    x86_64)
         FETCH_ARCH='x86_64'
-    fi
-elif [[ "$OS" == "Linux"* ]]; then
+        ;;
+    esac
+    ;;
+Linux*)
     FETCH_OS='unknown-linux-gnu'
-
-    if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
+    case "$ARCH" in
+    arm64 | aarch64)
         FETCH_ARCH='aarch64'
-    elif [[ "$arch" == "x86_64" ]]; then
+        ;;
+    x86_64)
         FETCH_ARCH='x86_64'
-    fi
-fi
+        ;;
+    esac
+    ;;
+esac
 
-if [[ -z "$FETCH_OS" || -z "$FETCH_ARCH" ]]; then
+if [ -z "$FETCH_OS" ] || [ -z "$FETCH_ARCH" ]; then
     echo "Unsupported OS/Arch combination: $OS/$ARCH"
     exit 1
 fi
@@ -74,7 +81,11 @@ echo "Linkup installed on $HOME/.linkup/bin/linkup"
 
 rm "$LOCAL_FILE_PATH"
 
-if [[ ":$PATH:" != *":$HOME/.linkup/bin:"* ]]; then
+case ":$PATH:" in
+*":$HOME/.linkup/bin:"*)
+    # PATH already contains the directory
+    ;;
+*)
     SHELL_NAME=$(basename "$SHELL")
     case "$SHELL_NAME" in
     bash)
@@ -94,4 +105,5 @@ if [[ ":$PATH:" != *":$HOME/.linkup/bin:"* ]]; then
     echo "Adding Linkup bin to PATH in $PROFILE_FILE"
     echo -e "\n# Linkup bin\nexport PATH=\$PATH:\$HOME/.linkup/bin" >>"$PROFILE_FILE"
     echo "Please source your profile file or restart your terminal to apply the changes."
-fi
+    ;;
+esac
