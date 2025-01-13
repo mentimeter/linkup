@@ -36,7 +36,7 @@ jobs:
             target: aarch64-apple-darwin
             cross: false
     outputs:
-      release_version: ${{ steps.get_version.release_version }}
+      release_version: ${{ steps.get_version.outputs.release_version }}
       mac_x86_sha: ${{ steps.mac_x86_sha.outputs.mac_x86_sha }}
       mac_arm_sha: ${{ steps.mac_arm_sha.outputs.mac_arm_sha }}
       linux_x86_sha: ${{ steps.linux_x86_sha.outputs.linux_x86_sha }}
@@ -162,6 +162,11 @@ jobs:
         run: |
           RELEASE_VERSION="${{ needs.build.outputs.release_version }}"
           FORMULA_PATH="homebrew-mentimeter/linkup.rb"
+
+          if [ -z "$RELEASE_VERSION" ]; then
+            printf '%s\n' 'RELEASE_VERSION variable is empty'
+            exit 1
+          fi
 
           MAC_ARM_SHA=$(echo "${{ needs.build.outputs.mac_arm_sha }}" | awk '{print $1}')
           MAC_X86_SHA=$(echo "${{ needs.build.outputs.mac_x86_sha }}" | awk '{print $1}')
