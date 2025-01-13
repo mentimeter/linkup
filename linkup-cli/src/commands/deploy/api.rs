@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use reqwest::{multipart, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -100,6 +102,8 @@ pub trait CloudflareApi {
         zone_id: String,
         ruleset_id: String,
     ) -> Result<(), DeployError>;
+
+    async fn create_user_token(&self) -> Result<(), DeployError>;
 }
 
 #[derive(Deserialize, Debug)]
@@ -277,6 +281,32 @@ pub struct Ruleset {
     pub phase: String,
     pub rules: Option<Vec<Rule>>,
     pub version: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum TokenPolicyEffect {
+    Allow,
+    Deny,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TokenPolicyPermissionGroup {
+    id: String,
+    name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TokenPolicy {
+    pub effect: TokenPolicyEffect,
+    pub permission_groups: Vec<TokenPolicyPermissionGroup>,
+    pub resources: HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CreateUserToken {
+    pub name: String,
+    pub policies: Vec<TokenPolicy>,
 }
 
 const WORKER_VERSION_TAG: &str = "LINKUP_VERSION_TAG";
@@ -1200,5 +1230,63 @@ impl CloudflareApi for AccountCloudflareApi {
         } else {
             Ok(vec![])
         }
+    }
+
+    async fn create_user_token(&self) -> Result<(), DeployError> {
+        let url = format!("https://api.cloudflare.com/client/v4/user/tokens");
+
+        let payload = CreateUserToken {
+            name: "Linkup Token".to_string(),
+            policies: vec![
+                TokenPolicy {
+                    effect: TokenPolicyEffect::Allow,
+                    permission_groups: vec![TokenPolicyPermissionGroup {
+                        id: "4755a26eedb94da69e1066d98aa820be".to_string(),
+                        name: "DNS Write".to_string(),
+                    }],
+                    // TODO: Limit to the zone passed as param?
+                    resources: HashMap::from([(
+                        "com.cloudflare.api.account.zone.*".to_string(),
+                        "*".to_string(),
+                    )]),
+                },
+                TokenPolicy {
+                    effect: TokenPolicyEffect::Allow,
+                    permission_groups: vec![TokenPolicyPermissionGroup {
+                        id: "f7f0eda5697f475c90846e879bab8666".to_string(),
+                        name: "Workers KV Storage Write".to_string(),
+                    }],
+                    // TODO: Limit to the account id passed as param?
+                    resources: HashMap::from([(
+                        "com.cloudflare.api.account.*".to_string(),
+                        "*".to_string(),
+                    )]),
+                },
+            ],
+        };
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.api_auth.headers())
+            .json(&payload)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let result_data: CreateWorkerRouteResponse = resp.json().await?;
+        if !result_data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(())
     }
 }

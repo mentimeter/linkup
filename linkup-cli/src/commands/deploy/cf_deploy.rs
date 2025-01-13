@@ -310,6 +310,10 @@ export default {
         ) -> Result<Option<String>, DeployError> {
             Ok(None)
         }
+
+        async fn create_user_token(&self) -> Result<(), DeployError> {
+            Ok(())
+        }
     }
 
     struct TestNotifier {
