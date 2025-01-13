@@ -1,6 +1,5 @@
 use crate::commands::deploy::{
-    api::AccountCloudflareApi, auth::get_auth, console_notify::ConsoleNotifier,
-    resources::cf_resources,
+    api::AccountCloudflareApi, auth, console_notify::ConsoleNotifier, resources::cf_resources,
 };
 
 use super::{
@@ -9,19 +8,19 @@ use super::{
 
 #[derive(clap::Args)]
 pub struct DestroyArgs {
-    #[arg(
-        short = 'a',
-        long = "account-id",
-        help = "Cloudflare account ID",
-        value_name = "ACCOUNT_ID"
-    )]
+    #[arg(short = 'e', long = "email", help = "Cloudflare user email")]
+    email: String,
+
+    #[arg(short = 'k', long = "api-key", help = "Cloudflare user global API Key")]
+    api_key: String,
+
+    #[arg(short = 'a', long = "account-id", help = "Cloudflare account ID")]
     account_id: String,
 
     #[arg(
         short = 'z',
         long = "zone-ids",
         help = "Cloudflare zone IDs",
-        value_name = "ZONE_IDS",
         num_args = 1..,
         required = true
     )]
@@ -33,11 +32,14 @@ pub async fn destroy(args: &DestroyArgs) -> Result<(), DeployError> {
     println!("Account ID: {}", args.account_id);
     println!("Zone IDs: {:?}", args.zone_ids);
 
-    let auth = get_auth()?;
+    let auth = auth::CloudflareGlobalTokenAuth::new(args.api_key.clone(), args.email.clone());
     let zone_ids_strings: Vec<String> = args.zone_ids.iter().map(|s| s.to_string()).collect();
 
-    let cloudflare_api =
-        AccountCloudflareApi::new(args.account_id.to_string(), zone_ids_strings, auth);
+    let cloudflare_api = AccountCloudflareApi::new(
+        args.account_id.to_string(),
+        zone_ids_strings,
+        Box::new(auth),
+    );
     let notifier = ConsoleNotifier::new();
 
     let resources = cf_resources();
