@@ -225,16 +225,18 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if commands::update::new_version_available().await {
-        println!(
-            "{}",
-            "⚠️ New version of linkup is available! Run `linkup update` to update it.".yellow()
-        );
-    }
-
     let cli = Cli::parse();
 
     ensure_linkup_dir()?;
+
+    if !matches!(cli.command, Commands::Update(_)) {
+        if commands::update::new_version_available().await {
+            println!(
+                "{}",
+                "⚠️ New version of linkup is available! Run `linkup update` to update it.".yellow()
+            );
+        }
+    }
 
     match &cli.command {
         Commands::Health(args) => commands::health(args),
