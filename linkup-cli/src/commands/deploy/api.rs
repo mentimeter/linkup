@@ -309,6 +309,11 @@ pub struct CreateUserToken {
     pub policies: Vec<TokenPolicy>,
 }
 
+#[derive(Deserialize, Debug)]
+struct CreateUserTokenResponse {
+    success: bool,
+}
+
 const WORKER_VERSION_TAG: &str = "LINKUP_VERSION_TAG";
 
 #[derive(Deserialize, Debug)]
@@ -1282,7 +1287,7 @@ impl CloudflareApi for AccountCloudflareApi {
             )));
         }
 
-        let result_data: CreateWorkerRouteResponse = resp.json().await?;
+        let result_data: CreateUserTokenResponse = resp.json().await?;
         if !result_data.success {
             return Err(DeployError::OtherError);
         }
