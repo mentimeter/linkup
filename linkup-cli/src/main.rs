@@ -229,13 +229,13 @@ async fn main() -> Result<()> {
 
     ensure_linkup_dir()?;
 
-    if !matches!(cli.command, Commands::Update(_)) {
-        if commands::update::new_version_available().await {
-            println!(
-                "{}",
-                "⚠️ New version of linkup is available! Run `linkup update` to update it.".yellow()
-            );
-        }
+    if !matches!(cli.command, Commands::Update(_))
+        && commands::update::new_version_available().await
+    {
+        println!(
+            "{}",
+            "⚠️ New version of linkup is available! Run `linkup update` to update it.".yellow()
+        );
     }
 
     match &cli.command {
