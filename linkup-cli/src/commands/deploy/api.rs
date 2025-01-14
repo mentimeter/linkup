@@ -103,7 +103,7 @@ pub trait CloudflareApi {
         ruleset_id: String,
     ) -> Result<(), DeployError>;
 
-    async fn create_user_token(&self) -> Result<(), DeployError>;
+    async fn create_account_token(&self) -> Result<(), DeployError>;
 }
 
 #[derive(Deserialize, Debug)]
@@ -304,14 +304,20 @@ pub struct TokenPolicy {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CreateUserToken {
+pub struct CreateAccountToken {
     pub name: String,
     pub policies: Vec<TokenPolicy>,
 }
 
 #[derive(Deserialize, Debug)]
-struct CreateUserTokenResponse {
+struct CreateAccountTokenResponse {
     success: bool,
+    result: Option<CreateAccountTokenResult>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CreateAccountTokenResult {
+    value: String,
 }
 
 const WORKER_VERSION_TAG: &str = "LINKUP_VERSION_TAG";
@@ -1237,10 +1243,13 @@ impl CloudflareApi for AccountCloudflareApi {
         }
     }
 
-    async fn create_user_token(&self) -> Result<(), DeployError> {
-        let url = format!("https://api.cloudflare.com/client/v4/user/tokens");
+    async fn create_account_token(&self) -> Result<(), DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/tokens",
+            self.account_id
+        );
 
-        let payload = CreateUserToken {
+        let payload = CreateAccountToken {
             name: "Linkup Token".to_string(),
             policies: vec![
                 TokenPolicy {
@@ -1287,7 +1296,7 @@ impl CloudflareApi for AccountCloudflareApi {
             )));
         }
 
-        let result_data: CreateUserTokenResponse = resp.json().await?;
+        let result_data: CreateAccountTokenResponse = resp.json().await?;
         if !result_data.success {
             return Err(DeployError::OtherError);
         }

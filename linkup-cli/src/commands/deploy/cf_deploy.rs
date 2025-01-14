@@ -313,7 +313,7 @@ export default {
             Ok(None)
         }
 
-        async fn create_user_token(&self) -> Result<(), DeployError> {
+        async fn create_account_token(&self) -> Result<(), DeployError> {
             Ok(())
         }
     }
