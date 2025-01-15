@@ -15,6 +15,7 @@ use hickory_resolver::{
     TokioAsyncResolver,
 };
 use log::{debug, error};
+use paid_tunnel::get_tunnel_zone_id;
 use regex::Regex;
 use tokio::time::sleep;
 use url::Url;
@@ -46,21 +47,29 @@ pub struct CloudflareTunnel {
     stdout_file_path: PathBuf,
     stderr_file_path: PathBuf,
     pidfile_path: PathBuf,
+    paid_tunnel: Option<PaidTunnelData>,
+}
+
+struct PaidTunnelData {
+    zone_name: String,
+    zone_id: String,
 }
 
 impl CloudflareTunnel {
     pub fn new() -> Self {
+        let paid_tunnel =
+            get_tunnel_zone_id().map(|(zone_id, zone_name)| PaidTunnelData { zone_name, zone_id });
+
         Self {
             stdout_file_path: linkup_file_path("cloudflared-stdout"),
             stderr_file_path: linkup_file_path("cloudflared-stderr"),
             pidfile_path: linkup_file_path("cloudflared-pid"),
+            paid_tunnel,
         }
     }
 
-    pub fn use_paid_tunnels() -> bool {
-        env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
-            && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
-            && env::var("LINKUP_CF_API_TOKEN").is_ok()
+    fn use_paid_tunnels(&self) -> bool {
+        self.paid_tunnel.is_some()
     }
 
     fn start_free(&self) -> Result<(), Error> {
@@ -86,7 +95,7 @@ impl CloudflareTunnel {
         Ok(())
     }
 
-    async fn start_paid(&self, linkup_session_name: &str) -> Result<(), Error> {
+    async fn start_paid(&self, linkup_session_name: &str, zone_id: &str) -> Result<(), Error> {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
@@ -131,7 +140,7 @@ impl CloudflareTunnel {
             log::debug!("Creating tunnel...");
 
             tunnel_id = paid_tunnel::create_tunnel(&tunnel_name).await.unwrap();
-            paid_tunnel::create_dns_record(&tunnel_id, &tunnel_name)
+            paid_tunnel::create_dns_record(&tunnel_id, &tunnel_name, zone_id)
                 .await
                 .unwrap();
         }
@@ -166,9 +175,13 @@ impl CloudflareTunnel {
     }
 
     fn url(&self, linkup_session_name: &str) -> Result<Url, Error> {
-        if Self::use_paid_tunnels() {
+        if let Some(paid_tunnel) = &self.paid_tunnel {
             Ok(Url::parse(
-                format!("https://tunnel-{}.mentimeter.dev", linkup_session_name).as_str(),
+                format!(
+                    "https://tunnel-{}.{}",
+                    linkup_session_name, paid_tunnel.zone_name
+                )
+                .as_str(),
             )
             .expect("Failed to parse tunnel URL"))
         } else {
@@ -268,10 +281,13 @@ impl BackgroundService<Error> for CloudflareTunnel {
             return Ok(());
         }
 
-        if Self::use_paid_tunnels() {
+        if let Some(paid_tunnel) = &self.paid_tunnel {
             self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Paid");
 
-            if let Err(e) = self.start_paid(&state.linkup.session_name).await {
+            if let Err(e) = self
+                .start_paid(&state.linkup.session_name, &paid_tunnel.zone_id)
+                .await
+            {
                 self.notify_update_with_details(
                     &status_sender,
                     super::RunStatus::Error,

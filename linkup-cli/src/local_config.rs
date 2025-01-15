@@ -96,7 +96,6 @@ pub struct LinkupState {
     pub config_path: String,
     pub remote: Url,
     pub tunnel: Option<Url>,
-    pub is_paid: Option<bool>,
     pub cache_routes: Option<Vec<String>>,
 }
 
@@ -201,7 +200,6 @@ pub fn config_to_state(
     yaml_config: YamlLocalConfig,
     config_path: String,
     no_tunnel: bool,
-    is_paid: bool,
 ) -> LocalState {
     let random_token: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
@@ -215,7 +213,6 @@ pub fn config_to_state(
     };
 
     let linkup = LinkupState {
-        is_paid: Some(is_paid),
         session_name: String::new(),
         session_token: random_token,
         config_path,
@@ -422,12 +419,7 @@ domains:
     fn test_config_to_state() {
         let input_str = String::from(CONF_STR);
         let yaml_config = serde_yaml::from_str(&input_str).unwrap();
-        let local_state = config_to_state(
-            yaml_config,
-            "./path/to/config.yaml".to_string(),
-            false,
-            false,
-        );
+        let local_state = config_to_state(yaml_config, "./path/to/config.yaml".to_string(), false);
 
         assert_eq!(local_state.linkup.config_path, "./path/to/config.yaml");
 
