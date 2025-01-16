@@ -103,7 +103,9 @@ pub trait CloudflareApi {
         ruleset_id: String,
     ) -> Result<(), DeployError>;
 
-    async fn create_account_token(&self) -> Result<(), DeployError>;
+    async fn list_account_tokens(&self) -> Result<Vec<Token>, DeployError>;
+    async fn create_account_token(&self, name: &str) -> Result<String, DeployError>;
+    async fn remove_account_token(&self, id: &str) -> Result<(), DeployError>;
 }
 
 #[derive(Deserialize, Debug)]
@@ -303,6 +305,13 @@ pub struct TokenPolicy {
     pub resources: HashMap<String, String>,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct Token {
+    pub id: String,
+    pub name: Option<String>,
+    pub value: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateAccountToken {
     pub name: String,
@@ -311,13 +320,14 @@ pub struct CreateAccountToken {
 
 #[derive(Deserialize, Debug)]
 struct CreateAccountTokenResponse {
-    success: bool,
-    result: Option<CreateAccountTokenResult>,
+    pub success: bool,
+    pub result: Option<Token>,
 }
 
 #[derive(Deserialize, Debug)]
-struct CreateAccountTokenResult {
-    value: String,
+struct ListAccountTokensResponse {
+    pub success: bool,
+    pub result: Option<Vec<Token>>,
 }
 
 const WORKER_VERSION_TAG: &str = "LINKUP_VERSION_TAG";
@@ -1243,14 +1253,22 @@ impl CloudflareApi for AccountCloudflareApi {
         }
     }
 
-    async fn create_account_token(&self) -> Result<(), DeployError> {
+    async fn create_account_token(&self, name: &str) -> Result<String, DeployError> {
         let url = format!(
             "https://api.cloudflare.com/client/v4/accounts/{}/tokens",
             self.account_id
         );
 
+        let mut zone_resources = HashMap::new();
+        for zone_id in &self.zone_ids {
+            zone_resources.insert(
+                format!("com.cloudflare.api.account.zone.{}", zone_id),
+                "*".to_string(),
+            );
+        }
+
         let payload = CreateAccountToken {
-            name: "Linkup Token".to_string(),
+            name: name.to_string(),
             policies: vec![
                 TokenPolicy {
                     effect: TokenPolicyEffect::Allow,
@@ -1258,11 +1276,7 @@ impl CloudflareApi for AccountCloudflareApi {
                         id: "4755a26eedb94da69e1066d98aa820be".to_string(),
                         name: "DNS Write".to_string(),
                     }],
-                    // TODO: Limit to the zone passed as param?
-                    resources: HashMap::from([(
-                        "com.cloudflare.api.account.zone.*".to_string(),
-                        "*".to_string(),
-                    )]),
+                    resources: zone_resources,
                 },
                 TokenPolicy {
                     effect: TokenPolicyEffect::Allow,
@@ -1270,9 +1284,8 @@ impl CloudflareApi for AccountCloudflareApi {
                         id: "f7f0eda5697f475c90846e879bab8666".to_string(),
                         name: "Workers KV Storage Write".to_string(),
                     }],
-                    // TODO: Limit to the account id passed as param?
                     resources: HashMap::from([(
-                        "com.cloudflare.api.account.*".to_string(),
+                        format!("com.cloudflare.api.account.{}", self.account_id),
                         "*".to_string(),
                     )]),
                 },
@@ -1297,6 +1310,66 @@ impl CloudflareApi for AccountCloudflareApi {
         }
 
         let result_data: CreateAccountTokenResponse = resp.json().await?;
+        if !result_data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(result_data.result.unwrap().value.unwrap())
+    }
+
+    async fn list_account_tokens(&self) -> Result<Vec<Token>, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/tokens",
+            self.account_id
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let result_data: ListAccountTokensResponse = resp.json().await?;
+        if !result_data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(result_data.result.unwrap_or_default())
+    }
+
+    async fn remove_account_token(&self, id: &str) -> Result<(), DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/tokens/{}",
+            self.account_id, id
+        );
+
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let result_data: CloudflareApiResponse = resp.json().await?;
         if !result_data.success {
             return Err(DeployError::OtherError);
         }

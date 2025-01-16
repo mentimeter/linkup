@@ -103,6 +103,7 @@ mod tests {
 
     use crate::commands::deploy::{
         self,
+        api::Token,
         cf_destroy::destroy_from_cloudflare,
         resources::{
             rules_equal, DNSRecord, Rule, TargectCfZoneResources, TargetCacheRules,
@@ -128,6 +129,7 @@ export default {
 
         pub dns_records: RefCell<Vec<DNSRecord>>,
         pub worker_routes: RefCell<Vec<(String, String, String)>>,
+        pub account_tokens: RefCell<Vec<(String, String)>>,
     }
 
     impl TestCloudflareApi {
@@ -138,6 +140,7 @@ export default {
                 create_called_with: RefCell::new(None),
                 dns_records: RefCell::new(vec![]),
                 worker_routes: RefCell::new(vec![]),
+                account_tokens: RefCell::new(vec![]),
             }
         }
     }
@@ -313,7 +316,31 @@ export default {
             Ok(None)
         }
 
-        async fn create_account_token(&self) -> Result<(), DeployError> {
+        async fn create_account_token(&self, _name: &str) -> Result<String, DeployError> {
+            let token_name = "linkup-account-token".to_string();
+            self.account_tokens
+                .borrow_mut()
+                .push(("created".to_string(), token_name.clone()));
+            Ok(token_name)
+        }
+
+        async fn list_account_tokens(&self) -> Result<Vec<deploy::api::Token>, DeployError> {
+            let tokens = self
+                .account_tokens
+                .clone()
+                .into_inner()
+                .iter()
+                .map(|(id, name)| Token {
+                    id: id.clone(),
+                    name: Some(name.clone()),
+                    value: None,
+                })
+                .collect();
+
+            Ok(tokens)
+        }
+
+        async fn remove_account_token(&self, _id: &str) -> Result<(), DeployError> {
             Ok(())
         }
     }
@@ -483,6 +510,53 @@ export default {
     }
 
     #[tokio::test]
+    async fn test_deploy_creates_account_token() {
+        let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+
+        let notifier = TestNotifier {
+            messages: RefCell::new(vec![]),
+            confirmation_response: true,
+            confirmations_asked: RefCell::new(0),
+        };
+
+        let res = test_resources();
+
+        // Call deploy_to_cloudflare directly
+        let result = deploy_to_cloudflare(&res, &api, &notifier).await;
+        assert!(result.is_ok());
+
+        let tokens = api.account_tokens.borrow();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].0, "created".to_string());
+        assert_eq!(tokens[0].1, "linkup-account-token".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_deploy_skips_creating_account_token_if_already_exists() {
+        let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+        api.account_tokens
+            .borrow_mut()
+            .push(("existing".to_string(), "linkup-account-token".to_string()));
+
+        let notifier = TestNotifier {
+            messages: RefCell::new(vec![]),
+            confirmation_response: true,
+            confirmations_asked: RefCell::new(0),
+        };
+
+        let res = test_resources();
+
+        // Call deploy_to_cloudflare directly
+        let result = deploy_to_cloudflare(&res, &api, &notifier).await;
+        assert!(result.is_ok());
+
+        let tokens = api.account_tokens.borrow();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].0, "existing".to_string());
+        assert_eq!(tokens[0].1, "linkup-account-token".to_string());
+    }
+
+    #[tokio::test]
     async fn test_deploy_and_destroy_real_integration() {
         let notifier = TestNotifier {
             messages: RefCell::new(vec![]),
@@ -628,6 +702,16 @@ export default {
             "Cache ruleset should match desired rules after deploy"
         );
 
+        // Verify account token
+        let tokens = cloudflare_api.list_account_tokens().await.unwrap();
+        let linkup_account_token = tokens
+            .iter()
+            .find(|token| token.name.as_deref() == Some("linkup-account-token"));
+        assert!(
+            linkup_account_token.is_some(),
+            "Linkup account token should exist after deploy"
+        );
+
         // Destroy resources
         let destroy_result = destroy_from_cloudflare(&res, &cloudflare_api, &notifier).await;
         assert!(
@@ -710,6 +794,17 @@ export default {
         assert!(
             current_rules.is_empty(),
             "Cache rules should be empty after destroy"
+        );
+
+        // Verify account token is gone
+        let tokens = cloudflare_api.list_account_tokens().await.unwrap();
+        let linkup_account_token = tokens
+            .iter()
+            .find(|token| token.name.as_deref() == Some("linkup-account-token"));
+        assert!(
+            linkup_account_token.is_none(),
+            "Linkup account token '{}' still exists after destroy.",
+            linkup_account_token.unwrap().id,
         );
     }
 }
