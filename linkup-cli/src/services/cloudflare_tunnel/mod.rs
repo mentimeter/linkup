@@ -1,7 +1,6 @@
 mod paid_tunnel;
 
 use std::{
-    env,
     fs::{self, File},
     os::unix::process::CommandExt,
     path::PathBuf,
