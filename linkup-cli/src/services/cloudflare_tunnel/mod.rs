@@ -67,10 +67,6 @@ impl CloudflareTunnel {
         }
     }
 
-    fn use_paid_tunnels(&self) -> bool {
-        self.paid_tunnel.is_some()
-    }
-
     fn start_free(&self) -> Result<(), Error> {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
