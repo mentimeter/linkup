@@ -1280,10 +1280,16 @@ impl CloudflareApi for AccountCloudflareApi {
                 },
                 TokenPolicy {
                     effect: TokenPolicyEffect::Allow,
-                    permission_groups: vec![TokenPolicyPermissionGroup {
-                        id: "f7f0eda5697f475c90846e879bab8666".to_string(),
-                        name: "Workers KV Storage Write".to_string(),
-                    }],
+                    permission_groups: vec![
+                        TokenPolicyPermissionGroup {
+                            id: "f7f0eda5697f475c90846e879bab8666".to_string(),
+                            name: "Workers KV Storage Write".to_string(),
+                        },
+                        TokenPolicyPermissionGroup {
+                            id: "c07321b023e944ff818fec44d8203567".to_string(),
+                            name: "Cloudflare Tunnel Write".to_string(),
+                        },
+                    ],
                     resources: HashMap::from([(
                         format!("com.cloudflare.api.account.{}", self.account_id),
                         "*".to_string(),
