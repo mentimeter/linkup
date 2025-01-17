@@ -706,7 +706,7 @@ export default {
         let tokens = cloudflare_api.list_account_tokens().await.unwrap();
         let linkup_account_token = tokens
             .iter()
-            .find(|token| token.name.as_deref() == Some("linkup-account-token"));
+            .find(|token| token.name.as_deref() == Some("linkup-account-owned-cli-access-token"));
         assert!(
             linkup_account_token.is_some(),
             "Linkup account token should exist after deploy"
@@ -800,7 +800,7 @@ export default {
         let tokens = cloudflare_api.list_account_tokens().await.unwrap();
         let linkup_account_token = tokens
             .iter()
-            .find(|token| token.name.as_deref() == Some("linkup-account-token"));
+            .find(|token| token.name.as_deref() == Some("linkup-account-owned-cli-access-token"));
         assert!(
             linkup_account_token.is_none(),
             "Linkup account token '{}' still exists after destroy.",
