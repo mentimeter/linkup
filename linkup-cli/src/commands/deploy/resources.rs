@@ -541,7 +541,17 @@ impl TargetCfResources {
         if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
             notifier.notify("Creating account token...");
             let token = api.create_account_token(token_name).await?;
-            notifier.notify(&format!("Account token created successfully: {}", token,));
+            notifier.notify("Account token created successfully");
+            notifier.notify(
+                "-----------------------------------------------------------------------------",
+            );
+            notifier.notify(
+                "-------------------------------- NOTICE -------------------------------------",
+            );
+            notifier.notify(
+                "This is the only time you'll get to see this token, make sure to make a copy.",
+            );
+            notifier.notify(&format!("Access token: {}", token));
         }
 
         Ok(())
