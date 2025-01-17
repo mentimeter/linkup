@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
 
-const LINKUP_ACCOUNT_TOKEN_NAME: &str = "linkup-account-owned-cli-access-token";
+pub(super) const LINKUP_ACCOUNT_TOKEN_NAME: &str = "linkup-account-owned-cli-access-token";
 const LINKUP_SCRIPT_NAME: &str = "linkup-worker";
 // To build the worker script, run in the worker directory:
 // cargo install -q worker-build && worker-build --release
