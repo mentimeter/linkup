@@ -97,6 +97,13 @@ pub struct LinkupState {
     pub remote: Url,
     pub tunnel: Option<Url>,
     pub cache_routes: Option<Vec<String>>,
+    pub paid_tunnel: Option<PaidTunnelData>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct PaidTunnelData {
+    pub zone_name: String,
+    pub zone_id: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -179,6 +186,7 @@ impl YamlLocalConfig {
 pub struct LinkupConfig {
     pub remote: Url,
     cache_routes: Option<Vec<String>>,
+    paid_tunnel: Option<PaidTunnelData>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -219,6 +227,7 @@ pub fn config_to_state(
         remote: yaml_config.linkup.remote,
         tunnel,
         cache_routes: yaml_config.linkup.cache_routes,
+        paid_tunnel: yaml_config.linkup.paid_tunnel,
     };
 
     let services = yaml_config

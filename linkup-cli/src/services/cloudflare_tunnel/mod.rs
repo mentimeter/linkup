@@ -19,7 +19,11 @@ use regex::Regex;
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{linkup_file_path, local_config::LocalState, signal};
+use crate::{
+    linkup_file_path,
+    local_config::{LocalState, PaidTunnelData},
+    signal,
+};
 
 use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 
@@ -46,24 +50,14 @@ pub struct CloudflareTunnel {
     stdout_file_path: PathBuf,
     stderr_file_path: PathBuf,
     pidfile_path: PathBuf,
-    paid_tunnel: Option<PaidTunnelData>,
-}
-
-struct PaidTunnelData {
-    zone_name: String,
-    zone_id: String,
 }
 
 impl CloudflareTunnel {
     pub fn new() -> Self {
-        let paid_tunnel =
-            get_tunnel_zone_id().map(|(zone_id, zone_name)| PaidTunnelData { zone_name, zone_id });
-
         Self {
             stdout_file_path: linkup_file_path("cloudflared-stdout"),
             stderr_file_path: linkup_file_path("cloudflared-stderr"),
             pidfile_path: linkup_file_path("cloudflared-pid"),
-            paid_tunnel,
         }
     }
 
@@ -169,8 +163,12 @@ impl CloudflareTunnel {
         signal::get_running_pid(&self.pidfile_path)
     }
 
-    fn url(&self, linkup_session_name: &str) -> Result<Url, Error> {
-        if let Some(paid_tunnel) = &self.paid_tunnel {
+    fn url(
+        &self,
+        linkup_session_name: &str,
+        paid_tunnel: &Option<PaidTunnelData>,
+    ) -> Result<Url, Error> {
+        if let Some(paid_tunnel) = paid_tunnel {
             Ok(Url::parse(
                 format!(
                     "https://tunnel-{}.{}",
@@ -194,13 +192,17 @@ impl CloudflareTunnel {
         }
     }
 
-    async fn dns_propagated(&self, linkup_session_name: &str) -> bool {
+    async fn dns_propagated(
+        &self,
+        linkup_session_name: &str,
+        paid_tunnel: &Option<PaidTunnelData>,
+    ) -> bool {
         let mut opts = ResolverOpts::default();
         opts.cache_size = 0; // Disable caching
 
         let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), opts);
 
-        let url = match self.url(linkup_session_name) {
+        let url = match self.url(linkup_session_name, paid_tunnel) {
             Ok(url) => url,
             Err(_) => return false,
         };
@@ -224,10 +226,16 @@ impl CloudflareTunnel {
         false
     }
 
-    fn update_state(&self, state: &mut LocalState) -> Result<(), Error> {
-        let url = self.url(&state.linkup.session_name)?;
+    fn update_state(
+        &self,
+        state: &mut LocalState,
+        paid_tunnel: Option<PaidTunnelData>,
+    ) -> Result<(), Error> {
+        let url = self.url(&state.linkup.session_name, &paid_tunnel)?;
 
         debug!("Adding tunnel url {} to the state", url.as_str());
+
+        state.linkup.paid_tunnel = paid_tunnel;
 
         state.linkup.tunnel = Some(url);
         state
@@ -276,7 +284,16 @@ impl BackgroundService<Error> for CloudflareTunnel {
             return Ok(());
         }
 
-        if let Some(paid_tunnel) = &self.paid_tunnel {
+        self.notify_update(&status_sender, super::RunStatus::Starting);
+
+        let paid_tunnel_data = get_tunnel_zone_id()
+            .await
+            .map_err(|e| Error::FailedToStart(format!("Failed to get tunnel zone id: {}", e)))?;
+
+        let paid_tunnel =
+            paid_tunnel_data.map(|(zone_id, zone_name)| PaidTunnelData { zone_name, zone_id });
+
+        if let Some(paid_tunnel) = &paid_tunnel {
             self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Paid");
 
             if let Err(e) = self
@@ -338,7 +355,9 @@ impl BackgroundService<Error> for CloudflareTunnel {
         // DNS Propagation check
         {
             let mut dns_propagation_attempt = 0;
-            let mut dns_propagated = self.dns_propagated(&state.linkup.session_name).await;
+            let mut dns_propagated = self
+                .dns_propagated(&state.linkup.session_name, &paid_tunnel)
+                .await;
 
             while !dns_propagated && dns_propagation_attempt <= 20 {
                 sleep(Duration::from_secs(2)).await;
@@ -353,7 +372,9 @@ impl BackgroundService<Error> for CloudflareTunnel {
                     ),
                 );
 
-                dns_propagated = self.dns_propagated(&state.linkup.session_name).await;
+                dns_propagated = self
+                    .dns_propagated(&state.linkup.session_name, &paid_tunnel)
+                    .await;
             }
 
             if !dns_propagated {
@@ -369,7 +390,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
             self.notify_update(&status_sender, super::RunStatus::Starting);
         }
 
-        match self.update_state(state) {
+        match self.update_state(state, paid_tunnel) {
             Ok(_) => {
                 self.notify_update(&status_sender, super::RunStatus::Started);
             }

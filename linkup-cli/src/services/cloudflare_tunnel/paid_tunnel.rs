@@ -137,19 +137,14 @@ pub async fn create_dns_record(
     Ok(())
 }
 
-pub fn get_tunnel_zone_id() -> Option<(String, String)> {
+pub async fn get_tunnel_zone_id() -> Result<Option<(String, String)>, CliError> {
     let url = "https://api.cloudflare.com/client/v4/zones";
     let (client, headers) = match prepare_client_and_headers(&RealSystem) {
         Ok(result) => result,
-        Err(_) => return None,
+        Err(_) => return Ok(None),
     };
 
-    let response_body: serde_json::Value = match tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(send_request(&client, url, headers, None, "GET"))
-    }) {
-        Ok(parsed) => parsed,
-        Err(_) => return None,
-    };
+    let response_body: serde_json::Value = send_request(&client, url, headers, None, "GET").await?;
 
     if let Some(result_array) = response_body.get("result").and_then(|r| r.as_array()) {
         for zone in result_array {
@@ -164,13 +159,13 @@ pub fn get_tunnel_zone_id() -> Option<(String, String)> {
                 let has_zone_read = permissions.iter().any(|p| p.as_str() == Some("#zone:read"));
 
                 if has_dns_edit && has_zone_read {
-                    return Some((id.to_string(), name.to_string()));
+                    return Ok(Some((id.to_string(), name.to_string())));
                 }
             }
         }
     }
 
-    None
+    Ok(None)
 }
 
 // Helper to create an HTTP client and prepare headers
