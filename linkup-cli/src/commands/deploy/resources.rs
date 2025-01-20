@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
 
+pub(super) const LINKUP_ACCOUNT_TOKEN_NAME: &str = "linkup-account-owned-cli-access-token";
 const LINKUP_SCRIPT_NAME: &str = "linkup-worker";
 // To build the worker script, run in the worker directory:
 // cargo install -q worker-build && worker-build --release
@@ -131,6 +132,7 @@ pub struct DeployPlan {
     pub dns_actions: Vec<DnsRecordPlan>,
     pub route_actions: Vec<WorkerRoutePlan>,
     pub ruleset_actions: Vec<RulesetPlan>,
+    pub account_token_action: Option<AccountTokenPlan>,
 }
 
 /// Plan describing how to reconcile the KV namespace.
@@ -179,6 +181,11 @@ pub struct RulesetPlan {
     pub rules: Vec<Rule>,
 }
 
+#[derive(Debug)]
+pub struct AccountTokenPlan {
+    pub token_name: String,
+}
+
 #[derive(Debug, Default)]
 pub struct DestroyPlan {
     /// Name of worker script that should be removed (if any).
@@ -195,6 +202,9 @@ pub struct DestroyPlan {
 
     /// (zone_id, ruleset_id) for each cache ruleset to remove.
     pub remove_rulesets: Vec<(String, String)>,
+
+    /// Name token that should be removed (if any).
+    pub remove_account_token: Option<String>,
 }
 
 impl DestroyPlan {
@@ -205,6 +215,7 @@ impl DestroyPlan {
             && self.remove_dns_records.is_empty()
             && self.remove_worker_routes.is_empty()
             && self.remove_rulesets.is_empty()
+            && self.remove_account_token.is_none()
     }
 }
 
@@ -219,6 +230,7 @@ impl TargetCfResources {
         let dns_actions = self.check_dns_records(api).await?;
         let route_actions = self.check_worker_routes(api).await?;
         let ruleset_actions = self.check_rulesets(api).await?;
+        let account_token_action = self.check_account_token(api).await?;
 
         Ok(DeployPlan {
             kv_action,
@@ -226,6 +238,7 @@ impl TargetCfResources {
             dns_actions,
             route_actions,
             ruleset_actions,
+            account_token_action,
         })
     }
     /// Check if the KV namespace exists and return the plan if not.
@@ -386,6 +399,23 @@ impl TargetCfResources {
         Ok(plans)
     }
 
+    pub async fn check_account_token(
+        &self,
+        api: &impl CloudflareApi,
+    ) -> Result<Option<AccountTokenPlan>, DeployError> {
+        let tokens = api.list_account_tokens().await?;
+        let linkup_token = tokens
+            .iter()
+            .find(|token| token.name.as_deref() == Some(LINKUP_ACCOUNT_TOKEN_NAME));
+
+        match linkup_token {
+            Some(_) => Ok(None),
+            None => Ok(Some(AccountTokenPlan {
+                token_name: LINKUP_ACCOUNT_TOKEN_NAME.to_string(),
+            })),
+        }
+    }
+
     pub async fn execute_deploy_plan(
         &self,
         api: &impl CloudflareApi,
@@ -507,6 +537,23 @@ impl TargetCfResources {
                 .await?;
         }
 
+        // 6) Reconcile account token
+        if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
+            notifier.notify("Creating account token...");
+            let token = api.create_account_token(token_name).await?;
+            notifier.notify("Account token created successfully");
+            notifier.notify(
+                "-----------------------------------------------------------------------------",
+            );
+            notifier.notify(
+                "-------------------------------- NOTICE -------------------------------------",
+            );
+            notifier.notify(
+                "This is the only time you'll get to see this token, make sure to make a copy.",
+            );
+            notifier.notify(&format!("Access token: {}", token));
+        }
+
         Ok(())
     }
 
@@ -567,6 +614,15 @@ impl TargetCfResources {
             {
                 plan.remove_rulesets.push((zone_id.clone(), ruleset_id));
             }
+        }
+
+        // 6) Account token
+        let tokens = api.list_account_tokens().await?;
+        let linkup_token = tokens
+            .iter()
+            .find(|token| token.name.as_deref() == Some(LINKUP_ACCOUNT_TOKEN_NAME));
+        if let Some(token) = linkup_token {
+            plan.remove_account_token = Some(token.id.to_string());
         }
 
         Ok(plan)
@@ -630,6 +686,13 @@ impl TargetCfResources {
             notifier.notify(&format!("Cache ruleset '{}' removed.", ruleset_id));
         }
 
+        // 6) Account token
+        if let Some(token) = &plan.remove_account_token {
+            notifier.notify("Removing Linkup account token...");
+            api.remove_account_token(token).await?;
+            notifier.notify("Linkup account token removed.");
+        }
+
         Ok(())
     }
 
@@ -664,6 +727,7 @@ impl DeployPlan {
             && self.dns_actions.is_empty()
             && self.route_actions.is_empty()
             && self.ruleset_actions.is_empty()
+            && self.account_token_action.is_none()
     }
 }
 

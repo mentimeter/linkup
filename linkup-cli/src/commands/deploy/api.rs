@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use reqwest::{multipart, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -100,6 +102,10 @@ pub trait CloudflareApi {
         zone_id: String,
         ruleset_id: String,
     ) -> Result<(), DeployError>;
+
+    async fn list_account_tokens(&self) -> Result<Vec<Token>, DeployError>;
+    async fn create_account_token(&self, name: &str) -> Result<String, DeployError>;
+    async fn remove_account_token(&self, id: &str) -> Result<(), DeployError>;
 }
 
 #[derive(Deserialize, Debug)]
@@ -277,6 +283,51 @@ pub struct Ruleset {
     pub phase: String,
     pub rules: Option<Vec<Rule>>,
     pub version: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum TokenPolicyEffect {
+    Allow,
+    Deny,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TokenPolicyPermissionGroup {
+    id: String,
+    name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TokenPolicy {
+    pub effect: TokenPolicyEffect,
+    pub permission_groups: Vec<TokenPolicyPermissionGroup>,
+    pub resources: HashMap<String, String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Token {
+    pub id: String,
+    pub name: Option<String>,
+    pub value: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CreateAccountToken {
+    pub name: String,
+    pub policies: Vec<TokenPolicy>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CreateAccountTokenResponse {
+    pub success: bool,
+    pub result: Option<Token>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ListAccountTokensResponse {
+    pub success: bool,
+    pub result: Option<Vec<Token>>,
 }
 
 const WORKER_VERSION_TAG: &str = "LINKUP_VERSION_TAG";
@@ -1200,5 +1251,135 @@ impl CloudflareApi for AccountCloudflareApi {
         } else {
             Ok(vec![])
         }
+    }
+
+    async fn create_account_token(&self, name: &str) -> Result<String, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/tokens",
+            self.account_id
+        );
+
+        let mut zone_resources = HashMap::new();
+        for zone_id in &self.zone_ids {
+            zone_resources.insert(
+                format!("com.cloudflare.api.account.zone.{}", zone_id),
+                "*".to_string(),
+            );
+        }
+
+        let payload = CreateAccountToken {
+            name: name.to_string(),
+            policies: vec![
+                TokenPolicy {
+                    effect: TokenPolicyEffect::Allow,
+                    permission_groups: vec![TokenPolicyPermissionGroup {
+                        id: "4755a26eedb94da69e1066d98aa820be".to_string(),
+                        name: "DNS Write".to_string(),
+                    }],
+                    resources: zone_resources,
+                },
+                TokenPolicy {
+                    effect: TokenPolicyEffect::Allow,
+                    permission_groups: vec![
+                        TokenPolicyPermissionGroup {
+                            id: "f7f0eda5697f475c90846e879bab8666".to_string(),
+                            name: "Workers KV Storage Write".to_string(),
+                        },
+                        TokenPolicyPermissionGroup {
+                            id: "c07321b023e944ff818fec44d8203567".to_string(),
+                            name: "Cloudflare Tunnel Write".to_string(),
+                        },
+                    ],
+                    resources: HashMap::from([(
+                        format!("com.cloudflare.api.account.{}", self.account_id),
+                        "*".to_string(),
+                    )]),
+                },
+            ],
+        };
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.api_auth.headers())
+            .json(&payload)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let result_data: CreateAccountTokenResponse = resp.json().await?;
+        if !result_data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(result_data.result.unwrap().value.unwrap())
+    }
+
+    async fn list_account_tokens(&self) -> Result<Vec<Token>, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/tokens",
+            self.account_id
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let result_data: ListAccountTokensResponse = resp.json().await?;
+        if !result_data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(result_data.result.unwrap_or_default())
+    }
+
+    async fn remove_account_token(&self, id: &str) -> Result<(), DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/tokens/{}",
+            self.account_id, id
+        );
+
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        let result_data: CloudflareApiResponse = resp.json().await?;
+        if !result_data.success {
+            return Err(DeployError::OtherError);
+        }
+
+        Ok(())
     }
 }
