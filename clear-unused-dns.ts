@@ -21,7 +21,7 @@ async function deleteTXTRecords(zoneId: string) {
 }
 
 async function deleteTunnelCNAMERecords() {
-  const baseUrl = `https://api.cloudflare.com/client/v4/zones/${mentimeter_dev_zone_id}/dns_records`;
+  const baseUrl = `https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records`;
 
   // Fetch all DNS records
   const getRecords = async () => {
@@ -98,9 +98,9 @@ async function doBatchDelete(url: string, recordsToDelete: any[]) {
 
 const api_token = process.env.LINKUP_CF_API_TOKEN;
 const account_id = process.env.LINKUP_CLOUDFLARE_ACCOUNT_ID;
-const mentimeter_dev_zone_id = process.env.LINKUP_CLOUDFLARE_ZONE_ID;
+const zone_id = process.env.LINKUP_CLOUDFLARE_ZONE_ID;
 
-if (!api_token || !account_id || !mentimeter_dev_zone_id) {
+if (!api_token || !account_id || !zone_id) {
   console.error("Missing Cloudflare API Token, Account ID or Zone ID");
   console.error(
     "Please set LINKUP_CF_API_TOKEN, LINKUP_CLOUDFLARE_ACCOUNT_ID, and LINKUP_CLOUDFLARE_ZONE_ID environment variables"

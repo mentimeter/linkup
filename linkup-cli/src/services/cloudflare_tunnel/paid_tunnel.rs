@@ -114,9 +114,11 @@ pub async fn create_tunnel(tunnel_name: &str) -> Result<String, CliError> {
     Ok(parsed.result.id)
 }
 
-pub async fn create_dns_record(tunnel_id: &str, tunnel_name: &str) -> Result<(), CliError> {
-    let zone_id = env::var("LINKUP_CLOUDFLARE_ZONE_ID")
-        .map_err(|_| CliError::GetEnvVar("LINKUP_CLOUDFLARE_ZONE_ID".to_string()))?;
+pub async fn create_dns_record(
+    tunnel_id: &str,
+    tunnel_name: &str,
+    zone_id: &str,
+) -> Result<(), CliError> {
     let url = format!(
         "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
         zone_id
@@ -133,6 +135,37 @@ pub async fn create_dns_record(tunnel_id: &str, tunnel_name: &str) -> Result<(),
     let _parsed: CreateDNSRecordResponse =
         send_request(&client, &url, headers, Some(body), "POST").await?;
     Ok(())
+}
+
+pub async fn get_tunnel_zone_id() -> Result<Option<(String, String)>, CliError> {
+    let url = "https://api.cloudflare.com/client/v4/zones";
+    let (client, headers) = match prepare_client_and_headers(&RealSystem) {
+        Ok(result) => result,
+        Err(_) => return Ok(None),
+    };
+
+    let response_body: serde_json::Value = send_request(&client, url, headers, None, "GET").await?;
+
+    if let Some(result_array) = response_body.get("result").and_then(|r| r.as_array()) {
+        for zone in result_array {
+            if let (Some(id), Some(name), Some(permissions)) = (
+                zone.get("id").and_then(|id| id.as_str()),
+                zone.get("name").and_then(|id| id.as_str()),
+                zone.get("permissions").and_then(|p| p.as_array()),
+            ) {
+                let has_dns_edit = permissions
+                    .iter()
+                    .any(|p| p.as_str() == Some("#dns_records:edit"));
+                let has_zone_read = permissions.iter().any(|p| p.as_str() == Some("#zone:read"));
+
+                if has_dns_edit && has_zone_read {
+                    return Ok(Some((id.to_string(), name.to_string())));
+                }
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 // Helper to create an HTTP client and prepare headers
