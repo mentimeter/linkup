@@ -50,9 +50,7 @@ async fn can_request_underlying_websocket_server(
     // Send a message
     let msg = "Hello, WebSocket!";
     ws_stream
-        .send(tokio_tungstenite::tungstenite::Message::Text(
-            msg.to_string().into(),
-        ))
+        .send(tokio_tungstenite::tungstenite::Message::Text(msg.into()))
         .await
         .expect("Failed to send message");
 
