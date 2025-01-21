@@ -7,12 +7,12 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-axum = { version = "0.7.5", features = ["json"], default-features = false }
+axum = { version = "0.8.1", features = ["json"], default-features = false }
 console_error_panic_hook = { version = "0.1.7" }
 futures = "0.3.31"
 getrandom = { version = "0.2.15", features = ["js"] }
-http = "1.1.0"
+http = "1.2.0"
 linkup = { path = "../linkup" }
-regex = "1.11.0"
+regex = "1.11.1"
 tower-service = "0.3.3"
-worker = { version = "0.4.2", features = ["http", "axum"] }
+worker = { version = "0.5.0", features = ["http", "axum"] }

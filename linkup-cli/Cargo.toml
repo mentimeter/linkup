@@ -8,38 +8,38 @@ name = "linkup"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.5.20", features = ["derive", "cargo"] }
-clap_complete = "4.5.33"
-colored = "2.1.0"
+clap = { version = "4.5.27", features = ["derive", "cargo"] }
+clap_complete = "4.5.42"
+colored = "3.0.0"
 ctrlc = { version = "3.4.5", features = ["termination"] }
-hickory-resolver = { version = "0.24.1", features = ["tokio-runtime"] }
+hickory-resolver = { version = "0.24.2", features = ["tokio-runtime"] }
 linkup = { path = "../linkup" }
 linkup-local-server = { path = "../local-server" }
-log = "0.4.22"
+log = "0.4.25"
 nix = { version = "0.29.0", features = ["signal"] }
 rand = "0.8.5"
-regex = "1.11.0"
-reqwest = { version = "0.12.8", default-features = false, features = [
+regex = "1.11.1"
+reqwest = { version = "0.12.12", default-features = false, features = [
     "json",
     "multipart",
     "blocking",
     "rustls-tls",
     "json",
 ] }
-serde = "1.0.210"
-serde_json = "1.0.129"
+serde = "1.0.217"
+serde_json = "1.0.137"
 serde_yaml = "0.9.34"
-tokio = { version = "1.40.0", features = ["macros"] }
-thiserror = "1.0.64"
-url = { version = "2.5.2", features = ["serde"] }
+tokio = { version = "1.43.0", features = ["macros"] }
+thiserror = "2.0.11"
+url = { version = "2.5.4", features = ["serde"] }
 base64 = "0.22.1"
-env_logger = "0.11.5"
+env_logger = "0.11.6"
 crossterm = "0.28.1"
-sysinfo = "0.32.1"
+sysinfo = "0.33.1"
 sha2 = "0.10.8"
 hex = "0.4.3"
 tar = "0.4.43"
 flate2 = "1.0.35"
 
 [dev-dependencies]
-mockall = "0.13.0"
+mockall = "0.13.1"

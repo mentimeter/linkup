@@ -6,14 +6,14 @@ edition = "2021"
 [dependencies]
 hex = "0.4.3"
 rand = "0.8.5"
-regex = "1.11.0"
-serde = "1.0.210"
-serde_json = "1.0.129"
+regex = "1.11.1"
+serde = "1.0.217"
+serde_json = "1.0.137"
 sha2 = "0.10.8"
-thiserror = "1.0.64"
-unicase = "2.7.0"
-url = { version = "2.5.2", features = ["serde"] }
-http = "1.1.0"
+thiserror = "2.0.11"
+unicase = "2.8.1"
+url = { version = "2.5.4", features = ["serde"] }
+http = "1.2.0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros"] }
