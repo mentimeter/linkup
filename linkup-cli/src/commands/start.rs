@@ -31,7 +31,7 @@ pub struct Args {
     pub no_tunnel: bool,
 }
 
-pub async fn start<'a>(
+pub async fn start(
     args: &Args,
     fresh_state: bool,
     config_arg: &Option<String>,
