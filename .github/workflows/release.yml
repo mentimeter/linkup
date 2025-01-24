@@ -158,13 +158,6 @@ jobs:
       - name: Checkout Homebrew Tap Repository
         run: git clone https://github.com/mentimeter/homebrew-mentimeter.git
 
-      - name: Create app token
-        id: create_token
-        uses: tibdex/github-app-token@v2
-        with:
-          app_id: ${{ secrets.MENTIMATION_APP_ID }}
-          private_key: ${{ secrets.MENTIMATION_PRIVATE_KEY }}
-
       - name: Update Homebrew Formula
         run: |
           RELEASE_VERSION="${{ needs.build.outputs.release_version }}"
@@ -194,11 +187,13 @@ jobs:
 
           cd homebrew-mentimeter
 
-          git remote set-url origin https://x-access-token:${{ steps.create_token.outputs.token }}@github.com/mentimeter/homebrew-mentimeter.git
-          git config --global user.name "mentimation[bot]"
-          git config --global user.email "141806680+mentimation[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${COMMIT_TOKEN}@github.com/mentimeter/homebrew-mentimeter.git
+          git config --global user.name "mentibot"
+          git config --global user.email "122382604+mentibot@users.noreply.github.com"
 
           git add linkup.rb
           git commit -m "Update Linkup formula to $RELEASE_VERSION"
 
           git push origin HEAD:main
+        env:
+          COMMIT_TOKEN: ${{ secrets.COMMIT_TOKEN }}
