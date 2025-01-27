@@ -7,6 +7,7 @@ use thiserror::Error;
 mod commands;
 mod env_files;
 mod local_config;
+mod release;
 mod services;
 mod signal;
 mod system;
