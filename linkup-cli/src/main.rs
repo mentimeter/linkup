@@ -238,6 +238,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+
     let cli = Cli::parse();
 
     ensure_linkup_dir()?;
