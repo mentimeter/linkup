@@ -24,7 +24,7 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error("IoError: {0}")]
     Io(#[from] std::io::Error),
-    #[error("File missing from dowloaded compressed archive")]
+    #[error("File missing from downloaded compressed archive")]
     MissingBinary,
 }
 
