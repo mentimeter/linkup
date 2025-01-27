@@ -110,7 +110,9 @@ impl Asset {
                 .entries()?
                 .filter_map(|e| e.ok())
                 .find_map(|mut entry| -> Option<PathBuf> {
-                    if entry.path().unwrap().to_str().unwrap() == lookup_name {
+                    let entry_path = entry.path().unwrap();
+
+                    if entry_path.to_str().unwrap().contains(lookup_name) {
                         let path = env::temp_dir().join(lookup_name);
 
                         entry.unpack(&path).unwrap();
