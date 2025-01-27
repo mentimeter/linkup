@@ -135,7 +135,12 @@ struct Release {
 }
 
 impl Release {
-    pub fn asset_for(&self, os: &str, arch: &str) -> Option<Asset> {
+    /// Examples of Linkup asset files:
+    /// - linkup-1.7.1-x86_64-apple-darwin.tar.gz
+    /// - linkup-1.7.1-aarch64-apple-darwin.tar.gz
+    /// - linkup-1.7.1-x86_64-unknown-linux-gnu.tar.gz
+    /// - linkup-1.7.1-aarch64-unknown-linux-gnu.tar.gz
+    pub fn linkup_asset(&self, os: &str, arch: &str) -> Option<Asset> {
         let lookup_os = match os {
             "macos" => "apple-darwin",
             "linux" => "unknown-linux",
@@ -147,6 +152,47 @@ impl Release {
                 return Some(asset.clone());
             }
         }
+
+        log::debug!(
+            "Linkup release for OS '{}' and ARCH '{}' not found on version {}",
+            lookup_os,
+            arch,
+            &self.version
+        );
+
+        None
+    }
+
+    /// Examples of Caddy asset files:
+    /// - caddy-darwin-amd64.tar.gz
+    /// - caddy-darwin-arm64.tar.gz
+    /// - caddy-linux-amd64.tar.gz
+    /// - caddy-linux-arm64.tar.gz
+    pub fn caddy_asset(&self, os: &str, arch: &str) -> Option<Asset> {
+        let lookup_os = match os {
+            "macos" => "darwin",
+            "linux" => "linux",
+            lookup_os => lookup_os,
+        };
+
+        let lookup_arch = match arch {
+            "x86_64" => "amd64",
+            "aarch64" => "arm64",
+            lookup_arch => lookup_arch,
+        };
+
+        for asset in &self.assets {
+            if asset.name == format!("caddy-{}-{}.tar.gz", lookup_os, lookup_arch) {
+                return Some(asset.clone());
+            }
+        }
+
+        log::debug!(
+            "Caddy release for OS '{}' and ARCH '{}' not found on version {}",
+            lookup_os,
+            lookup_arch,
+            &self.version
+        );
 
         None
     }
@@ -221,7 +267,7 @@ pub async fn available_update(current_version: &str) -> Option<Asset> {
         return None;
     }
 
-    latest_release.asset_for(os, arch)
+    latest_release.linkup_asset(os, arch)
 }
 
 async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
