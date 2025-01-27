@@ -285,7 +285,7 @@ fn create_config_yml(sys: &dyn System, tunnel_id: &str) -> Result<(), CliError> 
 
     // Create the directory if it does not exist
     if !sys.file_exists(dir_path.as_path()) {
-        log::info!("Creating directory: {:?}", dir_path);
+        tracing::info!("Creating directory: {:?}", dir_path);
         sys.create_dir_all(&dir_path).map_err(|err| {
             CliError::FileErr("Could not create directory".to_string(), err.to_string())
         })?;

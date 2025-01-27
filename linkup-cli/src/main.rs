@@ -1,4 +1,10 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf, process};
+use std::{
+    env,
+    fs::{self},
+    io::ErrorKind,
+    path::PathBuf,
+    process,
+};
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -225,7 +231,15 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    let file_appender =
+        tracing_appender::rolling::daily(linkup_file_path("logs"), "linkup-cli.log");
+    let (writer, _guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::fmt()
+        .with_writer(writer)
+        .with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env())
+        .with_ansi(false)
+        .init();
 
     let cli = Cli::parse();
 

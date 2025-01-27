@@ -312,7 +312,7 @@ pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::E
         upload_config_to_server(&local_url, &server_session_name, server_config.local).await?;
 
     if server_session_name != local_session_name {
-        log::error!(
+        tracing::error!(
             "Local session has name: {} and remote has name: {}",
             &local_session_name,
             &server_session_name

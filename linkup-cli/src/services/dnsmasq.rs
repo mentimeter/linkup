@@ -64,7 +64,7 @@ pid-file={}\n",
     }
 
     fn start(&self) -> Result<(), Error> {
-        log::debug!("Starting {}", Self::NAME);
+        tracing::debug!("Starting {}", Self::NAME);
 
         Command::new("dnsmasq")
             .current_dir(linkup_dir_path())
@@ -79,7 +79,7 @@ pid-file={}\n",
     }
 
     pub fn stop(&self) -> Result<(), Error> {
-        log::debug!("Stopping {}", Self::NAME);
+        tracing::debug!("Stopping {}", Self::NAME);
 
         signal::stop_pid_file(&self.pid_file_path, signal::Signal::SIGTERM)?;
 
@@ -125,7 +125,7 @@ impl BackgroundService<Error> for Dnsmasq {
                     "Failed to read resolvers folder",
                 );
 
-                log::warn!("Failed to read resolvers folder: {}", err);
+                tracing::warn!("Failed to read resolvers folder: {}", err);
 
                 return Ok(());
             }

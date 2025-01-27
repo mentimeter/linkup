@@ -4,7 +4,7 @@ use std::{
     io::stdout,
     path::{Path, PathBuf},
     sync,
-    thread::{self, sleep, JoinHandle},
+    thread::{self, sleep},
     time::Duration,
 };
 
@@ -67,28 +67,21 @@ pub async fn start(
             // Should not start Caddy or should start Caddy but is already sudo
             (Ok(false), _) | (Ok(true), true) => (),
             // Can't check if should start Caddy
-            (Err(error), _) => log::error!("Failed to check if should start Caddy: {}", error),
+            (Err(error), _) => tracing::error!("Failed to check if should start Caddy: {}", error),
         }
     }
 
-    let mut display_thread: Option<JoinHandle<()>> = None;
     let display_channel = sync::mpsc::channel::<bool>();
-
-    // If we are doing RUST_LOG=debug to debug if there is anything wrong, having the display thread make so it
-    // overwrites some of the output since it does some cursor moving.
-    // So in that case, we do not start the display thread.
-    if !log::log_enabled!(log::Level::Debug) {
-        display_thread = Some(spawn_display_thread(
-            &[
-                services::LocalServer::NAME,
-                services::CloudflareTunnel::NAME,
-                services::Caddy::NAME,
-                services::Dnsmasq::NAME,
-            ],
-            status_update_channel.1,
-            display_channel.1,
-        ));
-    }
+    let display_thread = spawn_display_thread(
+        &[
+            services::LocalServer::NAME,
+            services::CloudflareTunnel::NAME,
+            services::Caddy::NAME,
+            services::Dnsmasq::NAME,
+        ],
+        status_update_channel.1,
+        display_channel.1,
+    );
 
     // To make sure that we get the last update to the display thread before the error is bubbled up,
     // we store any error that might happen on one of the steps and only return it after we have
@@ -133,10 +126,8 @@ pub async fn start(
         }
     }
 
-    if let Some(display_thread) = display_thread {
-        display_channel.0.send(true).unwrap();
-        display_thread.join().unwrap();
-    }
+    display_channel.0.send(true).unwrap();
+    display_thread.join().unwrap();
 
     if let Some(exit_error) = exit_error {
         return Err(CliError::StartErr(exit_error.to_string()));

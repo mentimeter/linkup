@@ -54,7 +54,7 @@ impl LocalServer {
     }
 
     fn start(&self) -> Result<(), Error> {
-        log::debug!("Starting {}", Self::NAME);
+        tracing::debug!("Starting {}", Self::NAME);
 
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
@@ -89,7 +89,7 @@ impl LocalServer {
     }
 
     pub fn stop(&self) -> Result<(), Error> {
-        log::debug!("Stopping {}", Self::NAME);
+        tracing::debug!("Stopping {}", Self::NAME);
         signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGINT)?;
 
         Ok(())

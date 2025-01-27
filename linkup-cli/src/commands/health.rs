@@ -199,7 +199,7 @@ impl Health {
             Ok(session) => Some(session),
             Err(CliError::NoState(_)) => None,
             Err(error) => {
-                log::error!("Failed to load Session: {}", error);
+                tracing::error!("Failed to load Session: {}", error);
                 None
             }
         };
