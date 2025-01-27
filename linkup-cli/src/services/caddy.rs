@@ -66,9 +66,7 @@ impl Caddy {
         }
 
         let version = current_version();
-        let release = release::fetch_release(&version).await?;
-
-        match release {
+        match release::fetch_release(&version).await? {
             Some(release) => {
                 let os = env::consts::OS;
                 let arch = env::consts::ARCH;
