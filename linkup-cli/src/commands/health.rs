@@ -80,7 +80,7 @@ struct EnvironmentVariables {
 impl EnvironmentVariables {
     fn load() -> Self {
         Self {
-            cf_api_token: env::var("LINKUP_CF_API_TOKEN").is_ok(),
+            cf_api_token: env::var("LINKUP_CLOUDFLARE_API_TOKEN").is_ok(),
             cf_account_id: env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok(),
         }
     }
@@ -267,7 +267,7 @@ impl Display for Health {
 
         writeln!(f, "{}", "Environment variables:".bold().italic())?;
 
-        write!(f, "  - LINKUP_CF_API_TOKEN           ")?;
+        write!(f, "  - LINKUP_CLOUDFLARE_API_TOKEN   ")?;
         if self.environment_variables.cf_api_token {
             writeln!(f, "{}", "OK".blue())?;
         } else {

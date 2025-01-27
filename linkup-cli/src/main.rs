@@ -18,7 +18,6 @@ const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
-const LINKUP_CF_TLS_API_ENV_VAR: &str = "LINKUP_CF_API_TOKEN";
 
 pub fn linkup_dir_path() -> PathBuf {
     let storage_dir = match env::var("HOME") {

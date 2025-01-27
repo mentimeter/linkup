@@ -2,7 +2,7 @@ use std::{env, fs, path::PathBuf, process::Command};
 
 use crate::{
     commands::local_dns, current_version, linkup_bin_dir_path, linkup_file_path,
-    local_config::LocalState, release, signal, LINKUP_CF_TLS_API_ENV_VAR,
+    local_config::LocalState, release, signal,
 };
 
 use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
@@ -13,8 +13,8 @@ pub enum Error {
     Starting,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
-    #[error("Cloudflare TLS API token is required for local-dns Cloudflare TLS certificates.")]
-    MissingTlsApiTokenEnv,
+    #[error("Missing environment variable '{0}'.")]
+    MissingEnvVar(String),
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
 }
@@ -101,10 +101,6 @@ impl Caddy {
     fn start(&self, domains: &[String]) -> Result<(), Error> {
         log::debug!("Starting {}", Self::NAME);
 
-        if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
-            return Err(Error::MissingTlsApiTokenEnv);
-        }
-
         let domains_and_subdomains: Vec<String> = domains
             .iter()
             .map(|domain| format!("{domain}, *.{domain}"))
@@ -159,6 +155,20 @@ impl Caddy {
     }
 
     fn write_caddyfile(&self, domains: &[String]) -> Result<(), Error> {
+        let cloudflare_kv_config = format!(
+            "
+            storage cloudflare_kv {{
+                api_token       \"{}\"
+                account_id      \"{}\"
+                namespace_id    \"{}\"
+            }}
+            ",
+            // Presence of these .unwrap() is checked on Caddy#should_start()
+            env::var("LINKUP_CLOUDFLARE_API_TOKEN").unwrap(),
+            env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").unwrap(),
+            env::var("LINKUP_CLOUDFLARE_KV_NAMESPACE_ID").unwrap()
+        );
+
         let caddy_template = format!(
             "
             {{
@@ -167,6 +177,7 @@ impl Caddy {
                 log {{
                     output file {}
                 }}
+                {}
             }}
 
             {} {{
@@ -177,9 +188,10 @@ impl Caddy {
             }}
             ",
             self.stdout_file_path.display(),
+            &cloudflare_kv_config,
             domains.join(", "),
             LINKUP_LOCAL_SERVER_PORT,
-            LINKUP_CF_TLS_API_ENV_VAR,
+            "LINKUP_CLOUDFLARE_API_TOKEN",
         );
 
         fs::write(&self.caddyfile_path, caddy_template)?;
@@ -188,6 +200,16 @@ impl Caddy {
     }
 
     pub fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
+        for env_var in [
+            "LINKUP_CLOUDFLARE_API_TOKEN",
+            "LINKUP_CLOUDFLARE_ACCOUNT_ID",
+            "LINKUP_CLOUDFLARE_KV_NAMESPACE_ID",
+        ] {
+            if env::var(env_var).is_err() {
+                return Err(Error::MissingEnvVar(env_var.into()));
+            }
+        }
+
         if !is_installed() {
             return Ok(false);
         }

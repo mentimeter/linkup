@@ -96,14 +96,14 @@ async function doBatchDelete(url: string, recordsToDelete: any[]) {
   await batchDelete(recordsToDelete);
 }
 
-const api_token = process.env.LINKUP_CF_API_TOKEN;
+const api_token = process.env.LINKUP_CLOUDFLARE_API_TOKEN;
 const account_id = process.env.LINKUP_CLOUDFLARE_ACCOUNT_ID;
 const zone_id = process.env.LINKUP_CLOUDFLARE_ZONE_ID;
 
 if (!api_token || !account_id || !zone_id) {
   console.error("Missing Cloudflare API Token, Account ID or Zone ID");
   console.error(
-    "Please set LINKUP_CF_API_TOKEN, LINKUP_CLOUDFLARE_ACCOUNT_ID, and LINKUP_CLOUDFLARE_ZONE_ID environment variables"
+    "Please set LINKUP_CLOUDFLARE_API_TOKEN, LINKUP_CLOUDFLARE_ACCOUNT_ID, and LINKUP_CLOUDFLARE_ZONE_ID environment variables"
   );
   process.exit(1);
 }

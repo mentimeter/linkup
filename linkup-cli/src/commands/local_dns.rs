@@ -8,7 +8,7 @@ use clap::Subcommand;
 use crate::{
     commands, is_sudo,
     local_config::{config_path, get_config},
-    services, sudo_su, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
+    services, sudo_su, CliError, Result,
 };
 
 #[derive(clap::Args)]
@@ -31,18 +31,6 @@ pub async fn local_dns(args: &Args, config: &Option<String>) -> Result<()> {
 }
 
 pub async fn install(config_arg: &Option<String>) -> Result<()> {
-    if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
-        println!("local-dns uses Cloudflare to enable https through local certificates.");
-        println!(
-            "To use it, you need to set the {} environment variable.",
-            LINKUP_CF_TLS_API_ENV_VAR
-        );
-        return Err(CliError::LocalDNSInstall(format!(
-            "{} env var is not set",
-            LINKUP_CF_TLS_API_ENV_VAR
-        )));
-    }
-
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
