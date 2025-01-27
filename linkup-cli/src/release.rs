@@ -147,20 +147,22 @@ impl Release {
             _ => return None,
         };
 
-        for asset in &self.assets {
-            if asset.name.contains(lookup_os) && asset.name.contains(arch) {
-                return Some(asset.clone());
-            }
+        let asset = self
+            .assets
+            .iter()
+            .find(|asset| asset.name.contains(lookup_os) && asset.name.contains(arch))
+            .cloned();
+
+        if asset.is_none() {
+            log::debug!(
+                "Linkup release for OS '{}' and ARCH '{}' not found on version {}",
+                lookup_os,
+                arch,
+                &self.version
+            );
         }
 
-        log::debug!(
-            "Linkup release for OS '{}' and ARCH '{}' not found on version {}",
-            lookup_os,
-            arch,
-            &self.version
-        );
-
-        None
+        asset
     }
 
     /// Examples of Caddy asset files:
@@ -181,20 +183,22 @@ impl Release {
             lookup_arch => lookup_arch,
         };
 
-        for asset in &self.assets {
-            if asset.name == format!("caddy-{}-{}.tar.gz", lookup_os, lookup_arch) {
-                return Some(asset.clone());
-            }
+        let asset = self
+            .assets
+            .iter()
+            .find(|asset| asset.name == format!("caddy-{}-{}.tar.gz", lookup_os, lookup_arch))
+            .cloned();
+
+        if asset.is_none() {
+            log::debug!(
+                "Caddy release for OS '{}' and ARCH '{}' not found on version {}",
+                lookup_os,
+                lookup_arch,
+                &self.version
+            );
         }
 
-        log::debug!(
-            "Caddy release for OS '{}' and ARCH '{}' not found on version {}",
-            lookup_os,
-            lookup_arch,
-            &self.version
-        );
-
-        None
+        asset
     }
 }
 
