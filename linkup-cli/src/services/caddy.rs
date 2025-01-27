@@ -1,12 +1,12 @@
 use std::{
-    fs,
+    env, fs,
     path::PathBuf,
     process::{Command, Stdio},
 };
 
 use crate::{
-    commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState, signal,
-    LINKUP_CF_TLS_API_ENV_VAR,
+    commands::local_dns, current_version, linkup_dir_path, linkup_file_path,
+    local_config::LocalState, release, signal, LINKUP_CF_TLS_API_ENV_VAR,
 };
 
 use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
@@ -23,6 +23,20 @@ pub enum Error {
     MissingRedisInstalation,
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum InstallError {
+    #[error("Failed while handing file: {0}")]
+    FileHandling(#[from] std::io::Error),
+    #[error("Failed to fetch release information: {0}")]
+    FetchError(#[from] reqwest::Error),
+    #[error("Release not found for version {0}")]
+    ReleaseNotFound(release::Version),
+    #[error("Caddy asset not found on release for version {0}")]
+    AssetNotFound(release::Version),
+    #[error("Failed to download Caddy asset: {0}")]
+    AssetDownload(String),
 }
 
 pub struct Caddy {
@@ -42,24 +56,56 @@ impl Caddy {
         }
     }
 
-    pub fn install_extra_packages() {
-        Command::new("sudo")
-            .args(["caddy", "add-package", "github.com/caddy-dns/cloudflare"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap();
+    pub async fn install() -> Result<(), InstallError> {
+        let mut bin_dir_path = linkup_dir_path();
+        bin_dir_path.push("bin");
 
-        Command::new("sudo")
-            .args([
-                "caddy",
-                "add-package",
-                "github.com/pberkel/caddy-storage-redis",
-            ])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap();
+        fs::create_dir_all(&bin_dir_path)?;
+
+        let mut caddy_path = bin_dir_path.clone();
+        caddy_path.push("caddy");
+
+        if fs::exists(&caddy_path)? {
+            log::debug!(
+                "Caddy executable already exists on {}",
+                &bin_dir_path.display()
+            );
+            return Ok(());
+        }
+
+        let version = current_version();
+        let release = release::fetch_release(&version).await?;
+
+        match release {
+            Some(release) => {
+                let os = env::consts::OS;
+                let arch = env::consts::ARCH;
+
+                match release.caddy_asset(os, arch) {
+                    Some(asset) => match asset.download_decompressed("caddy").await {
+                        Ok(downloaded_caddy_path) => {
+                            fs::rename(&downloaded_caddy_path, &caddy_path)?;
+                        }
+                        Err(error) => return Err(InstallError::AssetDownload(error.to_string())),
+                    },
+                    None => {
+                        log::warn!(
+                            "Failed to find Caddy asset on release for version {}",
+                            &version
+                        );
+
+                        return Err(InstallError::AssetNotFound(version.clone()));
+                    }
+                }
+            }
+            None => {
+                log::warn!("Failed to find release for version {}", &version);
+
+                return Err(InstallError::ReleaseNotFound(version.clone()));
+            }
+        }
+
+        Ok(())
     }
 
     fn start(&self, domains: &[String]) -> Result<(), Error> {

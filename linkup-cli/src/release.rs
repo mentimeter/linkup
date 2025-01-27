@@ -129,7 +129,7 @@ impl Asset {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Release {
+pub struct Release {
     #[serde(rename = "name")]
     version: String,
     assets: Vec<Asset>,
@@ -266,6 +266,36 @@ async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/latest"
         .parse()
         .unwrap();
+
+    let mut req = reqwest::Request::new(reqwest::Method::GET, url);
+    let headers = req.headers_mut();
+    headers.append("User-Agent", HeaderValue::from_str("linkup-cli").unwrap());
+    headers.append(
+        "Accept",
+        HeaderValue::from_str("application/vnd.github+json").unwrap(),
+    );
+    headers.append(
+        "X-GitHub-Api-Version",
+        HeaderValue::from_str("2022-11-28").unwrap(),
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(1))
+        .build()
+        .unwrap();
+
+    client.execute(req).await?.json().await
+}
+
+pub async fn fetch_release(version: &Version) -> Result<Option<Release>, reqwest::Error> {
+    let tag = version.to_string();
+
+    let url: Url = format!(
+        "https://api.github.com/repos/mentimeter/linkup/releases/tags/{}",
+        &tag
+    )
+    .parse()
+    .unwrap();
 
     let mut req = reqwest::Request::new(reqwest::Method::GET, url);
     let headers = req.headers_mut();
