@@ -28,7 +28,8 @@ pub enum Error {
     MissingBinary,
 }
 
-struct Version {
+#[derive(Debug, Clone)]
+pub struct Version {
     major: u16,
     minor: u16,
     patch: u16,
@@ -208,22 +209,9 @@ struct CachedLatestRelease {
     release: Release,
 }
 
-pub async fn available_update(current_version: &str) -> Option<Asset> {
+pub async fn available_update(current_version: &Version) -> Option<Asset> {
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
-
-    let current_version = match Version::try_from(current_version) {
-        Ok(version) => version,
-        Err(error) => {
-            log::error!(
-                "Failed to parse current version '{}': {}",
-                current_version,
-                error
-            );
-
-            return None;
-        }
-    };
 
     let latest_release = match cached_latest_release().await {
         Some(cached_latest_release) => cached_latest_release.release,
