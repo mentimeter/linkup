@@ -13,6 +13,7 @@ mod signal;
 mod system;
 mod worker_client;
 
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
@@ -51,6 +52,11 @@ fn ensure_linkup_dir() -> Result<()> {
             ))),
         },
     }
+}
+
+fn current_version() -> release::Version {
+    release::Version::try_from(CURRENT_VERSION)
+        .expect("current version on CARGO_PKG_VERSION should be a valid version")
 }
 
 fn is_sudo() -> bool {

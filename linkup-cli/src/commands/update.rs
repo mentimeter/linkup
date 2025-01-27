@@ -1,13 +1,11 @@
-use crate::{release, CliError};
+use crate::{current_version, release, CliError};
 use std::{fs, path::PathBuf};
-
-const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(clap::Args)]
 pub struct Args {}
 
 pub async fn update(_args: &Args) -> Result<(), CliError> {
-    match release::available_update(CURRENT_VERSION).await {
+    match release::available_update(&current_version()).await {
         Some(asset) => {
             let new_exe_path = asset.download_decompressed().await.unwrap();
 
@@ -30,7 +28,9 @@ pub async fn update(_args: &Args) -> Result<(), CliError> {
 }
 
 pub async fn new_version_available() -> bool {
-    release::available_update(CURRENT_VERSION).await.is_some()
+    release::available_update(&current_version())
+        .await
+        .is_some()
 }
 
 // Get the current exe path. Using canonicalize ensure that we follow the symlink in case it is one.
