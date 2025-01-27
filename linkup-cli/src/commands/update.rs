@@ -7,7 +7,7 @@ pub struct Args {}
 pub async fn update(_args: &Args) -> Result<(), CliError> {
     match release::available_update(&current_version()).await {
         Some(asset) => {
-            let new_exe_path = asset.download_decompressed().await.unwrap();
+            let new_exe_path = asset.download_decompressed("linkup").await.unwrap();
 
             let current_exe = get_exe_path().expect("failed to get the current exe path");
             let bkp_exe = current_exe.with_extension("bkp");

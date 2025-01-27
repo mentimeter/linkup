@@ -97,7 +97,7 @@ impl Asset {
         Ok(file_path)
     }
 
-    pub async fn download_decompressed(&self) -> Result<PathBuf, Error> {
+    pub async fn download_decompressed(&self, lookup_name: &str) -> Result<PathBuf, Error> {
         let file_path = self.download().await?;
         let file = fs::File::open(&file_path)?;
 
@@ -109,8 +109,8 @@ impl Asset {
                 .entries()?
                 .filter_map(|e| e.ok())
                 .find_map(|mut entry| -> Option<PathBuf> {
-                    if entry.path().unwrap().to_str().unwrap() == "linkup" {
-                        let path = env::temp_dir().join("linkup");
+                    if entry.path().unwrap().to_str().unwrap() == lookup_name {
+                        let path = env::temp_dir().join(lookup_name);
 
                         entry.unpack(&path).unwrap();
 
