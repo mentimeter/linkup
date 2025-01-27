@@ -227,11 +227,16 @@ pub async fn available_update(current_version: &Version) -> Option<Asset> {
 
             match fs::File::create(linkup_file_path(CACHED_LATEST_RELEASE_FILE)) {
                 Ok(new_file) => {
-                    if let Err(error) = serde_json::to_writer_pretty(new_file, &release) {
+                    let release_cache = CachedLatestRelease {
+                        time: now(),
+                        release,
+                    };
+
+                    if let Err(error) = serde_json::to_writer_pretty(new_file, &release_cache) {
                         log::error!("Failed to write the release data into cache: {}", error);
                     }
 
-                    release
+                    release_cache.release
                 }
                 Err(error) => {
                     log::error!("Failed to create release cache file: {}", error);
@@ -336,6 +341,10 @@ async fn cached_latest_release() -> Option<CachedLatestRelease> {
         Ok(cached_latest_release) => cached_latest_release,
         Err(error) => {
             log::error!("Failed to parse cached latest release: {}", error);
+            if fs::remove_file(&path).is_err() {
+                log::error!("Failed to delete latest release cache file");
+            }
+
             return None;
         }
     };
