@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    commands::local_dns, current_version, linkup_dir_path, linkup_file_path,
+    commands::local_dns, current_version, linkup_bin_dir_path, linkup_dir_path, linkup_file_path,
     local_config::LocalState, release, signal, LINKUP_CF_TLS_API_ENV_VAR,
 };
 
@@ -57,9 +57,7 @@ impl Caddy {
     }
 
     pub async fn install() -> Result<(), InstallError> {
-        let mut bin_dir_path = linkup_dir_path();
-        bin_dir_path.push("bin");
-
+        let bin_dir_path = linkup_bin_dir_path();
         fs::create_dir_all(&bin_dir_path)?;
 
         let mut caddy_path = bin_dir_path.clone();
@@ -126,8 +124,8 @@ impl Caddy {
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
 
         #[cfg(target_os = "macos")]
-        let status = Command::new("caddy")
-            .current_dir(linkup_dir_path())
+        let status = Command::new("./caddy")
+            .current_dir(linkup_bin_dir_path())
             .arg("start")
             .arg("--pidfile")
             .arg(&self.pidfile_path)
@@ -142,8 +140,8 @@ impl Caddy {
             let _ = fs::File::create(&self.pidfile_path)?;
 
             Command::new("sudo")
-                .current_dir(linkup_dir_path())
-                .arg("caddy")
+                .current_dir(linkup_bin_dir_path())
+                .arg("./caddy")
                 .arg("start")
                 .arg("--pidfile")
                 .arg(&self.pidfile_path)
@@ -234,6 +232,10 @@ impl Caddy {
     }
 
     pub fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
+        if !is_installed() {
+            return Ok(false);
+        }
+
         let resolvers = local_dns::list_resolvers()?;
 
         Ok(domains.iter().any(|domain| resolvers.contains(domain)))
@@ -307,13 +309,8 @@ impl BackgroundService<Error> for Caddy {
 }
 
 pub fn is_installed() -> bool {
-    let res = Command::new("which")
-        .args(["caddy"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .stdin(Stdio::null())
-        .status()
-        .unwrap();
+    let mut caddy_path = linkup_bin_dir_path();
+    caddy_path.push("caddy");
 
-    res.success()
+    caddy_path.exists()
 }
