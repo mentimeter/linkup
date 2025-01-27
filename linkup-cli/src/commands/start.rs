@@ -36,8 +36,6 @@ pub async fn start(
     fresh_state: bool,
     config_arg: &Option<String>,
 ) -> Result<(), CliError> {
-    env_logger::init();
-
     let mut state = if fresh_state {
         let state = load_and_save_state(config_arg, args.no_tunnel)?;
         set_linkup_env(state.clone())?;
