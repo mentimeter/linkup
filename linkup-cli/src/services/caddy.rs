@@ -19,8 +19,6 @@ pub enum Error {
     FileHandling(#[from] std::io::Error),
     #[error("Cloudflare TLS API token is required for local-dns Cloudflare TLS certificates.")]
     MissingTlsApiTokenEnv,
-    #[error("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.")]
-    MissingRedisInstalation,
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
 }
@@ -167,32 +165,6 @@ impl Caddy {
     }
 
     fn write_caddyfile(&self, domains: &[String]) -> Result<(), Error> {
-        let mut redis_storage = String::new();
-
-        if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
-            if !self.check_redis_installed() {
-                return Err(Error::MissingRedisInstalation);
-            }
-
-            let url = url::Url::parse(&redis_url).expect("failed to parse Redis URL");
-            redis_storage = format!(
-                "
-                storage redis {{
-                    host           {}
-                    port           {}
-                    username       \"{}\"
-                    password       \"{}\"
-                    key_prefix     \"caddy\"
-                    compression    true
-                }}
-                ",
-                url.host().unwrap(),
-                url.port().unwrap_or(6379),
-                url.username(),
-                url.password().unwrap(),
-            );
-        }
-
         let caddy_template = format!(
             "
             {{
@@ -201,7 +173,6 @@ impl Caddy {
                 log {{
                     output file {}
                 }}
-                {}
             }}
 
             {} {{
@@ -212,7 +183,6 @@ impl Caddy {
             }}
             ",
             self.stdout_file_path.display(),
-            redis_storage,
             domains.join(", "),
             LINKUP_LOCAL_SERVER_PORT,
             LINKUP_CF_TLS_API_ENV_VAR,
@@ -221,14 +191,6 @@ impl Caddy {
         fs::write(&self.caddyfile_path, caddy_template)?;
 
         Ok(())
-    }
-
-    fn check_redis_installed(&self) -> bool {
-        let output = Command::new("caddy").arg("list-modules").output().unwrap();
-
-        let output_str = String::from_utf8(output.stdout).unwrap();
-
-        output_str.contains("redis")
     }
 
     pub fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
