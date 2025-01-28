@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use reqwest::{multipart, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
