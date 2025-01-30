@@ -25,7 +25,7 @@ pub fn stop(_args: &Args, clear_env: bool) -> Result<(), CliError> {
         }
         (Ok(_), false) => (),
         (Err(err), _) => {
-            log::warn!("Failed to fetch local state: {}", err);
+            tracing::warn!("Failed to fetch local state: {}", err);
         }
     }
 

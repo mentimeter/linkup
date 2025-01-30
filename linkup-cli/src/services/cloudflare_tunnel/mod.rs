@@ -13,7 +13,6 @@ use hickory_resolver::{
     proto::rr::RecordType,
     TokioAsyncResolver,
 };
-use log::{debug, error};
 use paid_tunnel::get_tunnel_zone_id;
 use regex::Regex;
 use tokio::time::sleep;
@@ -88,7 +87,7 @@ impl CloudflareTunnel {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
-        log::info!(
+        tracing::info!(
             "Starting paid tunnel with session name: {}",
             linkup_session_name
         );
@@ -104,11 +103,11 @@ impl CloudflareTunnel {
         let mut create_tunnel = false;
 
         if tunnel_id.is_empty() {
-            log::info!("Tunnel ID is empty");
+            tracing::info!("Tunnel ID is empty");
 
             create_tunnel = true;
         } else {
-            log::info!("Tunnel ID: {}", tunnel_id);
+            tracing::info!("Tunnel ID: {}", tunnel_id);
 
             let file_path = format!(
                 "{}/.cloudflared/{}.json",
@@ -117,16 +116,16 @@ impl CloudflareTunnel {
             );
 
             if fs::exists(&file_path).unwrap_or(false) {
-                log::info!("Tunnel config file for {}: {}", tunnel_id, file_path);
+                tracing::info!("Tunnel config file for {}: {}", tunnel_id, file_path);
             } else {
-                log::info!("Tunnel config file for {} does not exist", tunnel_id);
+                tracing::info!("Tunnel config file for {} does not exist", tunnel_id);
 
                 create_tunnel = true;
             }
         }
 
         if create_tunnel {
-            log::debug!("Creating tunnel...");
+            tracing::debug!("Creating tunnel...");
 
             tunnel_id = paid_tunnel::create_tunnel(&tunnel_name).await.unwrap();
             paid_tunnel::create_dns_record(&tunnel_id, &tunnel_name, zone_id)
@@ -152,7 +151,7 @@ impl CloudflareTunnel {
     }
 
     pub fn stop(&self) -> Result<(), Error> {
-        log::debug!("Stopping {}", Self::NAME);
+        tracing::debug!("Stopping {}", Self::NAME);
 
         signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGINT)?;
 
@@ -215,12 +214,12 @@ impl CloudflareTunnel {
             let addresses = lookup.iter().collect::<Vec<_>>();
 
             if !addresses.is_empty() {
-                log::debug!("DNS has propogated for {}.", domain);
+                tracing::debug!("DNS has propogated for {}.", domain);
 
                 return true;
             }
         } else {
-            log::debug!("DNS {} not propagated yet.", domain);
+            tracing::debug!("DNS {} not propagated yet.", domain);
         }
 
         false
@@ -233,7 +232,7 @@ impl CloudflareTunnel {
     ) -> Result<(), Error> {
         let url = self.url(&state.linkup.session_name, &paid_tunnel)?;
 
-        debug!("Adding tunnel url {} to the state", url.as_str());
+        tracing::debug!("Adding tunnel url {} to the state", url.as_str());
 
         state.linkup.paid_tunnel = paid_tunnel;
 

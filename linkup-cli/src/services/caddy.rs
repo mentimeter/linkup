@@ -63,7 +63,7 @@ impl Caddy {
     }
 
     fn start(&self, domains: &[String]) -> Result<(), Error> {
-        log::debug!("Starting {}", Self::NAME);
+        tracing::debug!("Starting {}", Self::NAME);
 
         if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
             return Err(Error::MissingTlsApiTokenEnv);
@@ -115,7 +115,7 @@ impl Caddy {
     }
 
     pub fn stop(&self) -> Result<(), Error> {
-        log::debug!("Stopping {}", Self::NAME);
+        tracing::debug!("Stopping {}", Self::NAME);
 
         signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGTERM)?;
 
@@ -226,7 +226,7 @@ impl BackgroundService<Error> for Caddy {
                     "Failed to read resolvers folder",
                 );
 
-                log::warn!("Failed to read resolvers folder: {}", err);
+                tracing::warn!("Failed to read resolvers folder: {}", err);
 
                 return Ok(());
             }

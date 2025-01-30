@@ -198,7 +198,7 @@ async fn available_update() -> Option<Asset> {
     let current_version = match Version::try_from(CURRENT_VERSION) {
         Ok(version) => version,
         Err(error) => {
-            log::error!(
+            tracing::error!(
                 "Failed to parse current version '{}': {}",
                 CURRENT_VERSION,
                 error
@@ -214,7 +214,7 @@ async fn available_update() -> Option<Asset> {
             let release = match fetch_latest_release().await {
                 Ok(release) => release,
                 Err(error) => {
-                    log::error!("Failed to fetch the latest release: {}", error);
+                    tracing::error!("Failed to fetch the latest release: {}", error);
 
                     return None;
                 }
@@ -223,13 +223,13 @@ async fn available_update() -> Option<Asset> {
             match fs::File::create(linkup_file_path(CACHED_LATEST_RELEASE_FILE)) {
                 Ok(new_file) => {
                     if let Err(error) = serde_json::to_writer_pretty(new_file, &release) {
-                        log::error!("Failed to write the release data into cache: {}", error);
+                        tracing::error!("Failed to write the release data into cache: {}", error);
                     }
 
                     release
                 }
                 Err(error) => {
-                    log::error!("Failed to create release cache file: {}", error);
+                    tracing::error!("Failed to create release cache file: {}", error);
 
                     release
                 }
@@ -240,7 +240,7 @@ async fn available_update() -> Option<Asset> {
     let latest_version = match Version::try_from(latest_release.version.as_str()) {
         Ok(version) => version,
         Err(error) => {
-            log::error!(
+            tracing::error!(
                 "Failed to parse latest version '{}': {}",
                 latest_release.version,
                 error
@@ -291,7 +291,7 @@ async fn cached_latest_release() -> Option<CachedLatestRelease> {
     let file = match fs::File::open(&path) {
         Ok(file) => file,
         Err(error) => {
-            log::error!("Failed to open cached latest release file: {}", error);
+            tracing::error!("Failed to open cached latest release file: {}", error);
 
             return None;
         }
@@ -300,7 +300,7 @@ async fn cached_latest_release() -> Option<CachedLatestRelease> {
     let cached_latest_release: CachedLatestRelease = match serde_json::from_reader(file) {
         Ok(cached_latest_release) => cached_latest_release,
         Err(error) => {
-            log::error!("Failed to parse cached latest release: {}", error);
+            tracing::error!("Failed to parse cached latest release: {}", error);
             return None;
         }
     };
@@ -310,7 +310,7 @@ async fn cached_latest_release() -> Option<CachedLatestRelease> {
 
     if time_now - cache_time > Duration::from_secs(60 * 60 * 24) {
         if let Err(error) = fs::remove_file(&path) {
-            log::error!("Failed to delete cached latest release file: {}", error);
+            tracing::error!("Failed to delete cached latest release file: {}", error);
         }
 
         return None;
