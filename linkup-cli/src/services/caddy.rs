@@ -1,4 +1,8 @@
-use std::{env, fs, path::PathBuf, process::Command};
+use std::{
+    env, fs,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
 use crate::{
     commands::local_dns, current_version, linkup_bin_dir_path, linkup_file_path,
