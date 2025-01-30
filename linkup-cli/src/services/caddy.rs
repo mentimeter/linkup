@@ -78,7 +78,14 @@ impl Caddy {
                 match release.caddy_asset(os, arch) {
                     Some(asset) => match asset.download_decompressed("caddy").await {
                         Ok(downloaded_caddy_path) => {
-                            fs::rename(&downloaded_caddy_path, &caddy_path)?;
+                            log::debug!(
+                                "Moving downloaded Caddy file from {:?} to {:?}",
+                                &downloaded_caddy_path,
+                                &caddy_path
+                            );
+
+                            fs::copy(&downloaded_caddy_path, &caddy_path)?;
+                            fs::remove_file(&downloaded_caddy_path)?;
                         }
                         Err(error) => return Err(InstallError::AssetDownload(error.to_string())),
                     },
