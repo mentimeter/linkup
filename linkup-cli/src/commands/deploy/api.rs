@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use reqwest::{multipart, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -302,7 +300,7 @@ pub struct TokenPolicyPermissionGroup {
 pub struct TokenPolicy {
     pub effect: TokenPolicyEffect,
     pub permission_groups: Vec<TokenPolicyPermissionGroup>,
-    pub resources: HashMap<String, String>,
+    pub resources: serde_json::Value,
 }
 
 #[derive(Deserialize, Debug)]
@@ -1259,24 +1257,26 @@ impl CloudflareApi for AccountCloudflareApi {
             self.account_id
         );
 
-        let mut zone_resources = HashMap::new();
-        for zone_id in &self.zone_ids {
-            zone_resources.insert(
-                format!("com.cloudflare.api.account.zone.{}", zone_id),
-                "*".to_string(),
-            );
-        }
-
         let payload = CreateAccountToken {
             name: name.to_string(),
             policies: vec![
                 TokenPolicy {
                     effect: TokenPolicyEffect::Allow,
-                    permission_groups: vec![TokenPolicyPermissionGroup {
-                        id: "4755a26eedb94da69e1066d98aa820be".to_string(),
-                        name: "DNS Write".to_string(),
-                    }],
-                    resources: zone_resources,
+                    permission_groups: vec![
+                        TokenPolicyPermissionGroup {
+                            id: "c8fed203ed3043cba015a93ad1616f1f".to_string(),
+                            name: "Zone Read".to_string(),
+                        },
+                        TokenPolicyPermissionGroup {
+                            id: "4755a26eedb94da69e1066d98aa820be".to_string(),
+                            name: "DNS Write".to_string(),
+                        },
+                    ],
+                    resources: serde_json::json!({
+                        format!("com.cloudflare.api.account.{}", self.account_id): {
+                            "com.cloudflare.api.account.zone.*": "*"
+                        }
+                    }),
                 },
                 TokenPolicy {
                     effect: TokenPolicyEffect::Allow,
@@ -1290,10 +1290,9 @@ impl CloudflareApi for AccountCloudflareApi {
                             name: "Cloudflare Tunnel Write".to_string(),
                         },
                     ],
-                    resources: HashMap::from([(
-                        format!("com.cloudflare.api.account.{}", self.account_id),
-                        "*".to_string(),
-                    )]),
+                    resources: serde_json::json!({
+                        format!("com.cloudflare.api.account.{}", self.account_id): "*"
+                    }),
                 },
             ],
         };
