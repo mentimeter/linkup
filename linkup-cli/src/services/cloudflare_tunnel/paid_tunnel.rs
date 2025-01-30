@@ -171,14 +171,14 @@ pub async fn get_tunnel_zone_id() -> Result<Option<(String, String)>, CliError> 
 // Helper to create an HTTP client and prepare headers
 fn prepare_client_and_headers(sys: &dyn System) -> Result<(reqwest::Client, HeaderMap), CliError> {
     // this should be a string, not a result
-    let bearer_token = sys.get_env("LINKUP_CF_API_TOKEN")?;
+    let bearer_token = sys.get_env("LINKUP_CLOUDFLARE_API_TOKEN")?;
     let client = reqwest::Client::new();
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(
         AUTHORIZATION,
         HeaderValue::from_str(&format!("Bearer {}", bearer_token))
-            .map_err(|_| CliError::GetEnvVar("LINKUP_CF_API_TOKEN".to_string()))?,
+            .map_err(|_| CliError::GetEnvVar("LINKUP_CLOUDFLARE_API_TOKEN".to_string()))?,
     );
 
     Ok((client, headers))
@@ -358,7 +358,7 @@ mod tests {
 
         mock_sys
             .expect_get_env()
-            .with(predicate::eq("LINKUP_CF_API_TOKEN"))
+            .with(predicate::eq("LINKUP_CLOUDFLARE_API_TOKEN"))
             .returning(|_| Ok("TOKEN".to_string()));
 
         let result = prepare_client_and_headers(&mock_sys);
@@ -369,14 +369,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "LINKUP_CF_API_TOKEN is not set")]
+    #[should_panic(expected = "LINKUP_CLOUDFLARE_API_TOKEN is not set")]
     fn test_prepare_client_and_headers_token_env_var_not_set() {
         let mut mock_sys = MockSystem::new();
 
         mock_sys
             .expect_get_env()
-            .with(predicate::eq("LINKUP_CF_API_TOKEN"))
-            .returning(|_| panic!("LINKUP_CF_API_TOKEN is not set"));
+            .with(predicate::eq("LINKUP_CLOUDFLARE_API_TOKEN"))
+            .returning(|_| panic!("LINKUP_CLOUDFLARE_API_TOKEN is not set"));
 
         let result = prepare_client_and_headers(&mock_sys);
         assert!(result.is_err());
