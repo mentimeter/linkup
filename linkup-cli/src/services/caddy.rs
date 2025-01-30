@@ -159,19 +159,13 @@ impl Caddy {
     }
 
     fn write_caddyfile(&self, domains: &[String]) -> Result<(), Error> {
-        let cloudflare_kv_config = format!(
-            "
+        let cloudflare_kv_config = "
             storage cloudflare_kv {{
-                api_token       \"{}\"
-                account_id      \"{}\"
-                namespace_id    \"{}\"
+                api_token       {{env.LINKUP_CLOUDFLARE_API_TOKEN}}
+                account_id      {{env.LINKUP_CLOUDFLARE_ACCOUNT_ID}}
+                namespace_id    {{env.LINKUP_CLOUDFLARE_KV_NAMESPACE_ID}}
             }}
-            ",
-            // Presence of these .unwrap() is checked on Caddy#should_start()
-            env::var("LINKUP_CLOUDFLARE_API_TOKEN").unwrap(),
-            env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").unwrap(),
-            env::var("LINKUP_CLOUDFLARE_KV_NAMESPACE_ID").unwrap()
-        );
+        ";
 
         let caddy_template = format!(
             "
@@ -187,7 +181,7 @@ impl Caddy {
             {} {{
                 reverse_proxy localhost:{}
                 tls {{
-                    dns cloudflare {{env.{}}}
+                    dns cloudflare {{env.LINKUP_CLOUDFLARE_API_TOKEN}}
                 }}
             }}
             ",
@@ -195,7 +189,6 @@ impl Caddy {
             &cloudflare_kv_config,
             domains.join(", "),
             LINKUP_LOCAL_SERVER_PORT,
-            "LINKUP_CLOUDFLARE_API_TOKEN",
         );
 
         fs::write(&self.caddyfile_path, caddy_template)?;
