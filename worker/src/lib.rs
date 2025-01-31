@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Json, Request, State},
+    extract::{Json, Query, Request, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{any, get, post},
@@ -12,26 +12,37 @@ use linkup::{
     allow_all_cors, get_additional_headers, get_target_service, CreatePreviewRequest, NameKind,
     Session, SessionAllocator, UpdateSessionRequest,
 };
+use serde::{Deserialize, Serialize};
 use tower_service::Service;
 use worker::{event, kv::KvStore, Env, Fetch, HttpRequest, HttpResponse};
 use ws::handle_ws_resp;
 
 mod http_error;
 mod kv_store;
+mod tunnel;
 mod ws;
+
+#[derive(Clone)]
+pub struct CloudflareEnvironemnt {
+    account_id: String,
+    tunnel_zone_id: String,
+    all_zone_ids: Vec<String>,
+    api_token: String,
+}
 
 #[derive(Clone)]
 pub struct LinkupState {
     pub sessions_kv: KvStore,
     pub tunnels_kv: KvStore,
     pub certs_kv: KvStore,
+    pub cloudflare: CloudflareEnvironemnt,
 }
 
 pub fn linkup_router(state: LinkupState) -> Router {
     Router::new()
         .route("/linkup/local-session", post(linkup_session_handler))
         .route("/linkup/preview-session", post(linkup_preview_handler))
-        .route("/linkup/tunnel/get", post(new_tunnel_handler))
+        .route("/linkup/tunnel", get(get_tunnel_handler))
         .route("/linkup/check", get(always_ok))
         .route("/linkup/no-tunnel", get(no_tunnel))
         .route(
@@ -65,12 +76,27 @@ async fn fetch(
     let sessions_kv = env.kv("LINKUP_SESSIONS")?;
     let tunnels_kv = env.kv("LINKUP_TUNNELS")?;
     let certs_kv = env.kv("LINKUP_CERTIFICATE_STORE")?;
+    let cf_account_id = env.var("CLOUDFLARE_ACCOUNT_ID")?;
+    let cf_tunnel_zone_id = env.var("CLOUDFLARE_TUNNEL_ZONE_ID")?;
+    let cf_all_zone_ids: Vec<String> = env
+        .var("CLOUDLFLARE_ALL_ZONE_IDS")?
+        .to_string()
+        .split(",")
+        .map(String::from)
+        .collect();
+    let cf_api_token = env.var("CLOUDFLARE_API_TOKEN")?;
 
     // Build our single state object
     let state = LinkupState {
         sessions_kv,
         tunnels_kv,
         certs_kv,
+        cloudflare: CloudflareEnvironemnt {
+            account_id: cf_account_id.to_string(),
+            tunnel_zone_id: cf_tunnel_zone_id.to_string(),
+            all_zone_ids: cf_all_zone_ids,
+            api_token: cf_api_token.to_string(),
+        },
     };
 
     // Hand off to our router
@@ -81,11 +107,68 @@ async fn fetch(
 // Tunnel Handler Stub
 // =======================
 
+#[derive(Deserialize)]
+struct GetTunnelParams {
+    session_name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct TunnelData {
+    url: String,
+    id: String,
+    secret: String,
+    last_started: u64,
+}
+
 #[worker::send]
-async fn new_tunnel_handler(State(state): State<LinkupState>, req: Request) -> impl IntoResponse {
-    // Example usage of state.tunnels_kv if needed:
-    // let maybe_val = state.tunnels_kv.get("some-key").text().await?;
-    (StatusCode::OK, "new_tunnel_handler stub invoked").into_response()
+async fn get_tunnel_handler(
+    State(state): State<LinkupState>,
+    Query(query): Query<GetTunnelParams>,
+) -> impl IntoResponse {
+    let kv = state.tunnels_kv;
+    let tunnel_name = format!("linkup-tunnel-{}", query.session_name);
+    let tunnel_data: Option<TunnelData> = kv.get(&tunnel_name).json().await.unwrap();
+
+    match tunnel_data {
+        Some(tunnel_data) => {
+            return Json(tunnel_data);
+        }
+        None => {
+            let (tunnel_id, tunnel_secret) = tunnel::create_tunnel(
+                &state.cloudflare.api_token,
+                &state.cloudflare.account_id,
+                &tunnel_name,
+            )
+            .await
+            .unwrap();
+
+            tunnel::create_dns_record(
+                &state.cloudflare.api_token,
+                &state.cloudflare.tunnel_zone_id,
+                &tunnel_id,
+                &tunnel_name,
+            )
+            .await
+            .unwrap();
+
+            let zone_domain = tunnel::get_zone_domain(
+                &state.cloudflare.api_token,
+                &state.cloudflare.tunnel_zone_id,
+            )
+            .await;
+
+            let tunnel_data = TunnelData {
+                url: format!("https://{}.{}", &tunnel_name, &zone_domain),
+                id: tunnel_id,
+                secret: tunnel_secret,
+                last_started: worker::Date::now().as_millis(),
+            };
+
+            kv.put(&tunnel_name, &tunnel_data).unwrap();
+
+            Json(tunnel_data)
+        }
+    }
 }
 
 // =======================
