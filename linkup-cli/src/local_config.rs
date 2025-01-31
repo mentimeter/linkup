@@ -96,14 +96,8 @@ pub struct LinkupState {
     pub config_path: String,
     pub remote: Url,
     pub tunnel: Option<Url>,
+    pub is_paid: Option<bool>,
     pub cache_routes: Option<Vec<String>>,
-    pub paid_tunnel: Option<PaidTunnelData>,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct PaidTunnelData {
-    pub zone_name: String,
-    pub zone_id: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -186,7 +180,6 @@ impl YamlLocalConfig {
 pub struct LinkupConfig {
     pub remote: Url,
     cache_routes: Option<Vec<String>>,
-    paid_tunnel: Option<PaidTunnelData>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -208,6 +201,7 @@ pub fn config_to_state(
     yaml_config: YamlLocalConfig,
     config_path: String,
     no_tunnel: bool,
+    is_paid: bool,
 ) -> LocalState {
     let random_token: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
@@ -221,13 +215,13 @@ pub fn config_to_state(
     };
 
     let linkup = LinkupState {
+        is_paid: Some(is_paid),
         session_name: String::new(),
         session_token: random_token,
         config_path,
         remote: yaml_config.linkup.remote,
         tunnel,
         cache_routes: yaml_config.linkup.cache_routes,
-        paid_tunnel: yaml_config.linkup.paid_tunnel,
     };
 
     let services = yaml_config
@@ -428,7 +422,12 @@ domains:
     fn test_config_to_state() {
         let input_str = String::from(CONF_STR);
         let yaml_config = serde_yaml::from_str(&input_str).unwrap();
-        let local_state = config_to_state(yaml_config, "./path/to/config.yaml".to_string(), false);
+        let local_state = config_to_state(
+            yaml_config,
+            "./path/to/config.yaml".to_string(),
+            false,
+            false,
+        );
 
         assert_eq!(local_state.linkup.config_path, "./path/to/config.yaml");
 

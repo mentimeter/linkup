@@ -1,6 +1,7 @@
 mod paid_tunnel;
 
 use std::{
+    env,
     fs::{self, File},
     os::unix::process::CommandExt,
     path::PathBuf,
@@ -14,16 +15,11 @@ use hickory_resolver::{
     TokioAsyncResolver,
 };
 use log::{debug, error};
-use paid_tunnel::get_tunnel_zone_id;
 use regex::Regex;
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{
-    linkup_file_path,
-    local_config::{LocalState, PaidTunnelData},
-    signal,
-};
+use crate::{linkup_file_path, local_config::LocalState, signal};
 
 use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
 
@@ -61,6 +57,12 @@ impl CloudflareTunnel {
         }
     }
 
+    pub fn use_paid_tunnels() -> bool {
+        env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok()
+            && env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok()
+            && env::var("LINKUP_CF_API_TOKEN").is_ok()
+    }
+
     fn start_free(&self) -> Result<(), Error> {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
@@ -84,7 +86,7 @@ impl CloudflareTunnel {
         Ok(())
     }
 
-    async fn start_paid(&self, linkup_session_name: &str, zone_id: &str) -> Result<(), Error> {
+    async fn start_paid(&self, linkup_session_name: &str) -> Result<(), Error> {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
@@ -129,7 +131,7 @@ impl CloudflareTunnel {
             log::debug!("Creating tunnel...");
 
             tunnel_id = paid_tunnel::create_tunnel(&tunnel_name).await.unwrap();
-            paid_tunnel::create_dns_record(&tunnel_id, &tunnel_name, zone_id)
+            paid_tunnel::create_dns_record(&tunnel_id, &tunnel_name)
                 .await
                 .unwrap();
         }
@@ -163,18 +165,10 @@ impl CloudflareTunnel {
         signal::get_running_pid(&self.pidfile_path)
     }
 
-    fn url(
-        &self,
-        linkup_session_name: &str,
-        paid_tunnel: &Option<PaidTunnelData>,
-    ) -> Result<Url, Error> {
-        if let Some(paid_tunnel) = paid_tunnel {
+    fn url(&self, linkup_session_name: &str) -> Result<Url, Error> {
+        if Self::use_paid_tunnels() {
             Ok(Url::parse(
-                format!(
-                    "https://tunnel-{}.{}",
-                    linkup_session_name, paid_tunnel.zone_name
-                )
-                .as_str(),
+                format!("https://tunnel-{}.mentimeter.dev", linkup_session_name).as_str(),
             )
             .expect("Failed to parse tunnel URL"))
         } else {
@@ -192,17 +186,13 @@ impl CloudflareTunnel {
         }
     }
 
-    async fn dns_propagated(
-        &self,
-        linkup_session_name: &str,
-        paid_tunnel: &Option<PaidTunnelData>,
-    ) -> bool {
+    async fn dns_propagated(&self, linkup_session_name: &str) -> bool {
         let mut opts = ResolverOpts::default();
         opts.cache_size = 0; // Disable caching
 
         let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), opts);
 
-        let url = match self.url(linkup_session_name, paid_tunnel) {
+        let url = match self.url(linkup_session_name) {
             Ok(url) => url,
             Err(_) => return false,
         };
@@ -226,16 +216,10 @@ impl CloudflareTunnel {
         false
     }
 
-    fn update_state(
-        &self,
-        state: &mut LocalState,
-        paid_tunnel: Option<PaidTunnelData>,
-    ) -> Result<(), Error> {
-        let url = self.url(&state.linkup.session_name, &paid_tunnel)?;
+    fn update_state(&self, state: &mut LocalState) -> Result<(), Error> {
+        let url = self.url(&state.linkup.session_name)?;
 
         debug!("Adding tunnel url {} to the state", url.as_str());
-
-        state.linkup.paid_tunnel = paid_tunnel;
 
         state.linkup.tunnel = Some(url);
         state
@@ -284,22 +268,10 @@ impl BackgroundService<Error> for CloudflareTunnel {
             return Ok(());
         }
 
-        self.notify_update(&status_sender, super::RunStatus::Starting);
-
-        let paid_tunnel_data = get_tunnel_zone_id()
-            .await
-            .map_err(|e| Error::FailedToStart(format!("Failed to get tunnel zone id: {}", e)))?;
-
-        let paid_tunnel =
-            paid_tunnel_data.map(|(zone_id, zone_name)| PaidTunnelData { zone_name, zone_id });
-
-        if let Some(paid_tunnel) = &paid_tunnel {
+        if Self::use_paid_tunnels() {
             self.notify_update_with_details(&status_sender, super::RunStatus::Starting, "Paid");
 
-            if let Err(e) = self
-                .start_paid(&state.linkup.session_name, &paid_tunnel.zone_id)
-                .await
-            {
+            if let Err(e) = self.start_paid(&state.linkup.session_name).await {
                 self.notify_update_with_details(
                     &status_sender,
                     super::RunStatus::Error,
@@ -355,9 +327,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
         // DNS Propagation check
         {
             let mut dns_propagation_attempt = 0;
-            let mut dns_propagated = self
-                .dns_propagated(&state.linkup.session_name, &paid_tunnel)
-                .await;
+            let mut dns_propagated = self.dns_propagated(&state.linkup.session_name).await;
 
             while !dns_propagated && dns_propagation_attempt <= 20 {
                 sleep(Duration::from_secs(2)).await;
@@ -372,9 +342,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                     ),
                 );
 
-                dns_propagated = self
-                    .dns_propagated(&state.linkup.session_name, &paid_tunnel)
-                    .await;
+                dns_propagated = self.dns_propagated(&state.linkup.session_name).await;
             }
 
             if !dns_propagated {
@@ -390,7 +358,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
             self.notify_update(&status_sender, super::RunStatus::Starting);
         }
 
-        match self.update_state(state, paid_tunnel) {
+        match self.update_state(state) {
             Ok(_) => {
                 self.notify_update(&status_sender, super::RunStatus::Started);
             }

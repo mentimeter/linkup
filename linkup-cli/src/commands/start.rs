@@ -39,7 +39,8 @@ pub async fn start(
     env_logger::init();
 
     let mut state = if fresh_state {
-        let state = load_and_save_state(config_arg, args.no_tunnel)?;
+        let is_paid = services::CloudflareTunnel::use_paid_tunnels();
+        let state = load_and_save_state(config_arg, args.no_tunnel, is_paid)?;
         set_linkup_env(state.clone())?;
 
         state
@@ -266,12 +267,13 @@ fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
 fn load_and_save_state(
     config_arg: &Option<String>,
     no_tunnel: bool,
+    is_paid: bool,
 ) -> Result<LocalState, CliError> {
     let previous_state = LocalState::load();
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
-    let mut state = config_to_state(input_config.clone(), config_path, no_tunnel);
+    let mut state = config_to_state(input_config.clone(), config_path, no_tunnel, is_paid);
 
     // Reuse previous session name if possible
     if let Ok(ps) = previous_state {
