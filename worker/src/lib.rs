@@ -72,7 +72,6 @@ async fn fetch(
 ) -> Result<axum::http::Response<axum::body::Body>, worker::Error> {
     console_error_panic_hook::set_once();
 
-    // Load each of your three KV namespaces
     let sessions_kv = env.kv("LINKUP_SESSIONS")?;
     let tunnels_kv = env.kv("LINKUP_TUNNELS")?;
     let certs_kv = env.kv("LINKUP_CERTIFICATE_STORE")?;
@@ -86,7 +85,6 @@ async fn fetch(
         .collect();
     let cf_api_token = env.var("CLOUDFLARE_API_TOKEN")?;
 
-    // Build our single state object
     let state = LinkupState {
         sessions_kv,
         tunnels_kv,
@@ -99,13 +97,8 @@ async fn fetch(
         },
     };
 
-    // Hand off to our router
     Ok(linkup_router(state).call(req).await?)
 }
-
-// =======================
-// Tunnel Handler Stub
-// =======================
 
 #[derive(Deserialize)]
 struct GetTunnelParams {
@@ -171,13 +164,8 @@ async fn get_tunnel_handler(
     }
 }
 
-// =======================
-// Certificate DNS Handlers (REST)
-// =======================
-
 #[worker::send]
 async fn get_certificate_dns_handler(State(state): State<LinkupState>) -> impl IntoResponse {
-    // Example usage of state.certs_kv to read data from KV
     (StatusCode::OK, "get_certificate_dns_handler stub").into_response()
 }
 
@@ -186,8 +174,6 @@ async fn create_certificate_dns_handler(
     State(state): State<LinkupState>,
     Json(payload): Json<serde_json::Value>, // adjust type as needed
 ) -> impl IntoResponse {
-    // Example usage of state.certs_kv to create/append data
-    // e.g. state.certs_kv.put("dns-record", ...).execute().await?;
     (
         StatusCode::OK,
         format!("create_certificate_dns_handler stub: {:?}", payload),
@@ -199,7 +185,6 @@ async fn update_certificate_dns_handler(
     State(state): State<LinkupState>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    // Example usage of state.certs_kv to update the data
     (
         StatusCode::OK,
         format!("update_certificate_dns_handler stub: {:?}", payload),
@@ -208,17 +193,11 @@ async fn update_certificate_dns_handler(
 
 #[worker::send]
 async fn delete_certificate_dns_handler(State(state): State<LinkupState>) -> impl IntoResponse {
-    // Example usage of state.certs_kv to delete data
     (StatusCode::OK, "delete_certificate_dns_handler stub").into_response()
 }
 
-// =======================
-// Certificate Cache Handlers (REST)
-// =======================
-
 #[worker::send]
 async fn get_certificate_cache_handler(State(state): State<LinkupState>) -> impl IntoResponse {
-    // Example usage of state.certs_kv to retrieve items from cache storage
     (StatusCode::OK, "get_certificate_cache_handler stub").into_response()
 }
 
@@ -227,7 +206,6 @@ async fn create_certificate_cache_handler(
     State(state): State<LinkupState>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    // Example usage of state.certs_kv to set a new item in the cache
     (
         StatusCode::OK,
         format!("create_certificate_cache_handler stub: {:?}", payload),
@@ -239,7 +217,6 @@ async fn update_certificate_cache_handler(
     State(state): State<LinkupState>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    // Example usage of state.certs_kv to update existing cache data
     (
         StatusCode::OK,
         format!("update_certificate_cache_handler stub: {:?}", payload),
@@ -248,13 +225,8 @@ async fn update_certificate_cache_handler(
 
 #[worker::send]
 async fn delete_certificate_cache_handler(State(state): State<LinkupState>) -> impl IntoResponse {
-    // Example usage of state.certs_kv to delete from the cache
     (StatusCode::OK, "delete_certificate_cache_handler stub").into_response()
 }
-
-// ========================
-// Existing handlers below
-// ========================
 
 #[worker::send]
 async fn linkup_session_handler(
