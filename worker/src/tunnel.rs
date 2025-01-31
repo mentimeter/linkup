@@ -52,7 +52,7 @@ struct Config {
     credentials_file: String,
 }
 
-pub async fn get_tunnel_id(
+pub async fn _get_tunnel_id(
     api_token: &str,
     account_id: &str,
     tunnel_name: &str,
@@ -203,5 +203,5 @@ fn generate_tunnel_secret() -> String {
     // let random_bytes: [u8; 32] = rng.gen();
     // BASE64_STANDARD.encode(random_bytes)
 
-    return "suppasecret".into();
+    "suppasecret".into()
 }

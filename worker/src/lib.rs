@@ -23,6 +23,7 @@ mod tunnel;
 mod ws;
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct CloudflareEnvironemnt {
     account_id: String,
     tunnel_zone_id: String,
@@ -169,13 +170,13 @@ async fn get_tunnel_handler(
 }
 
 #[worker::send]
-async fn get_certificate_dns_handler(State(state): State<LinkupState>) -> impl IntoResponse {
+async fn get_certificate_dns_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
     (StatusCode::OK, "get_certificate_dns_handler stub").into_response()
 }
 
 #[worker::send]
 async fn create_certificate_dns_handler(
-    State(state): State<LinkupState>,
+    State(_state): State<LinkupState>,
     Json(payload): Json<serde_json::Value>, // adjust type as needed
 ) -> impl IntoResponse {
     (
@@ -186,7 +187,7 @@ async fn create_certificate_dns_handler(
 
 #[worker::send]
 async fn update_certificate_dns_handler(
-    State(state): State<LinkupState>,
+    State(_state): State<LinkupState>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     (
@@ -196,18 +197,18 @@ async fn update_certificate_dns_handler(
 }
 
 #[worker::send]
-async fn delete_certificate_dns_handler(State(state): State<LinkupState>) -> impl IntoResponse {
+async fn delete_certificate_dns_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
     (StatusCode::OK, "delete_certificate_dns_handler stub").into_response()
 }
 
 #[worker::send]
-async fn get_certificate_cache_handler(State(state): State<LinkupState>) -> impl IntoResponse {
+async fn get_certificate_cache_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
     (StatusCode::OK, "get_certificate_cache_handler stub").into_response()
 }
 
 #[worker::send]
 async fn create_certificate_cache_handler(
-    State(state): State<LinkupState>,
+    State(_state): State<LinkupState>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     (
@@ -218,7 +219,7 @@ async fn create_certificate_cache_handler(
 
 #[worker::send]
 async fn update_certificate_cache_handler(
-    State(state): State<LinkupState>,
+    State(_state): State<LinkupState>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     (
@@ -228,7 +229,7 @@ async fn update_certificate_cache_handler(
 }
 
 #[worker::send]
-async fn delete_certificate_cache_handler(State(state): State<LinkupState>) -> impl IntoResponse {
+async fn delete_certificate_cache_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
     (StatusCode::OK, "delete_certificate_cache_handler stub").into_response()
 }
 
