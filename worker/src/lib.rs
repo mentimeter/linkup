@@ -157,7 +157,11 @@ async fn get_tunnel_handler(
                 last_started: worker::Date::now().as_millis(),
             };
 
-            kv.put(&tunnel_name, &tunnel_data).unwrap();
+            kv.put(&tunnel_name, &tunnel_data)
+                .unwrap()
+                .execute()
+                .await
+                .unwrap();
 
             Json(tunnel_data)
         }
