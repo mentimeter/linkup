@@ -125,6 +125,7 @@ async fn get_tunnel_handler(
 
     match tunnel_data {
         Some(tunnel_data) => {
+            // TODO: Update the last_started field to `now`.
             return Json(tunnel_data);
         }
         None => {
@@ -177,7 +178,7 @@ async fn get_certificate_dns_handler(State(_state): State<LinkupState>) -> impl 
 #[worker::send]
 async fn create_certificate_dns_handler(
     State(_state): State<LinkupState>,
-    Json(payload): Json<serde_json::Value>, // adjust type as needed
+    Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     (
         StatusCode::OK,
