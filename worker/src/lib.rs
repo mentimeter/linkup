@@ -17,6 +17,7 @@ use tower_service::Service;
 use worker::{event, kv::KvStore, Env, Fetch, HttpRequest, HttpResponse};
 use ws::handle_ws_resp;
 
+mod cloudflare;
 mod http_error;
 mod kv_store;
 mod tunnel;
