@@ -33,11 +33,11 @@ impl WorkerClient {
     }
 
     pub async fn preview(&self, params: &CreatePreviewRequest) -> Result<String, Error> {
-        self.post("/preview", params).await
+        self.post("/linkup/preview-session", params).await
     }
 
     pub async fn linkup(&self, params: &UpdateSessionRequest) -> Result<String, Error> {
-        self.post("/linkup", params).await
+        self.post("/linkup/local-session", params).await
     }
 
     async fn post<T: Serialize>(&self, path: &str, params: &T) -> Result<String, Error> {

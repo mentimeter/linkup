@@ -75,7 +75,7 @@ impl LocalState {
             Some(url) => url.clone(),
             None => {
                 let mut remote = self.linkup.remote.clone();
-                remote.set_path("/linkup-no-tunnel");
+                remote.set_path("/linkup/no-tunnel");
                 remote
             }
         }

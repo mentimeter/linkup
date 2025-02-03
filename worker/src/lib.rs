@@ -75,7 +75,7 @@ async fn fetch(
 
     let sessions_kv = env.kv("LINKUP_SESSIONS")?;
     let tunnels_kv = env.kv("LINKUP_TUNNELS")?;
-    let certs_kv = env.kv("LINKUP_CERTIFICATE_STORE")?;
+    let certs_kv = env.kv("LINKUP_CERTIFICATE_CACHE")?;
     let cf_account_id = env.var("CLOUDFLARE_ACCOUNT_ID")?;
     let cf_tunnel_zone_id = env.var("CLOUDFLARE_TUNNEL_ZONE_ID")?;
     let cf_all_zone_ids: Vec<String> = env
