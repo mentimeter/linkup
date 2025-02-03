@@ -63,7 +63,7 @@ impl CloudflareTunnel {
         let stderr_file = File::create(&self.stderr_file_path)?;
 
         log::info!(
-            "Starting paid tunnel with session name: {}",
+            "Trying to acquire tunnel with name: {}",
             linkup_session_name
         );
 
