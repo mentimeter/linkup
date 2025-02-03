@@ -17,7 +17,6 @@ use tower_service::Service;
 use worker::{event, kv::KvStore, Env, Fetch, HttpRequest, HttpResponse};
 use ws::handle_ws_resp;
 
-mod cloudflare;
 mod http_error;
 mod kv_store;
 mod tunnel;
@@ -185,10 +184,55 @@ async fn create_certificate_dns_handler(
     State(_state): State<LinkupState>,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        format!("create_certificate_dns_handler stub: {:?}", payload),
+    let cloudflare_client = cloudflare::framework::async_api::Client::new(
+        cloudflare::framework::auth::Credentials::UserAuthToken {
+            token: String::from(""),
+        },
+        cloudflare::framework::HttpApiClientConfig::default(),
+        cloudflare::framework::Environment::Production,
     )
+    .expect("Cloudflare API Client to have been created");
+
+    let create_record = cloudflare::endpoints::dns::CreateDnsRecord {
+        zone_identifier: todo!(),
+        params: cloudflare::endpoints::dns::CreateDnsRecordParams {
+            ttl: todo!(),
+            priority: todo!(),
+            proxied: todo!(),
+            name: todo!(),
+            content: todo!(),
+        },
+    };
+
+    let response = cloudflare_client
+        .request(&create_record)
+        .await
+        .unwrap()
+        .result;
+
+    let (ty, value, priority) = match response.content {
+        cloudflare::endpoints::dns::DnsContent::A { content } => ("A", content.to_string(), None),
+        cloudflare::endpoints::dns::DnsContent::AAAA { content } => {
+            ("AAAA", content.to_string(), None)
+        }
+        cloudflare::endpoints::dns::DnsContent::CNAME { content } => ("CNAME", content, None),
+        cloudflare::endpoints::dns::DnsContent::NS { content } => ("NS", content, None),
+        cloudflare::endpoints::dns::DnsContent::MX { content, priority } => {
+            ("MX", content, Some(priority))
+        }
+        cloudflare::endpoints::dns::DnsContent::TXT { content } => ("TXT", content, None),
+        cloudflare::endpoints::dns::DnsContent::SRV { content } => ("SRV", content, None),
+    };
+
+    Json(serde_json::json!({
+        "id": response.id,
+        "type": ty,
+        "name": response.name,
+        "value": value,
+        "ttl": response.ttl,
+        "priority": priority,
+        "weight": 0
+    }))
 }
 
 #[worker::send]
