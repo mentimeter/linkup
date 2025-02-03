@@ -7,7 +7,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-axum = { version = "0.8.1", features = ["json"], default-features = false }
+axum = { version = "0.8.1", features = [
+    "json",
+    "query",
+], default-features = false }
 console_error_panic_hook = { version = "0.1.7" }
 futures = "0.3.31"
 getrandom = { version = "0.2.15", features = ["js"] }
