@@ -9,7 +9,6 @@ mod env_files;
 mod local_config;
 mod services;
 mod signal;
-mod system;
 mod worker_client;
 
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
