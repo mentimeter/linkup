@@ -108,6 +108,8 @@ struct GetTunnelParams {
 
 #[derive(Serialize, Deserialize)]
 struct TunnelData {
+    account_id: String,
+    name: String,
     url: String,
     id: String,
     secret: String,
@@ -153,6 +155,8 @@ async fn get_tunnel_handler(
             .await;
 
             let tunnel_data = TunnelData {
+                account_id: state.cloudflare.account_id,
+                name: tunnel_name.clone(),
                 url: format!("https://{}.{}", &tunnel_name, &zone_domain),
                 id: tunnel_id,
                 secret: tunnel_secret,
