@@ -129,6 +129,7 @@ pub struct Rule {
 pub struct DeployPlan {
     pub kv_action: Option<KvPlan>,
     pub script_action: Option<WorkerScriptPlan>,
+    pub worker_subdomain_action: Option<WorkerSubdomainPlan>,
     pub dns_actions: Vec<DnsRecordPlan>,
     pub route_actions: Vec<WorkerRoutePlan>,
     pub ruleset_actions: Vec<RulesetPlan>,
@@ -151,6 +152,12 @@ pub enum WorkerScriptPlan {
         metadata: WorkerMetadata,
         parts: Vec<WorkerScriptPart>,
     },
+}
+
+#[derive(Debug)]
+pub enum WorkerSubdomainPlan {
+    /// Upload the script with the given metadata & parts
+    Create { enabled: bool, script_name: String },
 }
 
 /// Plan describing how to reconcile a DNS record.
@@ -227,6 +234,7 @@ impl TargetCfResources {
     ) -> Result<DeployPlan, DeployError> {
         let kv_action = self.check_kv_namespace(api).await?;
         let script_action = self.check_worker_script(api).await?;
+        let worker_subdomain_action = self.check_worker_subdomain(api).await?;
         let dns_actions = self.check_dns_records(api).await?;
         let route_actions = self.check_worker_routes(api).await?;
         let ruleset_actions = self.check_rulesets(api).await?;
@@ -239,6 +247,7 @@ impl TargetCfResources {
             route_actions,
             ruleset_actions,
             account_token_action,
+            worker_subdomain_action,
         })
     }
     /// Check if the KV namespace exists and return the plan if not.
@@ -294,6 +303,27 @@ impl TargetCfResources {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn check_worker_subdomain(
+        &self,
+        api: &impl CloudflareApi,
+    ) -> Result<Option<WorkerSubdomainPlan>, DeployError> {
+        let script_name = &self.worker_script_name;
+        if let Ok(subdomain) = api.get_worker_subdomain(script_name.clone()).await {
+            if !subdomain.enabled {
+                return Ok(Some(WorkerSubdomainPlan::Create {
+                    enabled: true,
+                    script_name: script_name.clone(),
+                }));
+            } else {
+                return Ok(None);
+            }
+        }
+        Ok(Some(WorkerSubdomainPlan::Create {
+            enabled: true,
+            script_name: script_name.clone(),
+        }))
     }
 
     /// Check if we need to create DNS records for each zone.
@@ -423,7 +453,7 @@ impl TargetCfResources {
         notifier: &impl DeployNotifier,
     ) -> Result<(), DeployError> {
         // We may need the worker subdomain for DNS records, so fetch it once:
-        let worker_subdomain = api.get_worker_subdomain().await?;
+        let worker_subdomain = api.get_account_worker_subdomain().await?;
 
         // 1) Reconcile KV
         if let Some(KvPlan::Create { namespace_name }) = &plan.kv_action {
@@ -461,6 +491,17 @@ impl TargetCfResources {
             api.create_worker_script(script_name.clone(), final_metadata, parts.clone())
                 .await?;
             notifier.notify("Worker script uploaded successfully.");
+        }
+
+        if let Some(WorkerSubdomainPlan::Create {
+            enabled,
+            script_name,
+        }) = &plan.worker_subdomain_action
+        {
+            notifier.notify("Updating worker subdomain...");
+            api.post_worker_subdomain(script_name.clone(), *enabled, None)
+                .await?;
+            notifier.notify("Worker subdomain updated successfully.");
         }
 
         // 3) Reconcile DNS records
@@ -765,6 +806,7 @@ pub fn cf_resources() -> TargetCfResources {
                 content_type: "application/wasm".to_string(),
             },
         ],
+
         kv_name: "linkup-session-kv".to_string(),
         zone_resources: TargectCfZoneResources {
             dns_records: vec![
