@@ -332,6 +332,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cf_api"
+version = "0.1.0"
+dependencies = [
+ "http",
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1371,6 +1381,7 @@ name = "linkup-cli"
 version = "1.7.2"
 dependencies = [
  "base64",
+ "cf_api",
  "clap",
  "clap_complete",
  "colored",
