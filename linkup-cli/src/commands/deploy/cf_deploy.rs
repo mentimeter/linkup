@@ -220,7 +220,7 @@ export default {
             Ok(())
         }
 
-        async fn get_worker_subdomain(&self) -> Result<Option<String>, DeployError> {
+        async fn get_account_worker_subdomain(&self) -> Result<Option<String>, DeployError> {
             // Simulate having no subdomain for testing:
             Ok(None)
         }
@@ -342,6 +342,22 @@ export default {
         }
 
         async fn remove_account_token(&self, _id: &str) -> Result<(), DeployError> {
+            Ok(())
+        }
+
+        async fn get_worker_subdomain(
+            &self,
+            _script_name: String,
+        ) -> Result<deploy::api::WorkerSubdomain, DeployError> {
+            Ok(deploy::api::WorkerSubdomain { enabled: true })
+        }
+
+        async fn post_worker_subdomain(
+            &self,
+            _script_name: String,
+            _enabled: bool,
+            _previews_enabled: Option<bool>,
+        ) -> Result<(), DeployError> {
             Ok(())
         }
     }
@@ -638,6 +654,21 @@ export default {
         assert!(
             kv_ns_id.unwrap().is_some(),
             "KV namespace not found after deploy."
+        );
+
+        // Verify worker subdomain
+        let worker_subdomain = cloudflare_api
+            .get_worker_subdomain(script_name.clone())
+            .await;
+        println!("worker_subdomain: {:?}", worker_subdomain);
+        assert!(
+            worker_subdomain.is_ok(),
+            "Failed to get worker subdomain info: {:?}",
+            worker_subdomain
+        );
+        assert!(
+            worker_subdomain.unwrap().enabled,
+            "Worker subdomain should be enabled after deploy."
         );
 
         // Verify DNS record exists
