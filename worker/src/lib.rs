@@ -1,5 +1,3 @@
-use std::{net::Ipv4Addr, time::Duration};
-
 use axum::{
     extract::{Json, Query, Request, State},
     http::StatusCode,
@@ -10,6 +8,7 @@ use axum::{
 use http::{HeaderMap, Uri};
 use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
+use libdns::LibDnsRecord;
 use linkup::{
     allow_all_cors, get_additional_headers, get_target_service, CreatePreviewRequest, NameKind,
     Session, SessionAllocator, UpdateSessionRequest,
@@ -21,6 +20,7 @@ use ws::handle_ws_resp;
 
 mod http_error;
 mod kv_store;
+mod libdns;
 mod tunnel;
 mod ws;
 
@@ -176,133 +176,133 @@ async fn get_tunnel_handler(
     }
 }
 
-/// This represents the record that is used in Caddy for working with libdns.
-///
-/// Reference: https://github.com/libdns/libdns/blob/8b75c024f21e77c1ee32273ad24c579d1379b2b0/libdns.go#L114-L127
-#[derive(Debug, Serialize, Deserialize)]
-struct LibDnsRecord {
-    id: String,
-    record_type: String,
-    name: String,
-    value: String,
-    ttl: u32,
-    priority: u16,
-    weight: u32,
+#[derive(Deserialize)]
+struct GetCertificateDns {
+    zone: String,
 }
 
 #[worker::send]
-async fn get_certificate_dns_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
-    (StatusCode::OK, "get_certificate_dns_handler stub").into_response()
+async fn get_certificate_dns_handler(
+    State(state): State<LinkupState>,
+    Query(query): Query<GetCertificateDns>,
+) -> impl IntoResponse {
+    let client = cloudflare_client(&state.cloudflare.api_token);
+
+    let zone = get_zone(&client, &query.zone).await;
+
+    let req = cloudflare::endpoints::dns::ListDnsRecords {
+        zone_identifier: &zone.id,
+        params: cloudflare::endpoints::dns::ListDnsRecordsParams::default(),
+    };
+
+    let records = client.request(&req).await.unwrap().result;
+    let mut libdns_records: Vec<LibDnsRecord> = Vec::with_capacity(records.len());
+    for record in records {
+        libdns_records.push(record.into());
+    }
+
+    Json(libdns_records)
 }
 
 #[derive(Debug, Deserialize)]
 struct CreateDnsRecords {
-    zone_id: String,
+    zone: String,
     records: Vec<LibDnsRecord>,
 }
 
 #[worker::send]
 async fn create_certificate_dns_handler(
-    State(_state): State<LinkupState>,
+    State(state): State<LinkupState>,
     Json(payload): Json<CreateDnsRecords>,
 ) -> impl IntoResponse {
-    let cloudflare_client = cloudflare::framework::async_api::Client::new(
-        cloudflare::framework::auth::Credentials::UserAuthToken {
-            token: String::from(""),
-        },
-        cloudflare::framework::HttpApiClientConfig::default(),
-        cloudflare::framework::Environment::Production,
-    )
-    .expect("Cloudflare API Client to have been created");
+    let client = cloudflare_client(&state.cloudflare.api_token);
 
-    let mut records = Vec::with_capacity(payload.records.len());
+    let zone = get_zone(&client, &payload.zone).await;
+
+    let mut records: Vec<LibDnsRecord> = Vec::with_capacity(payload.records.len());
 
     for record in payload.records {
         let create_record = cloudflare::endpoints::dns::CreateDnsRecord {
-            zone_identifier: &payload.zone_id,
-            params: cloudflare::endpoints::dns::CreateDnsRecordParams {
-                ttl: Some(record.ttl),
-                priority: Some(record.priority),
-                proxied: Some(true),
-                name: &record.name,
-                content: match record.record_type.as_str() {
-                    "A" => cloudflare::endpoints::dns::DnsContent::A {
-                        content: record.value.parse().unwrap(),
-                    },
-                    "AAAA" => cloudflare::endpoints::dns::DnsContent::AAAA {
-                        content: record.value.parse().unwrap(),
-                    },
-                    "CNAME" => cloudflare::endpoints::dns::DnsContent::CNAME {
-                        content: record.value,
-                    },
-                    "NS" => cloudflare::endpoints::dns::DnsContent::NS {
-                        content: record.value,
-                    },
-                    "MX" => cloudflare::endpoints::dns::DnsContent::MX {
-                        content: record.value,
-                        priority: record.priority,
-                    },
-                    "TXT" => cloudflare::endpoints::dns::DnsContent::TXT {
-                        content: record.value,
-                    },
-                    "SRV" => cloudflare::endpoints::dns::DnsContent::SRV {
-                        content: record.value,
-                    },
-                    _ => unreachable!(),
-                },
-            },
+            zone_identifier: &zone.id,
+            params: (&record).into(),
         };
 
-        let response = cloudflare_client
-            .request(&create_record)
-            .await
-            .unwrap()
-            .result;
+        let response = client.request(&create_record).await.unwrap().result;
 
-        let (ty, value, priority) = match response.content {
-            cloudflare::endpoints::dns::DnsContent::A { content } => {
-                ("A", content.to_string(), None)
-            }
-            cloudflare::endpoints::dns::DnsContent::AAAA { content } => {
-                ("AAAA", content.to_string(), None)
-            }
-            cloudflare::endpoints::dns::DnsContent::CNAME { content } => ("CNAME", content, None),
-            cloudflare::endpoints::dns::DnsContent::NS { content } => ("NS", content, None),
-            cloudflare::endpoints::dns::DnsContent::MX { content, priority } => {
-                ("MX", content, Some(priority))
-            }
-            cloudflare::endpoints::dns::DnsContent::TXT { content } => ("TXT", content, None),
-            cloudflare::endpoints::dns::DnsContent::SRV { content } => ("SRV", content, None),
-        };
-
-        records.push(LibDnsRecord {
-            id: response.id,
-            record_type: ty.to_string(),
-            name: response.name,
-            value,
-            ttl: response.ttl,
-            priority: priority.unwrap_or(0),
-            weight: 0,
-        });
+        records.push(response.into());
     }
 
     Json(records)
 }
 
-#[worker::send]
-async fn update_certificate_dns_handler(
-    State(_state): State<LinkupState>,
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        format!("update_certificate_dns_handler stub: {:?}", payload),
-    )
+#[derive(Debug, Deserialize)]
+struct UpdateDnsRecords {
+    zone: String,
+    records: Vec<LibDnsRecord>,
 }
 
 #[worker::send]
-async fn delete_certificate_dns_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
-    (StatusCode::OK, "delete_certificate_dns_handler stub").into_response()
+async fn update_certificate_dns_handler(
+    State(state): State<LinkupState>,
+    Json(payload): Json<UpdateDnsRecords>,
+) -> impl IntoResponse {
+    let client = cloudflare_client(&state.cloudflare.api_token);
+
+    let zone = get_zone(&client, &payload.zone).await;
+
+    let mut updated_records: Vec<LibDnsRecord> = Vec::with_capacity(payload.records.len());
+    for record in payload.records {
+        if record.id.is_empty() {
+            // TODO: Check if we need to implement this for our use case.
+            unimplemented!("Needs to implement lookup DNS by name and type");
+        }
+
+        let req = cloudflare::endpoints::dns::UpdateDnsRecord {
+            zone_identifier: &zone.id,
+            identifier: &record.id,
+            params: (&record).into(),
+        };
+
+        let res = client.request(&req).await.unwrap().result;
+        updated_records.push(res.into());
+    }
+
+    Json(updated_records)
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteDnsRecords {
+    zone: String,
+    records: Vec<LibDnsRecord>,
+}
+
+#[worker::send]
+async fn delete_certificate_dns_handler(
+    State(state): State<LinkupState>,
+    Json(payload): Json<DeleteDnsRecords>,
+) -> impl IntoResponse {
+    let client = cloudflare_client(&state.cloudflare.api_token);
+
+    let zone = get_zone(&client, &payload.zone).await;
+
+    let mut deleted_records = Vec::with_capacity(payload.records.len());
+    for record in payload.records {
+        if record.id.is_empty() {
+            // TODO: Check if we need to implement this for our use case.
+            unimplemented!("Needs to implement lookup DNS by name and type");
+        }
+
+        let req = cloudflare::endpoints::dns::DeleteDnsRecord {
+            zone_identifier: &zone.id,
+            identifier: &record.id,
+        };
+
+        client.request(&req).await.unwrap();
+
+        deleted_records.push(record);
+    }
+
+    Json(deleted_records)
 }
 
 #[worker::send]
@@ -592,4 +592,38 @@ async fn set_cached_req(cache_key: String, resp: worker::Response) -> worker::Re
     }
     worker::Cache::default().put(cache_key, resp).await?;
     Ok(())
+}
+
+async fn get_zone(
+    client: &cloudflare::framework::async_api::Client,
+    zone: &str,
+) -> cloudflare::endpoints::zone::Zone {
+    let req = cloudflare::endpoints::zone::ListZones {
+        params: cloudflare::endpoints::zone::ListZonesParams {
+            name: Some(zone.to_string()),
+            ..Default::default()
+        },
+    };
+
+    let mut res = client.request(&req).await.unwrap().result;
+    if res.is_empty() {
+        panic!("Zone not found");
+    }
+
+    if res.len() > 1 {
+        panic!("Found more than one zone for name");
+    }
+
+    res.pop().unwrap()
+}
+
+fn cloudflare_client(api_token: &str) -> cloudflare::framework::async_api::Client {
+    cloudflare::framework::async_api::Client::new(
+        cloudflare::framework::auth::Credentials::UserAuthToken {
+            token: api_token.to_string(),
+        },
+        cloudflare::framework::HttpApiClientConfig::default(),
+        cloudflare::framework::Environment::Production,
+    )
+    .expect("Cloudflare API Client to have been created")
 }
