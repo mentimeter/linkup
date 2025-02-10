@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{
     extract::{Json, Query, Request, State},
     http::StatusCode,
@@ -174,6 +176,20 @@ async fn get_tunnel_handler(
     }
 }
 
+/// This represents the record that is used in Caddy for working with libdns.
+///
+/// Reference: https://github.com/libdns/libdns/blob/8b75c024f21e77c1ee32273ad24c579d1379b2b0/libdns.go#L114-L127
+#[derive(Debug, Serialize, Deserialize)]
+struct LibDnsRecord {
+    id: String,
+    record_type: String,
+    name: String,
+    value: String,
+    ttl: u32,
+    priority: u16,
+    weight: u32,
+}
+
 #[worker::send]
 async fn get_certificate_dns_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
     (StatusCode::OK, "get_certificate_dns_handler stub").into_response()
@@ -224,15 +240,15 @@ async fn create_certificate_dns_handler(
         cloudflare::endpoints::dns::DnsContent::SRV { content } => ("SRV", content, None),
     };
 
-    Json(serde_json::json!({
-        "id": response.id,
-        "type": ty,
-        "name": response.name,
-        "value": value,
-        "ttl": response.ttl,
-        "priority": priority,
-        "weight": 0
-    }))
+    Json(LibDnsRecord {
+        id: response.id,
+        record_type: ty.to_string(),
+        name: response.name,
+        value,
+        ttl: response.ttl,
+        priority: priority.unwrap_or(0),
+        weight: 0,
+    })
 }
 
 #[worker::send]
