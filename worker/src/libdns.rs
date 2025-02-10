@@ -12,12 +12,19 @@ use serde::{Deserialize, Serialize};
 /// Reference: https://github.com/libdns/libdns/blob/8b75c024f21e77c1ee32273ad24c579d1379b2b0/libdns.go#L114-L127
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LibDnsRecord {
+    #[serde(rename = "ID")]
     pub id: String,
+    #[serde(rename = "Type")]
     pub record_type: String,
+    #[serde(rename = "Name")]
     pub name: String,
+    #[serde(rename = "Value")]
     pub value: String,
+    #[serde(rename = "TTL")]
     pub ttl: u32,
+    #[serde(rename = "Priority")]
     pub priority: u16,
+    #[serde(rename = "Weight")]
     pub weight: u32,
 }
 
