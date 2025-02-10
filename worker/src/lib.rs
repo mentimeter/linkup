@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{net::Ipv4Addr, time::Duration};
 
 use axum::{
     extract::{Json, Query, Request, State},
@@ -195,10 +195,16 @@ async fn get_certificate_dns_handler(State(_state): State<LinkupState>) -> impl 
     (StatusCode::OK, "get_certificate_dns_handler stub").into_response()
 }
 
+#[derive(Debug, Deserialize)]
+struct CreateDnsRecords {
+    zone_id: String,
+    records: Vec<LibDnsRecord>,
+}
+
 #[worker::send]
 async fn create_certificate_dns_handler(
     State(_state): State<LinkupState>,
-    Json(payload): Json<serde_json::Value>,
+    Json(payload): Json<CreateDnsRecords>,
 ) -> impl IntoResponse {
     let cloudflare_client = cloudflare::framework::async_api::Client::new(
         cloudflare::framework::auth::Credentials::UserAuthToken {
@@ -209,46 +215,78 @@ async fn create_certificate_dns_handler(
     )
     .expect("Cloudflare API Client to have been created");
 
-    let create_record = cloudflare::endpoints::dns::CreateDnsRecord {
-        zone_identifier: todo!(),
-        params: cloudflare::endpoints::dns::CreateDnsRecordParams {
-            ttl: todo!(),
-            priority: todo!(),
-            proxied: todo!(),
-            name: todo!(),
-            content: todo!(),
-        },
-    };
+    let mut records = Vec::with_capacity(payload.records.len());
 
-    let response = cloudflare_client
-        .request(&create_record)
-        .await
-        .unwrap()
-        .result;
+    for record in payload.records {
+        let create_record = cloudflare::endpoints::dns::CreateDnsRecord {
+            zone_identifier: &payload.zone_id,
+            params: cloudflare::endpoints::dns::CreateDnsRecordParams {
+                ttl: Some(record.ttl),
+                priority: Some(record.priority),
+                proxied: Some(true),
+                name: &record.name,
+                content: match record.record_type.as_str() {
+                    "A" => cloudflare::endpoints::dns::DnsContent::A {
+                        content: record.value.parse().unwrap(),
+                    },
+                    "AAAA" => cloudflare::endpoints::dns::DnsContent::AAAA {
+                        content: record.value.parse().unwrap(),
+                    },
+                    "CNAME" => cloudflare::endpoints::dns::DnsContent::CNAME {
+                        content: record.value,
+                    },
+                    "NS" => cloudflare::endpoints::dns::DnsContent::NS {
+                        content: record.value,
+                    },
+                    "MX" => cloudflare::endpoints::dns::DnsContent::MX {
+                        content: record.value,
+                        priority: record.priority,
+                    },
+                    "TXT" => cloudflare::endpoints::dns::DnsContent::TXT {
+                        content: record.value,
+                    },
+                    "SRV" => cloudflare::endpoints::dns::DnsContent::SRV {
+                        content: record.value,
+                    },
+                    _ => unreachable!(),
+                },
+            },
+        };
 
-    let (ty, value, priority) = match response.content {
-        cloudflare::endpoints::dns::DnsContent::A { content } => ("A", content.to_string(), None),
-        cloudflare::endpoints::dns::DnsContent::AAAA { content } => {
-            ("AAAA", content.to_string(), None)
-        }
-        cloudflare::endpoints::dns::DnsContent::CNAME { content } => ("CNAME", content, None),
-        cloudflare::endpoints::dns::DnsContent::NS { content } => ("NS", content, None),
-        cloudflare::endpoints::dns::DnsContent::MX { content, priority } => {
-            ("MX", content, Some(priority))
-        }
-        cloudflare::endpoints::dns::DnsContent::TXT { content } => ("TXT", content, None),
-        cloudflare::endpoints::dns::DnsContent::SRV { content } => ("SRV", content, None),
-    };
+        let response = cloudflare_client
+            .request(&create_record)
+            .await
+            .unwrap()
+            .result;
 
-    Json(LibDnsRecord {
-        id: response.id,
-        record_type: ty.to_string(),
-        name: response.name,
-        value,
-        ttl: response.ttl,
-        priority: priority.unwrap_or(0),
-        weight: 0,
-    })
+        let (ty, value, priority) = match response.content {
+            cloudflare::endpoints::dns::DnsContent::A { content } => {
+                ("A", content.to_string(), None)
+            }
+            cloudflare::endpoints::dns::DnsContent::AAAA { content } => {
+                ("AAAA", content.to_string(), None)
+            }
+            cloudflare::endpoints::dns::DnsContent::CNAME { content } => ("CNAME", content, None),
+            cloudflare::endpoints::dns::DnsContent::NS { content } => ("NS", content, None),
+            cloudflare::endpoints::dns::DnsContent::MX { content, priority } => {
+                ("MX", content, Some(priority))
+            }
+            cloudflare::endpoints::dns::DnsContent::TXT { content } => ("TXT", content, None),
+            cloudflare::endpoints::dns::DnsContent::SRV { content } => ("SRV", content, None),
+        };
+
+        records.push(LibDnsRecord {
+            id: response.id,
+            record_type: ty.to_string(),
+            name: response.name,
+            value,
+            ttl: response.ttl,
+            priority: priority.unwrap_or(0),
+            weight: 0,
+        });
+    }
+
+    Json(records)
 }
 
 #[worker::send]
