@@ -57,7 +57,7 @@ impl<'a> From<&'a LibDnsRecord> for CfCreateDnsRecordParams<'a> {
         CfCreateDnsRecordParams {
             ttl: Some(val.ttl),
             priority: Some(val.priority),
-            proxied: Some(true),
+            proxied: Some(false),
             name: &val.name,
             content: match val.record_type.as_str() {
                 "A" => cloudflare::endpoints::dns::DnsContent::A {
@@ -92,7 +92,7 @@ impl<'a> From<&'a LibDnsRecord> for CfUpdateDnsRecordParams<'a> {
     fn from(val: &'a LibDnsRecord) -> Self {
         CfUpdateDnsRecordParams {
             ttl: Some(val.ttl),
-            proxied: Some(true),
+            proxied: Some(false),
             name: &val.name,
             content: match val.record_type.as_str() {
                 "A" => cloudflare::endpoints::dns::DnsContent::A {
