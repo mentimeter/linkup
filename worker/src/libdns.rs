@@ -3,7 +3,7 @@
 
 use cloudflare::endpoints::dns::{
     CreateDnsRecordParams as CfCreateDnsRecordParams, DnsContent as CfDnsContent,
-    DnsRecord as CfDnsRecord, UpdateDnsRecordParams as CfUpdateDnsRecordParams,
+    DnsRecord as CfDnsRecord, PatchDnsRecordParams as CfPatchDnsRecordParams,
 };
 use serde::{Deserialize, Serialize};
 
@@ -88,9 +88,9 @@ impl<'a> From<&'a LibDnsRecord> for CfCreateDnsRecordParams<'a> {
     }
 }
 
-impl<'a> From<&'a LibDnsRecord> for CfUpdateDnsRecordParams<'a> {
+impl<'a> From<&'a LibDnsRecord> for CfPatchDnsRecordParams<'a> {
     fn from(val: &'a LibDnsRecord) -> Self {
-        CfUpdateDnsRecordParams {
+        CfPatchDnsRecordParams {
             ttl: Some(val.ttl),
             proxied: Some(false),
             name: &val.name,

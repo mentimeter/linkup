@@ -99,7 +99,7 @@ async fn update_certificate_dns_handler(
             unimplemented!("Needs to implement lookup DNS by name and type");
         }
 
-        let req = cloudflare::endpoints::dns::UpdateDnsRecord {
+        let req = cloudflare::endpoints::dns::PatchDnsRecord {
             zone_identifier: &zone.id,
             identifier: &record.id,
             params: (&record).into(),
