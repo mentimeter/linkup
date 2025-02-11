@@ -15,6 +15,7 @@ blocking = ["reqwest/blocking"]
 default-tls = ["reqwest/default-tls"]
 rustls-tls = ["reqwest/rustls-tls"]
 spec = []
+endpoint-spec = []
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = [

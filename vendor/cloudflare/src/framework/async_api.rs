@@ -6,7 +6,6 @@ use crate::framework::{
     response::{ApiResponse, ApiResult},
     Environment, HttpApiClientConfig,
 };
-use std::net::SocketAddr;
 
 /// A Cloudflare API client that makes requests asynchronously.
 pub struct Client {
@@ -30,10 +29,13 @@ impl Client {
         config: HttpApiClientConfig,
         environment: Environment,
     ) -> Result<Client, crate::framework::Error> {
+        #[allow(unused_mut)]
         let mut builder = reqwest::Client::builder().default_headers(config.default_headers);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
+            use std::net::SocketAddr;
+
             // There is no resolve method in wasm.
             if let Some(address) = config.resolve_ip {
                 let url = url::Url::from(&environment);
