@@ -35,6 +35,12 @@ pub fn linkup_file_path(file: &str) -> PathBuf {
     path
 }
 
+pub fn linkup_bin_dir_path() -> PathBuf {
+    let mut path = linkup_dir_path();
+    path.push("bin");
+    path
+}
+
 fn ensure_linkup_dir() -> Result<()> {
     let path = linkup_dir_path();
 

@@ -7,7 +7,7 @@ use std::{
 use url::Url;
 
 use crate::{
-    commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState, signal,
+    commands::local_dns, linkup_bin_dir_path, linkup_file_path, local_config::LocalState, signal,
     LINKUP_CF_TLS_API_ENV_VAR,
 };
 
@@ -82,8 +82,8 @@ impl Caddy {
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
 
         #[cfg(target_os = "macos")]
-        let status = Command::new("caddy")
-            .current_dir(linkup_dir_path())
+        let status = Command::new("./caddy")
+            .current_dir(linkup_bin_dir_path())
             .arg("start")
             .arg("--pidfile")
             .arg(&self.pidfile_path)
@@ -98,8 +98,8 @@ impl Caddy {
             let _ = fs::File::create(&self.pidfile_path)?;
 
             Command::new("sudo")
-                .current_dir(linkup_dir_path())
-                .arg("caddy")
+                .current_dir(linkup_bin_dir_path())
+                .arg("./caddy")
                 .arg("start")
                 .arg("--pidfile")
                 .arg(&self.pidfile_path)
@@ -127,29 +127,29 @@ impl Caddy {
     fn write_caddyfile(&self, worker_url: &Url, domains: &[String]) -> Result<(), Error> {
         let mut redis_storage = String::new();
 
-        if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
-            if !self.check_redis_installed() {
-                return Err(Error::MissingRedisInstalation);
-            }
+        // if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
+        //     if !self.check_redis_installed() {
+        //         return Err(Error::MissingRedisInstalation);
+        //     }
 
-            let url = url::Url::parse(&redis_url).expect("failed to parse Redis URL");
-            redis_storage = format!(
-                "
-                storage redis {{
-                    host           {}
-                    port           {}
-                    username       \"{}\"
-                    password       \"{}\"
-                    key_prefix     \"caddy\"
-                    compression    true
-                }}
-                ",
-                url.host().unwrap(),
-                url.port().unwrap_or(6379),
-                url.username(),
-                url.password().unwrap(),
-            );
-        }
+        //     let url = url::Url::parse(&redis_url).expect("failed to parse Redis URL");
+        //     redis_storage = format!(
+        //         "
+        //         storage redis {{
+        //             host           {}
+        //             port           {}
+        //             username       \"{}\"
+        //             password       \"{}\"
+        //             key_prefix     \"caddy\"
+        //             compression    true
+        //         }}
+        //         ",
+        //         url.host().unwrap(),
+        //         url.port().unwrap_or(6379),
+        //         url.username(),
+        //         url.password().unwrap(),
+        //     );
+        // }
 
         let caddy_template = format!(
             "
