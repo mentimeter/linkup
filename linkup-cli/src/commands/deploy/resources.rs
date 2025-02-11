@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
 
 pub(super) const LINKUP_ACCOUNT_TOKEN_NAME: &str = "linkup-account-owned-cli-access-token";
-const LINKUP_SCRIPT_NAME: &str = "linkup-worker";
+const LINKUP_SCRIPT_NAME: &str = "linkup-worker-ninja";
 // To build the worker script, run in the worker directory:
 // cargo install -q worker-build && worker-build --release
 const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../../worker/build/worker/shim.mjs");
@@ -18,7 +18,7 @@ pub struct TargetCfResources {
     pub worker_script_name: String,
     pub worker_script_parts: Vec<WorkerScriptPart>,
     pub worker_script_entry: String,
-    pub kv_name: String,
+    pub kv_namespaces: Vec<KvNamespace>,
     pub zone_resources: TargectCfZoneResources,
 }
 
@@ -127,7 +127,7 @@ pub struct Rule {
 /// resources to match the desired state.
 #[derive(Debug, Default)]
 pub struct DeployPlan {
-    pub kv_action: Option<KvPlan>,
+    pub kv_actions: Vec<KvPlan>,
     pub script_action: Option<WorkerScriptPlan>,
     pub dns_actions: Vec<DnsRecordPlan>,
     pub route_actions: Vec<WorkerRoutePlan>,
@@ -140,6 +140,12 @@ pub struct DeployPlan {
 pub enum KvPlan {
     /// Create the KV namespace with the given name.
     Create { namespace_name: String },
+}
+
+#[derive(Debug, Clone)]
+pub struct KvNamespace {
+    name: String,
+    binding: String,
 }
 
 /// Plan describing how to reconcile a worker script.
@@ -192,7 +198,7 @@ pub struct DestroyPlan {
     pub remove_worker_script: Option<String>,
 
     /// ID of the KV namespace that should be removed (if any).
-    pub remove_kv_namespace: Option<String>,
+    pub remove_kv_namespaces: Vec<String>,
 
     /// (zone_id, dns_record_id) for each DNS record to remove.
     pub remove_dns_records: Vec<(String, String)>,
@@ -211,7 +217,7 @@ impl DestroyPlan {
     /// Return true if nothing needs to be removed.
     pub fn is_empty(&self) -> bool {
         self.remove_worker_script.is_none()
-            && self.remove_kv_namespace.is_none()
+            && self.remove_kv_namespaces.is_empty()
             && self.remove_dns_records.is_empty()
             && self.remove_worker_routes.is_empty()
             && self.remove_rulesets.is_empty()
@@ -225,7 +231,7 @@ impl TargetCfResources {
         &self,
         api: &impl CloudflareApi,
     ) -> Result<DeployPlan, DeployError> {
-        let kv_action = self.check_kv_namespace(api).await?;
+        let kv_action = self.check_kv_namespaces(api).await?;
         let script_action = self.check_worker_script(api).await?;
         let dns_actions = self.check_dns_records(api).await?;
         let route_actions = self.check_worker_routes(api).await?;
@@ -233,7 +239,7 @@ impl TargetCfResources {
         let account_token_action = self.check_account_token(api).await?;
 
         Ok(DeployPlan {
-            kv_action,
+            kv_actions: kv_action,
             script_action,
             dns_actions,
             route_actions,
@@ -242,20 +248,22 @@ impl TargetCfResources {
         })
     }
     /// Check if the KV namespace exists and return the plan if not.
-    pub async fn check_kv_namespace(
+    pub async fn check_kv_namespaces(
         &self,
         api: &impl CloudflareApi,
-    ) -> Result<Option<KvPlan>, DeployError> {
-        let existing = api.get_kv_namespace_id(self.kv_name.clone()).await?;
-        if existing.is_none() {
-            // We need to create this KV namespace
-            Ok(Some(KvPlan::Create {
-                namespace_name: self.kv_name.clone(),
-            }))
-        } else {
-            // KV namespace is already present, no plan needed
-            Ok(None)
+    ) -> Result<Vec<KvPlan>, DeployError> {
+        let mut plans = Vec::with_capacity(self.kv_namespaces.len());
+        for kv_namespace in &self.kv_namespaces {
+            let existing = api.get_kv_namespace_id(kv_namespace.name.clone()).await?;
+            if existing.is_none() {
+                // We need to create this KV namespace
+                plans.push(KvPlan::Create {
+                    namespace_name: kv_namespace.name.clone(),
+                });
+            }
         }
+
+        Ok(plans)
     }
 
     /// Check if the worker script needs to be uploaded. Return the plan if an upload is needed.
@@ -275,17 +283,23 @@ impl TargetCfResources {
         };
 
         if needs_upload {
+            let mut bindings = Vec::with_capacity(self.kv_namespaces.len());
+            for kv_namespace in &self.kv_namespaces {
+                bindings.push(WorkerKVBinding {
+                    type_: "kv_namespace".to_string(),
+                    name: kv_namespace.binding.clone(),
+                    namespace_id: "<to-be-filled-on-deploy>".to_string(),
+                });
+            }
+
             // Construct the metadata
             let metadata = WorkerMetadata {
                 main_module: self.worker_script_entry.clone(),
-                bindings: vec![WorkerKVBinding {
-                    type_: "kv_namespace".to_string(),
-                    name: "LINKUP_SESSIONS".to_string(),
-                    namespace_id: "<to-be-filled-on-deploy>".to_string(),
-                }],
+                bindings,
                 compatibility_date: "2024-12-18".to_string(),
                 tag: current_version,
             };
+
             Ok(Some(WorkerScriptPlan::Upload {
                 script_name: script_name.clone(),
                 metadata,
@@ -426,10 +440,14 @@ impl TargetCfResources {
         let worker_subdomain = api.get_worker_subdomain().await?;
 
         // 1) Reconcile KV
-        if let Some(KvPlan::Create { namespace_name }) = &plan.kv_action {
-            notifier.notify(&format!("Creating KV namespace: {}", namespace_name));
-            let new_id = api.create_kv_namespace(namespace_name.clone()).await?;
-            notifier.notify(&format!("KV namespace created with ID: {}", new_id));
+        for kv_plan in &plan.kv_actions {
+            match kv_plan {
+                KvPlan::Create { namespace_name } => {
+                    notifier.notify(&format!("Creating KV namespace: {}", namespace_name));
+                    let new_id = api.create_kv_namespace(namespace_name.clone()).await?;
+                    notifier.notify(&format!("KV namespace created with ID: {}", new_id));
+                }
+            }
         }
 
         // 2) Reconcile Worker Script
@@ -440,21 +458,24 @@ impl TargetCfResources {
             parts,
         }) = &plan.script_action
         {
-            let kv_ns_id = api.get_kv_namespace_id(self.kv_name.clone()).await?;
-            let kv_ns_id = kv_ns_id.ok_or_else(|| {
-                DeployError::UnexpectedResponse(
-                    "KV namespace should exist but was not found".to_string(),
-                )
-            })?;
-
-            // Update metadata with correct ID
             let mut final_metadata = metadata.clone();
-            if let Some(binding) = final_metadata
-                .bindings
-                .iter_mut()
-                .find(|b| b.name == "LINKUP_SESSIONS")
-            {
-                binding.namespace_id = kv_ns_id;
+
+            for kv_namespace in &self.kv_namespaces {
+                let kv_ns_id = api.get_kv_namespace_id(kv_namespace.name.clone()).await?;
+                let kv_ns_id = kv_ns_id.ok_or_else(|| {
+                    DeployError::UnexpectedResponse(
+                        "KV namespace should exist but was not found".to_string(),
+                    )
+                })?;
+
+                // Update metadata with correct ID
+                if let Some(binding) = final_metadata
+                    .bindings
+                    .iter_mut()
+                    .find(|b| b.name == kv_namespace.binding)
+                {
+                    binding.namespace_id = kv_ns_id;
+                }
             }
 
             notifier.notify("Uploading worker script...");
@@ -572,9 +593,10 @@ impl TargetCfResources {
         }
 
         // 2) KV namespace
-        let kv_name = &self.kv_name;
-        if let Some(ns_id) = api.get_kv_namespace_id(kv_name.clone()).await? {
-            plan.remove_kv_namespace = Some(ns_id);
+        for kv_namespace in &self.kv_namespaces {
+            if let Some(ns_id) = api.get_kv_namespace_id(kv_namespace.name.clone()).await? {
+                plan.remove_kv_namespaces.push(ns_id);
+            }
         }
 
         // 3) DNS records
@@ -666,13 +688,10 @@ impl TargetCfResources {
         }
 
         // 4) KV namespace
-        if let Some(ns_id) = &plan.remove_kv_namespace {
-            notifier.notify(&format!("Removing KV namespace '{}'...", self.kv_name));
+        for ns_id in &plan.remove_kv_namespaces {
+            notifier.notify(&format!("Removing KV namespace '{}'...", ns_id));
             api.remove_kv_namespace(ns_id.clone()).await?;
-            notifier.notify(&format!(
-                "KV namespace '{}' removed successfully.",
-                self.kv_name
-            ));
+            notifier.notify(&format!("KV namespace '{}' removed successfully.", ns_id));
         }
 
         // 5) Cache rulesets
@@ -722,7 +741,7 @@ impl TargetCfResources {
 impl DeployPlan {
     /// Return `true` if there are no actions to execute.
     pub fn is_empty(&self) -> bool {
-        self.kv_action.is_none()
+        self.kv_actions.is_empty()
             && self.script_action.is_none()
             && self.dns_actions.is_empty()
             && self.route_actions.is_empty()
@@ -765,7 +784,20 @@ pub fn cf_resources() -> TargetCfResources {
                 content_type: "application/wasm".to_string(),
             },
         ],
-        kv_name: "linkup-session-kv".to_string(),
+        kv_namespaces: vec![
+            KvNamespace {
+                name: "linkup-session-kv-ninja".to_string(),
+                binding: "LINKUP_SESSIONS".to_string(),
+            },
+            KvNamespace {
+                name: "linkup-tunnels-kv-ninja".to_string(),
+                binding: "LINKUP_TUNNELS".to_string(),
+            },
+            KvNamespace {
+                name: "linkup-certificate-cache-kv-ninja".to_string(),
+                binding: "LINKUP_CERTIFICATE_CACHE".to_string(),
+            },
+        ],
         zone_resources: TargectCfZoneResources {
             dns_records: vec![
                 TargetDNSRecord {
