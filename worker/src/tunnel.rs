@@ -3,6 +3,7 @@
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 
 use serde::{Deserialize, Serialize};
+use worker::{console_error, console_log};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GetTunnelApiResponse {
@@ -174,6 +175,13 @@ async fn send_request<T: for<'de> serde::Deserialize<'de>>(
     body: Option<String>,
     method: &str,
 ) -> Result<T, String> {
+    console_log!(
+        "Sending request {} '{}' with body '{:?}'",
+        method,
+        url,
+        &body
+    );
+
     let builder = match method {
         "GET" => client.get(url),
         "POST" => client.post(url),
@@ -188,11 +196,34 @@ async fn send_request<T: for<'de> serde::Deserialize<'de>>(
     };
 
     let response = builder.send().await.unwrap();
+    let status = response.status();
 
-    if response.status().is_success() {
+    if status.is_success() {
         let response_body = response.text().await.unwrap();
-        serde_json::from_str(&response_body).unwrap()
+        console_log!(
+            "Response: status: {}; content: '{}'",
+            &status,
+            &response_body
+        );
+
+        match serde_json::from_str(&response_body) {
+            Ok(val) => {
+                // console_log!("{}", val.clone());
+                Ok(val)
+            }
+            Err(e) => {
+                console_error!("{:?}", e);
+                Err("Wot 2".to_string())
+            }
+        }
     } else {
+        let response_body = response.text().await.unwrap();
+        console_log!(
+            "Response: status: {}; content: '{}'",
+            &status,
+            &response_body
+        );
+
         Err("Wot".into())
     }
 }
@@ -203,5 +234,5 @@ fn generate_tunnel_secret() -> String {
     // let random_bytes: [u8; 32] = rng.gen();
     // BASE64_STANDARD.encode(random_bytes)
 
-    "suppasecret".into()
+    "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=".into()
 }
