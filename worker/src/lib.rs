@@ -19,6 +19,8 @@ use ws::handle_ws_resp;
 
 mod http_error;
 mod kv_store;
+mod libdns;
+mod routes;
 mod tunnel;
 mod ws;
 
@@ -46,20 +48,8 @@ pub fn linkup_router(state: LinkupState) -> Router {
         .route("/linkup/tunnel", get(get_tunnel_handler))
         .route("/linkup/check", get(always_ok))
         .route("/linkup/no-tunnel", get(no_tunnel))
-        .route(
-            "/linkup/certificate-dns",
-            get(get_certificate_dns_handler)
-                .post(create_certificate_dns_handler)
-                .put(update_certificate_dns_handler)
-                .delete(delete_certificate_dns_handler),
-        )
-        .route(
-            "/linkup/certificate-cache",
-            get(get_certificate_cache_handler)
-                .post(create_certificate_cache_handler)
-                .put(update_certificate_cache_handler)
-                .delete(delete_certificate_cache_handler),
-        )
+        .merge(routes::certificate_dns::router())
+        .merge(routes::certificate_cache::router())
         // Fallback for all other requests
         .fallback(any(linkup_request_handler))
         .with_state(state)
@@ -172,70 +162,6 @@ async fn get_tunnel_handler(
             Json(tunnel_data)
         }
     }
-}
-
-#[worker::send]
-async fn get_certificate_dns_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
-    (StatusCode::OK, "get_certificate_dns_handler stub").into_response()
-}
-
-#[worker::send]
-async fn create_certificate_dns_handler(
-    State(_state): State<LinkupState>,
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        format!("create_certificate_dns_handler stub: {:?}", payload),
-    )
-}
-
-#[worker::send]
-async fn update_certificate_dns_handler(
-    State(_state): State<LinkupState>,
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        format!("update_certificate_dns_handler stub: {:?}", payload),
-    )
-}
-
-#[worker::send]
-async fn delete_certificate_dns_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
-    (StatusCode::OK, "delete_certificate_dns_handler stub").into_response()
-}
-
-#[worker::send]
-async fn get_certificate_cache_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
-    (StatusCode::OK, "get_certificate_cache_handler stub").into_response()
-}
-
-#[worker::send]
-async fn create_certificate_cache_handler(
-    State(_state): State<LinkupState>,
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        format!("create_certificate_cache_handler stub: {:?}", payload),
-    )
-}
-
-#[worker::send]
-async fn update_certificate_cache_handler(
-    State(_state): State<LinkupState>,
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        format!("update_certificate_cache_handler stub: {:?}", payload),
-    )
-}
-
-#[worker::send]
-async fn delete_certificate_cache_handler(State(_state): State<LinkupState>) -> impl IntoResponse {
-    (StatusCode::OK, "delete_certificate_cache_handler stub").into_response()
 }
 
 #[worker::send]
@@ -493,4 +419,38 @@ async fn set_cached_req(cache_key: String, resp: worker::Response) -> worker::Re
     }
     worker::Cache::default().put(cache_key, resp).await?;
     Ok(())
+}
+
+async fn get_zone(
+    client: &cloudflare::framework::async_api::Client,
+    zone: &str,
+) -> cloudflare::endpoints::zone::Zone {
+    let req = cloudflare::endpoints::zone::ListZones {
+        params: cloudflare::endpoints::zone::ListZonesParams {
+            name: Some(zone.to_string()),
+            ..Default::default()
+        },
+    };
+
+    let mut res = client.request(&req).await.unwrap().result;
+    if res.is_empty() {
+        panic!("Zone not found");
+    }
+
+    if res.len() > 1 {
+        panic!("Found more than one zone for name");
+    }
+
+    res.pop().unwrap()
+}
+
+fn cloudflare_client(api_token: &str) -> cloudflare::framework::async_api::Client {
+    cloudflare::framework::async_api::Client::new(
+        cloudflare::framework::auth::Credentials::UserAuthToken {
+            token: api_token.to_string(),
+        },
+        cloudflare::framework::HttpApiClientConfig::default(),
+        cloudflare::framework::Environment::Production,
+    )
+    .expect("Cloudflare API Client to have been created")
 }
