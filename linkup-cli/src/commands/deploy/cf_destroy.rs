@@ -42,7 +42,11 @@ pub async fn destroy(args: &DestroyArgs) -> Result<(), DeployError> {
     );
     let notifier = ConsoleNotifier::new();
 
-    let resources = cf_resources();
+    let resources = cf_resources(
+        args.account_id.clone(),
+        args.zone_ids[0].clone(),
+        &args.zone_ids,
+    );
 
     destroy_from_cloudflare(&resources, &cloudflare_api, &notifier).await?;
 

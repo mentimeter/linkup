@@ -18,6 +18,7 @@ pub struct TargetCfResources {
     pub worker_script_name: String,
     pub worker_script_parts: Vec<WorkerScriptPart>,
     pub worker_script_entry: String,
+    pub worker_script_bindings: Vec<WorkerBinding>,
     pub kv_namespaces: Vec<KvNamespace>,
     pub zone_resources: TargectCfZoneResources,
 }
@@ -66,7 +67,7 @@ pub struct WorkerScriptInfo {}
 #[derive(Debug, Clone)]
 pub struct WorkerMetadata {
     pub main_module: String,
-    pub bindings: Vec<WorkerKVBinding>,
+    pub bindings: Vec<WorkerBinding>,
     pub compatibility_date: String,
     pub tag: String,
 }
@@ -98,10 +99,10 @@ impl fmt::Display for WorkerScriptPart {
 }
 
 #[derive(Debug, Clone)]
-pub struct WorkerKVBinding {
-    pub type_: String,
-    pub name: String,
-    pub namespace_id: String,
+pub enum WorkerBinding {
+    KvNamespace { name: String, namespace_id: String },
+    PlainText { name: String, text: String },
+    SecretText { name: String, text: String },
 }
 
 #[derive(Debug, Clone)]
@@ -144,8 +145,8 @@ pub enum KvPlan {
 
 #[derive(Debug, Clone)]
 pub struct KvNamespace {
-    name: String,
-    binding: String,
+    pub name: String,
+    pub binding: String,
 }
 
 /// Plan describing how to reconcile a worker script.
@@ -231,12 +232,12 @@ impl TargetCfResources {
         &self,
         api: &impl CloudflareApi,
     ) -> Result<DeployPlan, DeployError> {
+        let account_token_action = self.check_account_token(api).await?;
         let kv_action = self.check_kv_namespaces(api).await?;
-        let script_action = self.check_worker_script(api).await?;
+        let script_action = self.check_worker_script(api, &account_token_action).await?;
         let dns_actions = self.check_dns_records(api).await?;
         let route_actions = self.check_worker_routes(api).await?;
         let ruleset_actions = self.check_rulesets(api).await?;
-        let account_token_action = self.check_account_token(api).await?;
 
         Ok(DeployPlan {
             kv_actions: kv_action,
@@ -270,6 +271,7 @@ impl TargetCfResources {
     pub async fn check_worker_script(
         &self,
         api: &impl CloudflareApi,
+        account_token_plan: &Option<AccountTokenPlan>,
     ) -> Result<Option<WorkerScriptPlan>, DeployError> {
         let script_name = &self.worker_script_name;
         let last_version = api.get_worker_script_version(script_name.clone()).await?;
@@ -285,10 +287,20 @@ impl TargetCfResources {
         if needs_upload {
             let mut bindings = Vec::with_capacity(self.kv_namespaces.len());
             for kv_namespace in &self.kv_namespaces {
-                bindings.push(WorkerKVBinding {
-                    type_: "kv_namespace".to_string(),
+                bindings.push(WorkerBinding::KvNamespace {
                     name: kv_namespace.binding.clone(),
                     namespace_id: "<to-be-filled-on-deploy>".to_string(),
+                });
+            }
+
+            for binding in &self.worker_script_bindings {
+                bindings.push(binding.clone());
+            }
+
+            if account_token_plan.is_some() {
+                bindings.push(WorkerBinding::SecretText {
+                    name: "CLOUDFLARE_API_TOKEN".to_string(),
+                    text: "<to-be-filled-on-deploy>".to_string(),
                 });
             }
 
@@ -450,6 +462,27 @@ impl TargetCfResources {
             }
         }
 
+        let mut token: Option<String> = None;
+        // 6) Reconcile account token
+        if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
+            notifier.notify("Creating account token...");
+
+            let created_token = api.create_account_token(token_name).await?;
+            token = Some(created_token.clone());
+
+            notifier.notify("Account token created successfully");
+            notifier.notify(
+                "-----------------------------------------------------------------------------",
+            );
+            notifier.notify(
+                "-------------------------------- NOTICE -------------------------------------",
+            );
+            notifier.notify(
+                "This is the only time you'll get to see this token, make sure to make a copy.",
+            );
+            notifier.notify(&format!("Access token: {}", created_token));
+        }
+
         // 2) Reconcile Worker Script
         //    We may need the KV namespace ID we just created, so we fetch it again here.
         if let Some(WorkerScriptPlan::Upload {
@@ -468,13 +501,29 @@ impl TargetCfResources {
                     )
                 })?;
 
-                // Update metadata with correct ID
-                if let Some(binding) = final_metadata
-                    .bindings
-                    .iter_mut()
-                    .find(|b| b.name == kv_namespace.binding)
-                {
-                    binding.namespace_id = kv_ns_id;
+                for binding in final_metadata.bindings.iter_mut() {
+                    match binding {
+                        WorkerBinding::KvNamespace { name, namespace_id } => {
+                            if *name == kv_namespace.binding {
+                                *namespace_id = kv_ns_id.clone();
+                                break;
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+            }
+
+            if let Some(token) = token {
+                for binding in final_metadata.bindings.iter_mut() {
+                    match binding {
+                        WorkerBinding::SecretText { name, text } => {
+                            if *name == "CLOUDFLARE_API_TOKEN" {
+                                *text = token.clone();
+                            }
+                        }
+                        _ => (),
+                    }
                 }
             }
 
@@ -556,23 +605,6 @@ impl TargetCfResources {
             ));
             api.update_ruleset_rules(zone_id.clone(), final_id, rules.clone())
                 .await?;
-        }
-
-        // 6) Reconcile account token
-        if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
-            notifier.notify("Creating account token...");
-            let token = api.create_account_token(token_name).await?;
-            notifier.notify("Account token created successfully");
-            notifier.notify(
-                "-----------------------------------------------------------------------------",
-            );
-            notifier.notify(
-                "-------------------------------- NOTICE -------------------------------------",
-            );
-            notifier.notify(
-                "This is the only time you'll get to see this token, make sure to make a copy.",
-            );
-            notifier.notify(&format!("Access token: {}", token));
         }
 
         Ok(())
@@ -768,7 +800,11 @@ pub fn rules_equal(current: &[Rule], desired: &[Rule]) -> bool {
     true
 }
 
-pub fn cf_resources() -> TargetCfResources {
+pub fn cf_resources(
+    account_id: String,
+    tunnel_zone_id: String,
+    all_zone_ids: &[String],
+) -> TargetCfResources {
     TargetCfResources {
         worker_script_name: LINKUP_SCRIPT_NAME.to_string(),
         worker_script_entry: "shim.mjs".to_string(),
@@ -782,6 +818,20 @@ pub fn cf_resources() -> TargetCfResources {
                 name: "index.wasm".to_string(),
                 data: LINKUP_WORKER_INDEX_WASM.to_vec(),
                 content_type: "application/wasm".to_string(),
+            },
+        ],
+        worker_script_bindings: vec![
+            WorkerBinding::PlainText {
+                name: "CLOUDFLARE_ACCOUNT_ID".to_string(),
+                text: account_id,
+            },
+            WorkerBinding::PlainText {
+                name: "CLOUDFLARE_TUNNEL_ZONE_ID".to_string(),
+                text: tunnel_zone_id,
+            },
+            WorkerBinding::PlainText {
+                name: "CLOUDLFLARE_ALL_ZONE_IDS".to_string(),
+                text: all_zone_ids.join(","),
             },
         ],
         kv_namespaces: vec![

@@ -4,7 +4,9 @@ use serde_json::json;
 
 use super::{
     auth::CloudflareApiAuth,
-    resources::{DNSRecord, Rule, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart},
+    resources::{
+        DNSRecord, Rule, WorkerBinding, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart,
+    },
     DeployError,
 };
 
@@ -512,12 +514,28 @@ impl CloudflareApi for AccountCloudflareApi {
         let mut bindings_json: Vec<serde_json::Value> = metadata
             .bindings
             .iter()
-            .map(|b| {
-                json!({
-                    "type": b.type_,
-                    "name": b.name,
-                    "namespace_id": b.namespace_id,
-                })
+            .map(|b| match b {
+                WorkerBinding::KvNamespace { name, namespace_id } => {
+                    json!({
+                        "type": "kv_namespace",
+                        "name": name,
+                        "namespace_id": namespace_id,
+                    })
+                }
+                WorkerBinding::PlainText { name, text } => {
+                    json!({
+                        "type": "plain_text",
+                        "name": name,
+                        "text": text,
+                    })
+                }
+                WorkerBinding::SecretText { name, text } => {
+                    json!({
+                        "type": "secret_text",
+                        "name": name,
+                        "text": text,
+                    })
+                }
             })
             .collect();
 

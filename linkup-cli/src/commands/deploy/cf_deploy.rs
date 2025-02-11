@@ -58,7 +58,11 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
     );
     let notifier = ConsoleNotifier::new();
 
-    let resources = cf_resources();
+    let resources = cf_resources(
+        args.account_id.clone(),
+        args.zone_ids[0].clone(),
+        &args.zone_ids,
+    );
 
     deploy_to_cloudflare(&resources, &cloudflare_api, &notifier).await?;
 
@@ -106,9 +110,9 @@ mod tests {
         api::Token,
         cf_destroy::destroy_from_cloudflare,
         resources::{
-            rules_equal, DNSRecord, Rule, TargectCfZoneResources, TargetCacheRules,
-            TargetDNSRecord, TargetWorkerRoute, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart,
-            LINKUP_ACCOUNT_TOKEN_NAME,
+            rules_equal, DNSRecord, KvNamespace, Rule, TargectCfZoneResources, TargetCacheRules,
+            TargetDNSRecord, TargetWorkerRoute, WorkerBinding, WorkerMetadata, WorkerScriptInfo,
+            WorkerScriptPart, LINKUP_ACCOUNT_TOKEN_NAME,
         },
     };
 
@@ -372,7 +376,14 @@ export default {
                 data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
                 content_type: "application/javascript+module".to_string(),
             }],
-            kv_name: "linkup-integration-test-kv".to_string(),
+            worker_script_bindings: vec![WorkerBinding::PlainText {
+                name: "INTEGRATION_TEST_ARG".to_string(),
+                text: "plain_text".to_string(),
+            }],
+            kv_namespaces: vec![KvNamespace {
+                name: "linkup-integration-test-kv".to_string(),
+                binding: "LINKUP_SESSIONS".to_string(),
+            }],
             zone_resources: TargectCfZoneResources {
                 dns_records: vec![TargetDNSRecord {
                     route: "linkup-integration-test".to_string(),
@@ -628,17 +639,20 @@ export default {
         );
 
         // Verify the KV namespace
-        let kv_name = &res.kv_name;
-        let kv_ns_id = cloudflare_api.get_kv_namespace_id(kv_name.clone()).await;
-        assert!(
-            kv_ns_id.is_ok(),
-            "Failed to get KV namespace info: {:?}",
-            kv_ns_id
-        );
-        assert!(
-            kv_ns_id.unwrap().is_some(),
-            "KV namespace not found after deploy."
-        );
+        for kv_namespace in &res.kv_namespaces {
+            let kv_ns_id = cloudflare_api
+                .get_kv_namespace_id(kv_namespace.name.clone())
+                .await;
+            assert!(
+                kv_ns_id.is_ok(),
+                "Failed to get KV namespace info: {:?}",
+                kv_ns_id
+            );
+            assert!(
+                kv_ns_id.unwrap().is_some(),
+                "KV namespace not found after deploy."
+            );
+        }
 
         // Verify DNS record exists
         for dns_record in &res.zone_resources.dns_records {
@@ -737,16 +751,20 @@ export default {
         );
 
         // Verify KV namespace is gone
-        let kv_ns_id = cloudflare_api.get_kv_namespace_id(kv_name.clone()).await;
-        assert!(
-            kv_ns_id.is_ok(),
-            "Failed to get KV namespace after destroy: {:?}",
-            kv_ns_id
-        );
-        assert!(
-            kv_ns_id.unwrap().is_none(),
-            "KV namespace still exists after destroy"
-        );
+        for kv_namespace in &res.kv_namespaces {
+            let kv_ns_id = cloudflare_api
+                .get_kv_namespace_id(kv_namespace.name.clone())
+                .await;
+            assert!(
+                kv_ns_id.is_ok(),
+                "Failed to get KV namespace after destroy: {:?}",
+                kv_ns_id
+            );
+            assert!(
+                kv_ns_id.unwrap().is_none(),
+                "KV namespace still exists after destroy"
+            );
+        }
 
         // Verify DNS record is gone
         for dns_record in &res.zone_resources.dns_records {
