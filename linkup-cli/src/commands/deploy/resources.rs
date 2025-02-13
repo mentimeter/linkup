@@ -532,27 +532,21 @@ impl TargetCfResources {
                 })?;
 
                 for binding in final_metadata.bindings.iter_mut() {
-                    match binding {
-                        WorkerBinding::KvNamespace { name, namespace_id } => {
-                            if *name == kv_namespace.binding {
-                                *namespace_id = kv_ns_id.clone();
-                                break;
-                            }
+                    if let WorkerBinding::KvNamespace { name, namespace_id } = binding {
+                        if *name == kv_namespace.binding {
+                            *namespace_id = kv_ns_id.clone();
+                            break;
                         }
-                        _ => (),
                     }
                 }
             }
 
             if let Some(token) = token {
                 for binding in final_metadata.bindings.iter_mut() {
-                    match binding {
-                        WorkerBinding::SecretText { name, text } => {
-                            if *name == "CLOUDFLARE_API_TOKEN" {
-                                *text = token.clone();
-                            }
+                    if let WorkerBinding::SecretText { name, text } = binding {
+                        if *name == "CLOUDFLARE_API_TOKEN" {
+                            *text = token.clone();
                         }
-                        _ => (),
                     }
                 }
             }
