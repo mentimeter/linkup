@@ -165,6 +165,7 @@ impl Caddy {
             {} {{
                 reverse_proxy localhost:{}
                 tls {{
+                    resolvers 1.1.1.1
                     dns linkup {{
                         worker_url \"{}\"
                         token \"\"
