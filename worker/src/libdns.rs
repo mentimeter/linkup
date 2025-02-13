@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Reference: https://github.com/libdns/libdns/blob/8b75c024f21e77c1ee32273ad24c579d1379b2b0/libdns.go#L114-L127
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Default))]
 pub struct LibDnsRecord {
     #[serde(rename = "ID")]
     pub id: String,

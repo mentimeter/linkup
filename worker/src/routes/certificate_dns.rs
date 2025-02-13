@@ -43,6 +43,8 @@ async fn get_certificate_dns_handler(
         libdns_records.push(record.into());
     }
 
+    format_records_names(&mut libdns_records, &zone.name);
+
     Json(libdns_records)
 }
 
@@ -73,6 +75,8 @@ async fn create_certificate_dns_handler(
 
         records.push(response.into());
     }
+
+    format_records_names(&mut records, &zone.name);
 
     Json(records)
 }
@@ -109,6 +113,8 @@ async fn update_certificate_dns_handler(
         updated_records.push(res.into());
     }
 
+    format_records_names(&mut updated_records, &zone.name);
+
     Json(updated_records)
 }
 
@@ -144,5 +150,67 @@ async fn delete_certificate_dns_handler(
         deleted_records.push(record);
     }
 
+    format_records_names(&mut deleted_records, &zone.name);
+
     Json(deleted_records)
+}
+
+fn format_records_names(records: &mut [LibDnsRecord], zone: &str) {
+    for record in records.iter_mut() {
+        record.name = name_relative_to_zone(&record.name, zone);
+    }
+}
+
+fn name_relative_to_zone(fqdm: &str, zone: &str) -> String {
+    let trimmed_fqdm = fqdm.trim_end_matches('.');
+    let trimmed_zone = zone.trim_end_matches('.');
+
+    let fqdm_relative_to_zone = trimmed_fqdm.replace(trimmed_zone, "");
+
+    fqdm_relative_to_zone.trim_end_matches('.').to_string()
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        libdns::LibDnsRecord,
+        routes::certificate_dns::{format_records_names, name_relative_to_zone},
+    };
+
+    #[test]
+    fn test_name_relative_to_zone() {
+        let fqdm = "api.mentimeter.com.";
+        let zone = "mentimeter.com.";
+
+        assert_eq!("api", name_relative_to_zone(fqdm, zone));
+    }
+
+    #[test]
+    fn test_name_relative_to_zone_subdomain() {
+        let fqdm = "v2.api.mentimeter.com.";
+        let zone = "mentimeter.com.";
+
+        assert_eq!("v2.api", name_relative_to_zone(fqdm, zone));
+    }
+
+    #[test]
+    fn test_name_relative_to_zone_not_matching_zone() {
+        let fqdm = "api.mentimeter.com.";
+        let zone = "menti.meter.";
+
+        assert_eq!("api.mentimeter.com", name_relative_to_zone(fqdm, zone));
+    }
+
+    #[test]
+    fn test_format_records_names() {
+        let mut records = vec![LibDnsRecord {
+            name: "api.mentimeter.com".to_string(),
+            ..Default::default()
+        }];
+        let zone = "mentimeter.com";
+
+        format_records_names(&mut records, zone);
+
+        assert_eq!(records[0].name, "api")
+    }
 }
