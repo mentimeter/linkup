@@ -127,29 +127,29 @@ impl Caddy {
     fn write_caddyfile(&self, worker_url: &Url, domains: &[String]) -> Result<(), Error> {
         let mut redis_storage = String::new();
 
-        // if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
-        //     if !self.check_redis_installed() {
-        //         return Err(Error::MissingRedisInstalation);
-        //     }
+        if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
+            if !self.check_redis_installed() {
+                return Err(Error::MissingRedisInstalation);
+            }
 
-        //     let url = url::Url::parse(&redis_url).expect("failed to parse Redis URL");
-        //     redis_storage = format!(
-        //         "
-        //         storage redis {{
-        //             host           {}
-        //             port           {}
-        //             username       \"{}\"
-        //             password       \"{}\"
-        //             key_prefix     \"caddy\"
-        //             compression    true
-        //         }}
-        //         ",
-        //         url.host().unwrap(),
-        //         url.port().unwrap_or(6379),
-        //         url.username(),
-        //         url.password().unwrap(),
-        //     );
-        // }
+            let url = url::Url::parse(&redis_url).expect("failed to parse Redis URL");
+            redis_storage = format!(
+                "
+                storage redis {{
+                    host           {}
+                    port           {}
+                    username       \"{}\"
+                    password       \"{}\"
+                    key_prefix     \"caddy\"
+                    compression    true
+                }}
+                ",
+                url.host().unwrap(),
+                url.port().unwrap_or(6379),
+                url.username(),
+                url.password().unwrap(),
+            );
+        }
 
         let caddy_template = format!(
             "
