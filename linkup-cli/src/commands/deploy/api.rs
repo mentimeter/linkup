@@ -54,7 +54,18 @@ pub trait CloudflareApi {
         record_id: String,
     ) -> Result<(), DeployError>;
 
-    async fn get_worker_subdomain(&self) -> Result<Option<String>, DeployError>;
+    async fn get_account_worker_subdomain(&self) -> Result<Option<String>, DeployError>;
+
+    async fn get_worker_subdomain(
+        &self,
+        script_name: String,
+    ) -> Result<WorkerSubdomain, DeployError>;
+    async fn post_worker_subdomain(
+        &self,
+        script_name: String,
+        enabled: bool,
+        previews_enabled: Option<bool>,
+    ) -> Result<(), DeployError>;
 
     async fn get_worker_route(
         &self,
@@ -328,6 +339,12 @@ struct CreateAccountTokenResponse {
 struct ListAccountTokensResponse {
     pub success: bool,
     pub result: Option<Vec<Token>>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct WorkerSubdomain {
+    /// Whether the Worker is available on the workers.dev subdomain.
+    pub enabled: bool,
 }
 
 const WORKER_VERSION_TAG: &str = "LINKUP_VERSION_TAG";
@@ -900,7 +917,7 @@ impl CloudflareApi for AccountCloudflareApi {
         Ok(())
     }
 
-    async fn get_worker_subdomain(&self) -> Result<Option<String>, DeployError> {
+    async fn get_account_worker_subdomain(&self) -> Result<Option<String>, DeployError> {
         let url = format!(
             "https://api.cloudflare.com/client/v4/accounts/{}/workers/subdomain",
             self.account_id
@@ -934,6 +951,88 @@ impl CloudflareApi for AccountCloudflareApi {
             // success = true but no result.subdomain returned
             Ok(None)
         }
+    }
+
+    /// GET the Worker’s subdomain configuration for a given script.
+    /// This hits the endpoint:
+    /// GET /accounts/{account_id}/workers/scripts/{script_name}/subdomain
+    async fn get_worker_subdomain(
+        &self,
+        script_name: String,
+    ) -> Result<WorkerSubdomain, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/workers/scripts/{}/subdomain",
+            self.account_id, script_name
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        #[derive(Deserialize)]
+        struct WorkerSubdomainResponse {
+            result: WorkerSubdomain,
+        }
+
+        let data: WorkerSubdomainResponse = resp.json().await?;
+        Ok(data.result)
+    }
+
+    /// POST to update the Worker’s subdomain configuration for a given script.
+    /// This sends a JSON body with the fields:
+    /// - enabled: whether the worker is available on workers.dev.
+    /// - previews_enabled: whether preview URLs are enabled.
+    ///
+    /// Endpoint:
+    /// POST /accounts/{account_id}/workers/scripts/{script_name}/subdomain
+    async fn post_worker_subdomain(
+        &self,
+        script_name: String,
+        enabled: bool,
+        previews_enabled: Option<bool>,
+    ) -> Result<(), DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/workers/scripts/{}/subdomain",
+            self.account_id, script_name
+        );
+
+        // Build the JSON payload. Only include "previews_enabled" if provided.
+        let mut body = serde_json::Map::new();
+        body.insert("enabled".to_string(), json!(enabled));
+        if let Some(preview) = previews_enabled {
+            body.insert("previews_enabled".to_string(), json!(preview));
+        }
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.api_auth.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        Ok(())
     }
 
     async fn get_worker_route(
