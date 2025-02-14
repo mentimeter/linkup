@@ -445,7 +445,7 @@ export default {
 
         assert_eq!(script_name, "linkup-integration-test-script");
         assert_eq!(metadata.main_module, "index.js");
-        assert_eq!(metadata.bindings.len(), 1);
+        assert_eq!(metadata.bindings.len(), 3);
         assert_eq!(metadata.compatibility_date, "2024-12-18");
 
         assert_eq!(parts.len(), 1);
@@ -476,7 +476,7 @@ export default {
 
         assert_eq!(script_name, "linkup-integration-test-script");
         assert_eq!(metadata.main_module, "index.js");
-        assert_eq!(metadata.bindings.len(), 1);
+        assert_eq!(metadata.bindings.len(), 3);
         assert_eq!(metadata.compatibility_date, "2024-12-18");
 
         assert_eq!(parts.len(), 1);
