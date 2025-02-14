@@ -1589,6 +1589,7 @@ name = "linkup-worker"
 version = "0.1.0"
 dependencies = [
  "axum 0.8.1",
+ "base64",
  "cloudflare",
  "console_error_panic_hook",
  "futures",
