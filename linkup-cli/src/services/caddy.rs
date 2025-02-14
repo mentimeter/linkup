@@ -142,7 +142,7 @@ impl Caddy {
                 .arg("start")
                 .arg("--pidfile")
                 .arg(&self.pidfile_path)
-                .stdin(Stdio::null())
+                .stdin(std::process::Stdio::null())
                 .stdout(stdout_file)
                 .stderr(stderr_file)
                 .status()?
