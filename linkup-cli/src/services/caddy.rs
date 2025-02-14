@@ -164,14 +164,6 @@ impl Caddy {
     }
 
     fn write_caddyfile(&self, worker_url: &Url, domains: &[String]) -> Result<(), Error> {
-        let cloudflare_kv_config = "
-            storage cloudflare_kv {{
-                api_token       {{env.LINKUP_CLOUDFLARE_API_TOKEN}}
-                account_id      {{env.LINKUP_CLOUDFLARE_ACCOUNT_ID}}
-                namespace_id    {{env.LINKUP_CLOUDFLARE_KV_NAMESPACE_ID}}
-            }}
-        ";
-
         let caddy_template = format!(
             "
             {{
@@ -180,7 +172,10 @@ impl Caddy {
                 log {{
                     output file {}
                 }}
-                {}
+                storage linkup {{
+                    worker_url \"{}\"
+                    token \"{{env.LINKUP_WORKER_TOKEN}}\"
+                }}
             }}
 
             {} {{
@@ -189,13 +184,13 @@ impl Caddy {
                     resolvers 1.1.1.1
                     dns linkup {{
                         worker_url \"{}\"
-                        token \"\"
+                        token \"{{env.LINKUP_WORKER_TOKEN}}\"
                     }}
                 }}
             }}
             ",
             self.stdout_file_path.display(),
-            &cloudflare_kv_config,
+            worker_url.as_str(),
             domains.join(", "),
             LINKUP_LOCAL_SERVER_PORT,
             worker_url.as_str(),
@@ -207,11 +202,7 @@ impl Caddy {
     }
 
     pub fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
-        for env_var in [
-            "LINKUP_CLOUDFLARE_API_TOKEN",
-            "LINKUP_CLOUDFLARE_ACCOUNT_ID",
-            "LINKUP_CLOUDFLARE_KV_NAMESPACE_ID",
-        ] {
+        for env_var in ["LINKUP_WORKER_TOKEN"] {
             if env::var(env_var).is_err() {
                 return Err(Error::MissingEnvVar(env_var.into()));
             }
