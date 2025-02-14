@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
 
 pub(super) const LINKUP_ACCOUNT_TOKEN_NAME: &str = "linkup-account-owned-cli-access-token";
-const LINKUP_SCRIPT_NAME: &str = "linkup-worker";
+const LINKUP_SCRIPT_NAME: &str = "linkup-worker-ninja";
 // To build the worker script, run in the worker directory:
 // cargo install -q worker-build && worker-build --release
 const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../../worker/build/worker/shim.mjs");
@@ -18,7 +18,8 @@ pub struct TargetCfResources {
     pub worker_script_name: String,
     pub worker_script_parts: Vec<WorkerScriptPart>,
     pub worker_script_entry: String,
-    pub kv_name: String,
+    pub worker_script_bindings: Vec<WorkerBinding>,
+    pub kv_namespaces: Vec<KvNamespace>,
     pub zone_resources: TargectCfZoneResources,
 }
 
@@ -66,7 +67,7 @@ pub struct WorkerScriptInfo {}
 #[derive(Debug, Clone)]
 pub struct WorkerMetadata {
     pub main_module: String,
-    pub bindings: Vec<WorkerKVBinding>,
+    pub bindings: Vec<WorkerBinding>,
     pub compatibility_date: String,
     pub tag: String,
 }
@@ -98,10 +99,10 @@ impl fmt::Display for WorkerScriptPart {
 }
 
 #[derive(Debug, Clone)]
-pub struct WorkerKVBinding {
-    pub type_: String,
-    pub name: String,
-    pub namespace_id: String,
+pub enum WorkerBinding {
+    KvNamespace { name: String, namespace_id: String },
+    PlainText { name: String, text: String },
+    SecretText { name: String, text: String },
 }
 
 #[derive(Debug, Clone)]
@@ -127,7 +128,7 @@ pub struct Rule {
 /// resources to match the desired state.
 #[derive(Debug, Default)]
 pub struct DeployPlan {
-    pub kv_action: Option<KvPlan>,
+    pub kv_actions: Vec<KvPlan>,
     pub script_action: Option<WorkerScriptPlan>,
     pub worker_subdomain_action: Option<WorkerSubdomainPlan>,
     pub dns_actions: Vec<DnsRecordPlan>,
@@ -141,6 +142,12 @@ pub struct DeployPlan {
 pub enum KvPlan {
     /// Create the KV namespace with the given name.
     Create { namespace_name: String },
+}
+
+#[derive(Debug, Clone)]
+pub struct KvNamespace {
+    pub name: String,
+    pub binding: String,
 }
 
 /// Plan describing how to reconcile a worker script.
@@ -199,7 +206,7 @@ pub struct DestroyPlan {
     pub remove_worker_script: Option<String>,
 
     /// ID of the KV namespace that should be removed (if any).
-    pub remove_kv_namespace: Option<String>,
+    pub remove_kv_namespaces: Vec<String>,
 
     /// (zone_id, dns_record_id) for each DNS record to remove.
     pub remove_dns_records: Vec<(String, String)>,
@@ -218,7 +225,7 @@ impl DestroyPlan {
     /// Return true if nothing needs to be removed.
     pub fn is_empty(&self) -> bool {
         self.remove_worker_script.is_none()
-            && self.remove_kv_namespace.is_none()
+            && self.remove_kv_namespaces.is_empty()
             && self.remove_dns_records.is_empty()
             && self.remove_worker_routes.is_empty()
             && self.remove_rulesets.is_empty()
@@ -232,16 +239,16 @@ impl TargetCfResources {
         &self,
         api: &impl CloudflareApi,
     ) -> Result<DeployPlan, DeployError> {
-        let kv_action = self.check_kv_namespace(api).await?;
-        let script_action = self.check_worker_script(api).await?;
+        let account_token_action = self.check_account_token(api).await?;
+        let kv_action = self.check_kv_namespaces(api).await?;
+        let script_action = self.check_worker_script(api, &account_token_action).await?;
         let worker_subdomain_action = self.check_worker_subdomain(api).await?;
         let dns_actions = self.check_dns_records(api).await?;
         let route_actions = self.check_worker_routes(api).await?;
         let ruleset_actions = self.check_rulesets(api).await?;
-        let account_token_action = self.check_account_token(api).await?;
 
         Ok(DeployPlan {
-            kv_action,
+            kv_actions: kv_action,
             script_action,
             dns_actions,
             route_actions,
@@ -251,26 +258,29 @@ impl TargetCfResources {
         })
     }
     /// Check if the KV namespace exists and return the plan if not.
-    pub async fn check_kv_namespace(
+    pub async fn check_kv_namespaces(
         &self,
         api: &impl CloudflareApi,
-    ) -> Result<Option<KvPlan>, DeployError> {
-        let existing = api.get_kv_namespace_id(self.kv_name.clone()).await?;
-        if existing.is_none() {
-            // We need to create this KV namespace
-            Ok(Some(KvPlan::Create {
-                namespace_name: self.kv_name.clone(),
-            }))
-        } else {
-            // KV namespace is already present, no plan needed
-            Ok(None)
+    ) -> Result<Vec<KvPlan>, DeployError> {
+        let mut plans = Vec::with_capacity(self.kv_namespaces.len());
+        for kv_namespace in &self.kv_namespaces {
+            let existing = api.get_kv_namespace_id(kv_namespace.name.clone()).await?;
+            if existing.is_none() {
+                // We need to create this KV namespace
+                plans.push(KvPlan::Create {
+                    namespace_name: kv_namespace.name.clone(),
+                });
+            }
         }
+
+        Ok(plans)
     }
 
     /// Check if the worker script needs to be uploaded. Return the plan if an upload is needed.
     pub async fn check_worker_script(
         &self,
         api: &impl CloudflareApi,
+        account_token_plan: &Option<AccountTokenPlan>,
     ) -> Result<Option<WorkerScriptPlan>, DeployError> {
         let script_name = &self.worker_script_name;
         let last_version = api.get_worker_script_version(script_name.clone()).await?;
@@ -284,17 +294,33 @@ impl TargetCfResources {
         };
 
         if needs_upload {
+            let mut bindings = Vec::with_capacity(self.kv_namespaces.len());
+            for kv_namespace in &self.kv_namespaces {
+                bindings.push(WorkerBinding::KvNamespace {
+                    name: kv_namespace.binding.clone(),
+                    namespace_id: "<to-be-filled-on-deploy>".to_string(),
+                });
+            }
+
+            for binding in &self.worker_script_bindings {
+                bindings.push(binding.clone());
+            }
+
+            if account_token_plan.is_some() {
+                bindings.push(WorkerBinding::SecretText {
+                    name: "CLOUDFLARE_API_TOKEN".to_string(),
+                    text: "<to-be-filled-on-deploy>".to_string(),
+                });
+            }
+
             // Construct the metadata
             let metadata = WorkerMetadata {
                 main_module: self.worker_script_entry.clone(),
-                bindings: vec![WorkerKVBinding {
-                    type_: "kv_namespace".to_string(),
-                    name: "LINKUP_SESSIONS".to_string(),
-                    namespace_id: "<to-be-filled-on-deploy>".to_string(),
-                }],
+                bindings,
                 compatibility_date: "2024-12-18".to_string(),
                 tag: current_version,
             };
+
             Ok(Some(WorkerScriptPlan::Upload {
                 script_name: script_name.clone(),
                 metadata,
@@ -456,10 +482,35 @@ impl TargetCfResources {
         let worker_subdomain = api.get_account_worker_subdomain().await?;
 
         // 1) Reconcile KV
-        if let Some(KvPlan::Create { namespace_name }) = &plan.kv_action {
-            notifier.notify(&format!("Creating KV namespace: {}", namespace_name));
-            let new_id = api.create_kv_namespace(namespace_name.clone()).await?;
-            notifier.notify(&format!("KV namespace created with ID: {}", new_id));
+        for kv_plan in &plan.kv_actions {
+            match kv_plan {
+                KvPlan::Create { namespace_name } => {
+                    notifier.notify(&format!("Creating KV namespace: {}", namespace_name));
+                    let new_id = api.create_kv_namespace(namespace_name.clone()).await?;
+                    notifier.notify(&format!("KV namespace created with ID: {}", new_id));
+                }
+            }
+        }
+
+        let mut token: Option<String> = None;
+        // 6) Reconcile account token
+        if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
+            notifier.notify("Creating account token...");
+
+            let created_token = api.create_account_token(token_name).await?;
+            token = Some(created_token.clone());
+
+            notifier.notify("Account token created successfully");
+            notifier.notify(
+                "-----------------------------------------------------------------------------",
+            );
+            notifier.notify(
+                "-------------------------------- NOTICE -------------------------------------",
+            );
+            notifier.notify(
+                "This is the only time you'll get to see this token, make sure to make a copy.",
+            );
+            notifier.notify(&format!("Access token: {}", created_token));
         }
 
         // 2) Reconcile Worker Script
@@ -470,21 +521,34 @@ impl TargetCfResources {
             parts,
         }) = &plan.script_action
         {
-            let kv_ns_id = api.get_kv_namespace_id(self.kv_name.clone()).await?;
-            let kv_ns_id = kv_ns_id.ok_or_else(|| {
-                DeployError::UnexpectedResponse(
-                    "KV namespace should exist but was not found".to_string(),
-                )
-            })?;
-
-            // Update metadata with correct ID
             let mut final_metadata = metadata.clone();
-            if let Some(binding) = final_metadata
-                .bindings
-                .iter_mut()
-                .find(|b| b.name == "LINKUP_SESSIONS")
-            {
-                binding.namespace_id = kv_ns_id;
+
+            for kv_namespace in &self.kv_namespaces {
+                let kv_ns_id = api.get_kv_namespace_id(kv_namespace.name.clone()).await?;
+                let kv_ns_id = kv_ns_id.ok_or_else(|| {
+                    DeployError::UnexpectedResponse(
+                        "KV namespace should exist but was not found".to_string(),
+                    )
+                })?;
+
+                for binding in final_metadata.bindings.iter_mut() {
+                    if let WorkerBinding::KvNamespace { name, namespace_id } = binding {
+                        if *name == kv_namespace.binding {
+                            *namespace_id = kv_ns_id.clone();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if let Some(token) = token {
+                for binding in final_metadata.bindings.iter_mut() {
+                    if let WorkerBinding::SecretText { name, text } = binding {
+                        if *name == "CLOUDFLARE_API_TOKEN" {
+                            *text = token.clone();
+                        }
+                    }
+                }
             }
 
             notifier.notify("Uploading worker script...");
@@ -578,23 +642,6 @@ impl TargetCfResources {
                 .await?;
         }
 
-        // 6) Reconcile account token
-        if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
-            notifier.notify("Creating account token...");
-            let token = api.create_account_token(token_name).await?;
-            notifier.notify("Account token created successfully");
-            notifier.notify(
-                "-----------------------------------------------------------------------------",
-            );
-            notifier.notify(
-                "-------------------------------- NOTICE -------------------------------------",
-            );
-            notifier.notify(
-                "This is the only time you'll get to see this token, make sure to make a copy.",
-            );
-            notifier.notify(&format!("Access token: {}", token));
-        }
-
         Ok(())
     }
 
@@ -613,9 +660,10 @@ impl TargetCfResources {
         }
 
         // 2) KV namespace
-        let kv_name = &self.kv_name;
-        if let Some(ns_id) = api.get_kv_namespace_id(kv_name.clone()).await? {
-            plan.remove_kv_namespace = Some(ns_id);
+        for kv_namespace in &self.kv_namespaces {
+            if let Some(ns_id) = api.get_kv_namespace_id(kv_namespace.name.clone()).await? {
+                plan.remove_kv_namespaces.push(ns_id);
+            }
         }
 
         // 3) DNS records
@@ -707,13 +755,10 @@ impl TargetCfResources {
         }
 
         // 4) KV namespace
-        if let Some(ns_id) = &plan.remove_kv_namespace {
-            notifier.notify(&format!("Removing KV namespace '{}'...", self.kv_name));
+        for ns_id in &plan.remove_kv_namespaces {
+            notifier.notify(&format!("Removing KV namespace '{}'...", ns_id));
             api.remove_kv_namespace(ns_id.clone()).await?;
-            notifier.notify(&format!(
-                "KV namespace '{}' removed successfully.",
-                self.kv_name
-            ));
+            notifier.notify(&format!("KV namespace '{}' removed successfully.", ns_id));
         }
 
         // 5) Cache rulesets
@@ -763,7 +808,7 @@ impl TargetCfResources {
 impl DeployPlan {
     /// Return `true` if there are no actions to execute.
     pub fn is_empty(&self) -> bool {
-        self.kv_action.is_none()
+        self.kv_actions.is_empty()
             && self.script_action.is_none()
             && self.dns_actions.is_empty()
             && self.route_actions.is_empty()
@@ -790,7 +835,11 @@ pub fn rules_equal(current: &[Rule], desired: &[Rule]) -> bool {
     true
 }
 
-pub fn cf_resources() -> TargetCfResources {
+pub fn cf_resources(
+    account_id: String,
+    tunnel_zone_id: String,
+    all_zone_ids: &[String],
+) -> TargetCfResources {
     TargetCfResources {
         worker_script_name: LINKUP_SCRIPT_NAME.to_string(),
         worker_script_entry: "shim.mjs".to_string(),
@@ -806,8 +855,34 @@ pub fn cf_resources() -> TargetCfResources {
                 content_type: "application/wasm".to_string(),
             },
         ],
-
-        kv_name: "linkup-session-kv".to_string(),
+        worker_script_bindings: vec![
+            WorkerBinding::PlainText {
+                name: "CLOUDFLARE_ACCOUNT_ID".to_string(),
+                text: account_id,
+            },
+            WorkerBinding::PlainText {
+                name: "CLOUDFLARE_TUNNEL_ZONE_ID".to_string(),
+                text: tunnel_zone_id,
+            },
+            WorkerBinding::PlainText {
+                name: "CLOUDLFLARE_ALL_ZONE_IDS".to_string(),
+                text: all_zone_ids.join(","),
+            },
+        ],
+        kv_namespaces: vec![
+            KvNamespace {
+                name: "linkup-session-kv-ninja".to_string(),
+                binding: "LINKUP_SESSIONS".to_string(),
+            },
+            KvNamespace {
+                name: "linkup-tunnels-kv-ninja".to_string(),
+                binding: "LINKUP_TUNNELS".to_string(),
+            },
+            KvNamespace {
+                name: "linkup-certificate-cache-kv-ninja".to_string(),
+                binding: "LINKUP_CERTIFICATE_CACHE".to_string(),
+            },
+        ],
         zone_resources: TargectCfZoneResources {
             dns_records: vec![
                 TargetDNSRecord {

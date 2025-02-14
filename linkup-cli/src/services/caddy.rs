@@ -4,8 +4,10 @@ use std::{
     process::{Command, Stdio},
 };
 
+use url::Url;
+
 use crate::{
-    commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState, signal,
+    commands::local_dns, linkup_bin_dir_path, linkup_file_path, local_config::LocalState, signal,
     LINKUP_CF_TLS_API_ENV_VAR,
 };
 
@@ -62,7 +64,7 @@ impl Caddy {
             .unwrap();
     }
 
-    fn start(&self, domains: &[String]) -> Result<(), Error> {
+    fn start(&self, worker_url: &Url, domains: &[String]) -> Result<(), Error> {
         log::debug!("Starting {}", Self::NAME);
 
         if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
@@ -74,14 +76,14 @@ impl Caddy {
             .map(|domain| format!("{domain}, *.{domain}"))
             .collect();
 
-        self.write_caddyfile(&domains_and_subdomains)?;
+        self.write_caddyfile(worker_url, &domains_and_subdomains)?;
 
         let stdout_file = fs::File::create(&self.stdout_file_path)?;
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
 
         #[cfg(target_os = "macos")]
-        let status = Command::new("caddy")
-            .current_dir(linkup_dir_path())
+        let status = Command::new("./caddy")
+            .current_dir(linkup_bin_dir_path())
             .arg("start")
             .arg("--pidfile")
             .arg(&self.pidfile_path)
@@ -96,8 +98,8 @@ impl Caddy {
             let _ = fs::File::create(&self.pidfile_path)?;
 
             Command::new("sudo")
-                .current_dir(linkup_dir_path())
-                .arg("caddy")
+                .current_dir(linkup_bin_dir_path())
+                .arg("./caddy")
                 .arg("start")
                 .arg("--pidfile")
                 .arg(&self.pidfile_path)
@@ -122,7 +124,7 @@ impl Caddy {
         Ok(())
     }
 
-    fn write_caddyfile(&self, domains: &[String]) -> Result<(), Error> {
+    fn write_caddyfile(&self, worker_url: &Url, domains: &[String]) -> Result<(), Error> {
         let mut redis_storage = String::new();
 
         if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
@@ -163,7 +165,11 @@ impl Caddy {
             {} {{
                 reverse_proxy localhost:{}
                 tls {{
-                    dns cloudflare {{env.{}}}
+                    resolvers 1.1.1.1
+                    dns linkup {{
+                        worker_url \"{}\"
+                        token \"\"
+                    }}
                 }}
             }}
             ",
@@ -171,7 +177,7 @@ impl Caddy {
             redis_storage,
             domains.join(", "),
             LINKUP_LOCAL_SERVER_PORT,
-            LINKUP_CF_TLS_API_ENV_VAR,
+            worker_url.as_str(),
         );
 
         fs::write(&self.caddyfile_path, caddy_template)?;
@@ -244,7 +250,7 @@ impl BackgroundService<Error> for Caddy {
             return Ok(());
         }
 
-        if let Err(e) = self.start(domains) {
+        if let Err(e) = self.start(&state.linkup.remote, domains) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,
