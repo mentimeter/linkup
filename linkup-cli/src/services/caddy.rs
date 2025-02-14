@@ -1,8 +1,6 @@
-use std::{
-    env, fs,
-    path::PathBuf,
-    process::{Command, Stdio},
-};
+use std::{env, fs, path::PathBuf, process::Command};
+
+use url::Url;
 
 use crate::{
     commands::local_dns, current_version, linkup_bin_dir_path, linkup_file_path,
@@ -109,7 +107,7 @@ impl Caddy {
         Ok(())
     }
 
-    fn start(&self, domains: &[String]) -> Result<(), Error> {
+    fn start(&self, worker_url: &Url, domains: &[String]) -> Result<(), Error> {
         log::debug!("Starting {}", Self::NAME);
 
         let domains_and_subdomains: Vec<String> = domains
@@ -117,7 +115,7 @@ impl Caddy {
             .map(|domain| format!("{domain}, *.{domain}"))
             .collect();
 
-        self.write_caddyfile(&domains_and_subdomains)?;
+        self.write_caddyfile(worker_url, &domains_and_subdomains)?;
 
         let stdout_file = fs::File::create(&self.stdout_file_path)?;
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
@@ -165,7 +163,7 @@ impl Caddy {
         Ok(())
     }
 
-    fn write_caddyfile(&self, domains: &[String]) -> Result<(), Error> {
+    fn write_caddyfile(&self, worker_url: &Url, domains: &[String]) -> Result<(), Error> {
         let cloudflare_kv_config = "
             storage cloudflare_kv {{
                 api_token       {{env.LINKUP_CLOUDFLARE_API_TOKEN}}
@@ -188,7 +186,11 @@ impl Caddy {
             {} {{
                 reverse_proxy localhost:{}
                 tls {{
-                    dns cloudflare {{env.LINKUP_CLOUDFLARE_API_TOKEN}}
+                    resolvers 1.1.1.1
+                    dns linkup {{
+                        worker_url \"{}\"
+                        token \"\"
+                    }}
                 }}
             }}
             ",
@@ -196,6 +198,7 @@ impl Caddy {
             &cloudflare_kv_config,
             domains.join(", "),
             LINKUP_LOCAL_SERVER_PORT,
+            worker_url.as_str(),
         );
 
         fs::write(&self.caddyfile_path, caddy_template)?;
@@ -274,7 +277,7 @@ impl BackgroundService<Error> for Caddy {
             return Ok(());
         }
 
-        if let Err(e) = self.start(domains) {
+        if let Err(e) = self.start(&state.linkup.remote, domains) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,

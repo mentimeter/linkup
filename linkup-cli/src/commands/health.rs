@@ -74,6 +74,7 @@ impl Session {
 #[derive(Debug, Serialize)]
 struct EnvironmentVariables {
     cf_api_token: bool,
+    cf_zone_id: bool,
     cf_account_id: bool,
 }
 
@@ -81,6 +82,7 @@ impl EnvironmentVariables {
     fn load() -> Self {
         Self {
             cf_api_token: env::var("LINKUP_CLOUDFLARE_API_TOKEN").is_ok(),
+            cf_zone_id: env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok(),
             cf_account_id: env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok(),
         }
     }
@@ -269,6 +271,13 @@ impl Display for Health {
 
         write!(f, "  - LINKUP_CLOUDFLARE_API_TOKEN   ")?;
         if self.environment_variables.cf_api_token {
+            writeln!(f, "{}", "OK".blue())?;
+        } else {
+            writeln!(f, "{}", "MISSING".yellow())?;
+        }
+
+        write!(f, "  - LINKUP_CLOUDFLARE_ZONE_ID     ")?;
+        if self.environment_variables.cf_zone_id {
             writeln!(f, "{}", "OK".blue())?;
         } else {
             writeln!(f, "{}", "MISSING".yellow())?;

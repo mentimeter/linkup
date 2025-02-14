@@ -1,6 +1,6 @@
 use linkup::{CreatePreviewRequest, UpdateSessionRequest};
 use reqwest::StatusCode;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::local_config::YamlLocalConfig;
@@ -24,6 +24,23 @@ pub struct WorkerClient {
     inner: reqwest::Client,
 }
 
+// TODO: This is a copy of the TunnelData from worker. We can/should probably have a shared one.
+#[derive(Serialize, Deserialize)]
+pub struct TunnelData {
+    pub account_id: String,
+    pub name: String,
+    pub url: String,
+    pub id: String,
+    pub secret: String,
+    pub last_started: u64,
+}
+
+// TODO: This is a copy of the GetTunnelParams from worker. We can/should probably have a shared one.
+#[derive(Serialize)]
+struct GetTunnelParams {
+    session_name: String,
+}
+
 impl WorkerClient {
     pub fn new(url: &Url) -> Self {
         Self {
@@ -33,11 +50,31 @@ impl WorkerClient {
     }
 
     pub async fn preview(&self, params: &CreatePreviewRequest) -> Result<String, Error> {
-        self.post("/preview", params).await
+        self.post("/linkup/preview-session", params).await
     }
 
     pub async fn linkup(&self, params: &UpdateSessionRequest) -> Result<String, Error> {
-        self.post("/linkup", params).await
+        self.post("/linkup/local-session", params).await
+    }
+
+    pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {
+        let query = GetTunnelParams {
+            session_name: String::from(session_name),
+        };
+
+        let endpoint = self.url.join("/linkup/tunnel")?;
+        let response = self.inner.get(endpoint).query(&query).send().await?;
+
+        match response.status() {
+            StatusCode::OK => {
+                let content: TunnelData = response.json().await?;
+                Ok(content)
+            }
+            _ => Err(Error::Response(
+                response.status(),
+                response.text().await.unwrap_or_else(|_| "".to_string()),
+            )),
+        }
     }
 
     async fn post<T: Serialize>(&self, path: &str, params: &T) -> Result<String, Error> {

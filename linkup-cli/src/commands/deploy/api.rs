@@ -1,12 +1,12 @@
-use std::collections::HashMap;
-
 use reqwest::{multipart, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
     auth::CloudflareApiAuth,
-    resources::{DNSRecord, Rule, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart},
+    resources::{
+        DNSRecord, Rule, WorkerBinding, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart,
+    },
     DeployError,
 };
 
@@ -54,7 +54,18 @@ pub trait CloudflareApi {
         record_id: String,
     ) -> Result<(), DeployError>;
 
-    async fn get_worker_subdomain(&self) -> Result<Option<String>, DeployError>;
+    async fn get_account_worker_subdomain(&self) -> Result<Option<String>, DeployError>;
+
+    async fn get_worker_subdomain(
+        &self,
+        script_name: String,
+    ) -> Result<WorkerSubdomain, DeployError>;
+    async fn post_worker_subdomain(
+        &self,
+        script_name: String,
+        enabled: bool,
+        previews_enabled: Option<bool>,
+    ) -> Result<(), DeployError>;
 
     async fn get_worker_route(
         &self,
@@ -302,7 +313,7 @@ pub struct TokenPolicyPermissionGroup {
 pub struct TokenPolicy {
     pub effect: TokenPolicyEffect,
     pub permission_groups: Vec<TokenPolicyPermissionGroup>,
-    pub resources: HashMap<String, String>,
+    pub resources: serde_json::Value,
 }
 
 #[derive(Deserialize, Debug)]
@@ -328,6 +339,12 @@ struct CreateAccountTokenResponse {
 struct ListAccountTokensResponse {
     pub success: bool,
     pub result: Option<Vec<Token>>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct WorkerSubdomain {
+    /// Whether the Worker is available on the workers.dev subdomain.
+    pub enabled: bool,
 }
 
 const WORKER_VERSION_TAG: &str = "LINKUP_VERSION_TAG";
@@ -514,12 +531,28 @@ impl CloudflareApi for AccountCloudflareApi {
         let mut bindings_json: Vec<serde_json::Value> = metadata
             .bindings
             .iter()
-            .map(|b| {
-                json!({
-                    "type": b.type_,
-                    "name": b.name,
-                    "namespace_id": b.namespace_id,
-                })
+            .map(|b| match b {
+                WorkerBinding::KvNamespace { name, namespace_id } => {
+                    json!({
+                        "type": "kv_namespace",
+                        "name": name,
+                        "namespace_id": namespace_id,
+                    })
+                }
+                WorkerBinding::PlainText { name, text } => {
+                    json!({
+                        "type": "plain_text",
+                        "name": name,
+                        "text": text,
+                    })
+                }
+                WorkerBinding::SecretText { name, text } => {
+                    json!({
+                        "type": "secret_text",
+                        "name": name,
+                        "text": text,
+                    })
+                }
             })
             .collect();
 
@@ -884,7 +917,7 @@ impl CloudflareApi for AccountCloudflareApi {
         Ok(())
     }
 
-    async fn get_worker_subdomain(&self) -> Result<Option<String>, DeployError> {
+    async fn get_account_worker_subdomain(&self) -> Result<Option<String>, DeployError> {
         let url = format!(
             "https://api.cloudflare.com/client/v4/accounts/{}/workers/subdomain",
             self.account_id
@@ -918,6 +951,88 @@ impl CloudflareApi for AccountCloudflareApi {
             // success = true but no result.subdomain returned
             Ok(None)
         }
+    }
+
+    /// GET the Worker’s subdomain configuration for a given script.
+    /// This hits the endpoint:
+    /// GET /accounts/{account_id}/workers/scripts/{script_name}/subdomain
+    async fn get_worker_subdomain(
+        &self,
+        script_name: String,
+    ) -> Result<WorkerSubdomain, DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/workers/scripts/{}/subdomain",
+            self.account_id, script_name
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.api_auth.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        #[derive(Deserialize)]
+        struct WorkerSubdomainResponse {
+            result: WorkerSubdomain,
+        }
+
+        let data: WorkerSubdomainResponse = resp.json().await?;
+        Ok(data.result)
+    }
+
+    /// POST to update the Worker’s subdomain configuration for a given script.
+    /// This sends a JSON body with the fields:
+    /// - enabled: whether the worker is available on workers.dev.
+    /// - previews_enabled: whether preview URLs are enabled.
+    ///
+    /// Endpoint:
+    /// POST /accounts/{account_id}/workers/scripts/{script_name}/subdomain
+    async fn post_worker_subdomain(
+        &self,
+        script_name: String,
+        enabled: bool,
+        previews_enabled: Option<bool>,
+    ) -> Result<(), DeployError> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/accounts/{}/workers/scripts/{}/subdomain",
+            self.account_id, script_name
+        );
+
+        // Build the JSON payload. Only include "previews_enabled" if provided.
+        let mut body = serde_json::Map::new();
+        body.insert("enabled".to_string(), json!(enabled));
+        if let Some(preview) = previews_enabled {
+            body.insert("previews_enabled".to_string(), json!(preview));
+        }
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.api_auth.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status().to_string();
+            let text = resp.text().await?;
+            return Err(DeployError::UnexpectedResponse(format!(
+                "{}: {}",
+                status, text
+            )));
+        }
+
+        Ok(())
     }
 
     async fn get_worker_route(
@@ -1259,24 +1374,26 @@ impl CloudflareApi for AccountCloudflareApi {
             self.account_id
         );
 
-        let mut zone_resources = HashMap::new();
-        for zone_id in &self.zone_ids {
-            zone_resources.insert(
-                format!("com.cloudflare.api.account.zone.{}", zone_id),
-                "*".to_string(),
-            );
-        }
-
         let payload = CreateAccountToken {
             name: name.to_string(),
             policies: vec![
                 TokenPolicy {
                     effect: TokenPolicyEffect::Allow,
-                    permission_groups: vec![TokenPolicyPermissionGroup {
-                        id: "4755a26eedb94da69e1066d98aa820be".to_string(),
-                        name: "DNS Write".to_string(),
-                    }],
-                    resources: zone_resources,
+                    permission_groups: vec![
+                        TokenPolicyPermissionGroup {
+                            id: "c8fed203ed3043cba015a93ad1616f1f".to_string(),
+                            name: "Zone Read".to_string(),
+                        },
+                        TokenPolicyPermissionGroup {
+                            id: "4755a26eedb94da69e1066d98aa820be".to_string(),
+                            name: "DNS Write".to_string(),
+                        },
+                    ],
+                    resources: serde_json::json!({
+                        format!("com.cloudflare.api.account.{}", self.account_id): {
+                            "com.cloudflare.api.account.zone.*": "*"
+                        }
+                    }),
                 },
                 TokenPolicy {
                     effect: TokenPolicyEffect::Allow,
@@ -1290,10 +1407,9 @@ impl CloudflareApi for AccountCloudflareApi {
                             name: "Cloudflare Tunnel Write".to_string(),
                         },
                     ],
-                    resources: HashMap::from([(
-                        format!("com.cloudflare.api.account.{}", self.account_id),
-                        "*".to_string(),
-                    )]),
+                    resources: serde_json::json!({
+                        format!("com.cloudflare.api.account.{}", self.account_id): "*"
+                    }),
                 },
             ],
         };

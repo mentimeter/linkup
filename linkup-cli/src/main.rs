@@ -10,7 +10,6 @@ mod local_config;
 mod release;
 mod services;
 mod signal;
-mod system;
 mod worker_client;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -40,6 +39,12 @@ pub fn linkup_bin_dir_path() -> PathBuf {
 pub fn linkup_file_path(file: &str) -> PathBuf {
     let mut path = linkup_dir_path();
     path.push(file);
+    path
+}
+
+pub fn linkup_bin_dir_path() -> PathBuf {
+    let mut path = linkup_dir_path();
+    path.push("bin");
     path
 }
 
