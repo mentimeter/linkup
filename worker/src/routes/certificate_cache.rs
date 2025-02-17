@@ -3,7 +3,7 @@
 use axum::{
     extract::{self, State},
     response::IntoResponse,
-    routing::put,
+    routing::{get, put},
     Json, Router,
 };
 use base64::prelude::*;
@@ -14,11 +14,35 @@ use worker::console_log;
 use crate::LinkupState;
 
 pub fn router() -> Router<LinkupState> {
-    Router::new().route(
-        "/linkup/certificate-cache/{key}",
-        put(upsert_certificate_cache_handler)
-            .get(get_certificate_cache_handler)
-            .delete(delete_certificate_cache_handler),
+    Router::new()
+        .route(
+            "/linkup/certificate-cache/keys",
+            get(list_certificate_cache_keys_handler),
+        )
+        .route(
+            "/linkup/certificate-cache/{key}",
+            put(upsert_certificate_cache_handler)
+                .get(get_certificate_cache_handler)
+                .delete(delete_certificate_cache_handler),
+        )
+}
+
+#[worker::send]
+async fn list_certificate_cache_keys_handler(
+    State(state): State<LinkupState>,
+) -> impl IntoResponse {
+    Json(
+        state
+            .certs_kv
+            .list()
+            .limit(1000)
+            .execute()
+            .await
+            .unwrap()
+            .keys
+            .iter()
+            .map(|key| key.name.clone())
+            .collect::<Vec<String>>(),
     )
 }
 
