@@ -400,6 +400,7 @@ mod tests {
     const CONF_STR: &str = r#"
 linkup:
   remote: https://remote-linkup.example.com
+  worker_token: test_token_123
 services:
   - name: frontend
     remote: http://remote-service1.example.com
@@ -437,6 +438,10 @@ domains:
         assert_eq!(
             local_state.linkup.remote,
             Url::parse("https://remote-linkup.example.com").unwrap()
+        );
+        assert_eq!(
+            local_state.linkup.worker_token,
+            String::from("test_token_123"),
         );
 
         assert_eq!(local_state.services.len(), 2);
