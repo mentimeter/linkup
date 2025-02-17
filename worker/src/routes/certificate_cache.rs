@@ -31,6 +31,7 @@ pub fn router() -> Router<LinkupState> {
 async fn list_certificate_cache_keys_handler(
     State(state): State<LinkupState>,
 ) -> impl IntoResponse {
+    // TODO(augustoccesar)[2025-02-17]: Add pagination here. We should be fine with 1000 for now, but might be a problem in the future.
     Json(
         state
             .certs_kv
