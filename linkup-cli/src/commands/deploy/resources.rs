@@ -393,7 +393,7 @@ impl TargetCfResources {
         let mut plans = Vec::new();
 
         for zone_id in api.zone_ids() {
-            let zone_name = api.get_zone_name(zone_id.clone()).await?;
+            let zone_name = api.get_zone_name(zone_id).await?;
             for route_config in &self.zone_resources.routes {
                 let route_pattern = route_config.worker_route(zone_name.clone());
                 let script_name = route_config.script.clone();
@@ -679,7 +679,7 @@ impl TargetCfResources {
 
         // 4) Worker routes
         for zone_id in api.zone_ids() {
-            let zone_name = api.get_zone_name(zone_id.clone()).await?;
+            let zone_name = api.get_zone_name(zone_id).await?;
             for route_config in &self.zone_resources.routes {
                 let pattern = route_config.worker_route(zone_name.clone());
                 let script_name = route_config.script.clone();

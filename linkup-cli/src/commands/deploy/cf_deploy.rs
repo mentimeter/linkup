@@ -58,9 +58,7 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
     );
     let notifier = ConsoleNotifier::new();
 
-    let tunnel_zone_name = cloudflare_api
-        .get_zone_name(args.zone_ids[0].clone())
-        .await?;
+    let tunnel_zone_name = cloudflare_api.get_zone_name(&args.zone_ids[0]).await?;
 
     let resources = cf_resources(
         args.account_id.clone(),
@@ -272,7 +270,7 @@ export default {
             Ok(())
         }
 
-        async fn get_zone_name(&self, _zone_id: String) -> Result<String, DeployError> {
+        async fn get_zone_name(&self, _zone_id: &str) -> Result<String, DeployError> {
             Ok("example.com".to_string())
         }
 
@@ -709,7 +707,7 @@ export default {
         }
 
         // Verify Worker route exists
-        let zone_name = cloudflare_api.get_zone_name(zone_id.clone()).await.unwrap();
+        let zone_name = cloudflare_api.get_zone_name(&zone_id).await.unwrap();
         for route_config in &res.zone_resources.routes {
             let existing_route = cloudflare_api
                 .get_worker_route(
