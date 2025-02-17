@@ -58,9 +58,14 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
     );
     let notifier = ConsoleNotifier::new();
 
+    let tunnel_zone_name = cloudflare_api
+        .get_zone_name(args.zone_ids[0].clone())
+        .await?;
+
     let resources = cf_resources(
         args.account_id.clone(),
         args.zone_ids[0].clone(),
+        &tunnel_zone_name,
         &args.zone_ids,
     );
 

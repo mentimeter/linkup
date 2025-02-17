@@ -6,7 +6,6 @@ use sha2::{Digest, Sha256};
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
 
 pub(super) const LINKUP_ACCOUNT_TOKEN_NAME: &str = "linkup-account-owned-cli-access-token";
-const LINKUP_SCRIPT_NAME: &str = "linkup-worker-ninja";
 // To build the worker script, run in the worker directory:
 // cargo install -q worker-build && worker-build --release
 const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../../worker/build/worker/shim.mjs");
@@ -838,10 +837,13 @@ pub fn rules_equal(current: &[Rule], desired: &[Rule]) -> bool {
 pub fn cf_resources(
     account_id: String,
     tunnel_zone_id: String,
+    tunnel_zone_name: &str,
     all_zone_ids: &[String],
 ) -> TargetCfResources {
+    let linkup_script_name = format!("linkup-worker-{tunnel_zone_name}");
+
     TargetCfResources {
-        worker_script_name: LINKUP_SCRIPT_NAME.to_string(),
+        worker_script_name: linkup_script_name.clone(),
         worker_script_entry: "shim.mjs".to_string(),
         worker_script_parts: vec![
             WorkerScriptPart {
@@ -871,15 +873,15 @@ pub fn cf_resources(
         ],
         kv_namespaces: vec![
             KvNamespace {
-                name: "linkup-session-kv-ninja".to_string(),
+                name: format!("linkup-session-kv-{tunnel_zone_name}"),
                 binding: "LINKUP_SESSIONS".to_string(),
             },
             KvNamespace {
-                name: "linkup-tunnels-kv-ninja".to_string(),
+                name: format!("linkup-tunnels-kv-{tunnel_zone_name}"),
                 binding: "LINKUP_TUNNELS".to_string(),
             },
             KvNamespace {
-                name: "linkup-certificate-cache-kv-ninja".to_string(),
+                name: format!("linkup-certificate-cache-kv-{tunnel_zone_name}"),
                 binding: "LINKUP_CERTIFICATE_CACHE".to_string(),
             },
         ],
@@ -887,21 +889,21 @@ pub fn cf_resources(
             dns_records: vec![
                 TargetDNSRecord {
                     route: "*".to_string(),
-                    script: LINKUP_SCRIPT_NAME.to_string(),
+                    script: linkup_script_name.clone(),
                 },
                 TargetDNSRecord {
                     route: "@".to_string(),
-                    script: LINKUP_SCRIPT_NAME.to_string(),
+                    script: linkup_script_name.clone(),
                 },
             ],
             routes: vec![
                 TargetWorkerRoute {
                     route: "*.".to_string(),
-                    script: LINKUP_SCRIPT_NAME.to_string(),
+                    script: linkup_script_name.clone(),
                 },
                 TargetWorkerRoute {
                     route: "".to_string(),
-                    script: LINKUP_SCRIPT_NAME.to_string(),
+                    script: linkup_script_name.clone(),
                 },
             ],
             cache_rules: TargetCacheRules {
