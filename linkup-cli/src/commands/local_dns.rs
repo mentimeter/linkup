@@ -6,9 +6,9 @@ use std::{
 use clap::Subcommand;
 
 use crate::{
-    is_sudo,
+    commands, is_sudo,
     local_config::{config_path, get_config},
-    services, sudo_su, CliError, Result, LINKUP_CF_TLS_API_ENV_VAR,
+    services, sudo_su, CliError, Result,
 };
 
 #[derive(clap::Args)]
@@ -23,26 +23,14 @@ pub enum LocalDNSSubcommand {
     Uninstall,
 }
 
-pub fn local_dns(args: &Args, config: &Option<String>) -> Result<()> {
+pub async fn local_dns(args: &Args, config: &Option<String>) -> Result<()> {
     match args.subcommand {
-        LocalDNSSubcommand::Install => install(config),
+        LocalDNSSubcommand::Install => install(config).await,
         LocalDNSSubcommand::Uninstall => uninstall(config),
     }
 }
 
-pub fn install(config_arg: &Option<String>) -> Result<()> {
-    if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
-        println!("local-dns uses Cloudflare to enable https through local certificates.");
-        println!(
-            "To use it, you need to set the {} environment variable.",
-            LINKUP_CF_TLS_API_ENV_VAR
-        );
-        return Err(CliError::LocalDNSInstall(format!(
-            "{} env var is not set",
-            LINKUP_CF_TLS_API_ENV_VAR
-        )));
-    }
-
+pub async fn install(config_arg: &Option<String>) -> Result<()> {
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
@@ -55,11 +43,16 @@ pub fn install(config_arg: &Option<String>) -> Result<()> {
         sudo_su()?;
     }
 
+    commands::stop(&commands::StopArgs {}, false)?;
+
     ensure_resolver_dir()?;
     install_resolvers(&input_config.top_level_domains())?;
 
-    println!("Installing extra caddy packages, this could take a while...");
-    services::Caddy::install_extra_packages();
+    println!("Installing Caddy...");
+
+    services::Caddy::install()
+        .await
+        .map_err(|e| CliError::LocalDNSInstall(e.to_string()))?;
 
     Ok(())
 }
@@ -73,6 +66,8 @@ pub fn uninstall(config_arg: &Option<String>) -> Result<()> {
         println!("  - Delete file(s) on /etc/resolver");
         println!("  - Flush DNS cache");
     }
+
+    commands::stop(&commands::StopArgs {}, false)?;
 
     uninstall_resolvers(&input_config.top_level_domains())?;
 

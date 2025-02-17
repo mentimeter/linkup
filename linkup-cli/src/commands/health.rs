@@ -73,19 +73,13 @@ impl Session {
 
 #[derive(Debug, Serialize)]
 struct EnvironmentVariables {
-    cf_api_token: bool,
-    cf_zone_id: bool,
-    cf_account_id: bool,
-    cert_storage_redis_url: bool,
+    linkup_worker_token: bool,
 }
 
 impl EnvironmentVariables {
     fn load() -> Self {
         Self {
-            cf_api_token: env::var("LINKUP_CF_API_TOKEN").is_ok(),
-            cf_zone_id: env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok(),
-            cf_account_id: env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok(),
-            cert_storage_redis_url: env::var("LINKUP_CERT_STORAGE_REDIS_URL").is_ok(),
+            linkup_worker_token: env::var("LINKUP_WORKER_TOKEN").is_ok(),
         }
     }
 }
@@ -271,29 +265,8 @@ impl Display for Health {
 
         writeln!(f, "{}", "Environment variables:".bold().italic())?;
 
-        write!(f, "  - LINKUP_CF_API_TOKEN           ")?;
-        if self.environment_variables.cf_api_token {
-            writeln!(f, "{}", "OK".blue())?;
-        } else {
-            writeln!(f, "{}", "MISSING".yellow())?;
-        }
-
-        write!(f, "  - LINKUP_CLOUDFLARE_ZONE_ID     ")?;
-        if self.environment_variables.cf_zone_id {
-            writeln!(f, "{}", "OK".blue())?;
-        } else {
-            writeln!(f, "{}", "MISSING".yellow())?;
-        }
-
-        write!(f, "  - LINKUP_CLOUDFLARE_ACCOUNT_ID  ")?;
-        if self.environment_variables.cf_account_id {
-            writeln!(f, "{}", "OK".blue())?;
-        } else {
-            writeln!(f, "{}", "MISSING".yellow())?;
-        }
-
-        write!(f, "  - LINKUP_CERT_STORAGE_REDIS_URL ")?;
-        if self.environment_variables.cert_storage_redis_url {
+        write!(f, "  - LINKUP_WORKER_TOKEN   ")?;
+        if self.environment_variables.linkup_worker_token {
             writeln!(f, "{}", "OK".blue())?;
         } else {
             writeln!(f, "{}", "MISSING".yellow())?;

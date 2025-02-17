@@ -11,6 +11,7 @@ axum = { version = "0.8.1", features = [
     "json",
     "query",
 ], default-features = false }
+base64 = "0.22.1"
 console_error_panic_hook = { version = "0.1.7" }
 cloudflare = { path = "../cloudflare" }
 futures = "0.3.31"
