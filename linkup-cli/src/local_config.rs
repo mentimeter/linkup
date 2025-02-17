@@ -93,6 +93,7 @@ impl LocalState {
 pub struct LinkupState {
     pub session_name: String,
     pub session_token: String,
+    pub worker_token: String,
     pub config_path: String,
     pub remote: Url,
     pub tunnel: Option<Url>,
@@ -179,6 +180,7 @@ impl YamlLocalConfig {
 #[derive(Deserialize, Clone)]
 pub struct LinkupConfig {
     pub remote: Url,
+    pub worker_token: String,
     cache_routes: Option<Vec<String>>,
 }
 
@@ -218,6 +220,7 @@ pub fn config_to_state(
         is_paid: Some(is_paid),
         session_name: String::new(),
         session_token: random_token,
+        worker_token: yaml_config.linkup.worker_token,
         config_path,
         remote: yaml_config.linkup.remote,
         tunnel,
