@@ -53,17 +53,21 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
 
     let cloudflare_api = AccountCloudflareApi::new(
         args.account_id.to_string(),
-        zone_ids_strings,
+        zone_ids_strings.clone(),
         Box::new(auth),
     );
     let notifier = ConsoleNotifier::new();
 
-    let tunnel_zone_name = cloudflare_api.get_zone_name(&args.zone_ids[0]).await?;
+    let mut zone_names = Vec::with_capacity(zone_ids_strings.len());
+    for zone_id in zone_ids_strings {
+        let zone_name = cloudflare_api.get_zone_name(&zone_id).await?;
+        zone_names.push(zone_name);
+    }
 
     let resources = cf_resources(
         args.account_id.clone(),
         args.zone_ids[0].clone(),
-        &tunnel_zone_name,
+        &zone_names,
         &args.zone_ids,
     );
 

@@ -837,10 +837,11 @@ pub fn rules_equal(current: &[Rule], desired: &[Rule]) -> bool {
 pub fn cf_resources(
     account_id: String,
     tunnel_zone_id: String,
-    tunnel_zone_name: &str,
+    all_zone_names: &[String],
     all_zone_ids: &[String],
 ) -> TargetCfResources {
-    let linkup_script_name = format!("linkup-worker-{tunnel_zone_name}");
+    let joined_zone_names = all_zone_names.join("-");
+    let linkup_script_name = format!("linkup-worker-{joined_zone_names}");
 
     TargetCfResources {
         worker_script_name: linkup_script_name.clone(),
@@ -873,15 +874,15 @@ pub fn cf_resources(
         ],
         kv_namespaces: vec![
             KvNamespace {
-                name: format!("linkup-session-kv-{tunnel_zone_name}"),
+                name: format!("linkup-session-kv-{joined_zone_names}"),
                 binding: "LINKUP_SESSIONS".to_string(),
             },
             KvNamespace {
-                name: format!("linkup-tunnels-kv-{tunnel_zone_name}"),
+                name: format!("linkup-tunnels-kv-{joined_zone_names}"),
                 binding: "LINKUP_TUNNELS".to_string(),
             },
             KvNamespace {
-                name: format!("linkup-certificate-cache-kv-{tunnel_zone_name}"),
+                name: format!("linkup-certificate-cache-kv-{joined_zone_names}"),
                 binding: "LINKUP_CERTIFICATE_CACHE".to_string(),
             },
         ],
