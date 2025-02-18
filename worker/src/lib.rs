@@ -116,8 +116,14 @@ async fn get_tunnel_handler(
     let tunnel_data: Option<TunnelData> = kv.get(&tunnel_name).json().await.unwrap();
 
     match tunnel_data {
-        Some(tunnel_data) => {
-            // TODO: Update the last_started field to `now`.
+        Some(mut tunnel_data) => {
+            tunnel_data.last_started = worker::Date::now().as_millis();
+            kv.put(&tunnel_name, &tunnel_data)
+                .unwrap()
+                .execute()
+                .await
+                .unwrap();
+
             return Json(tunnel_data);
         }
         None => {
