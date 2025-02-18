@@ -55,8 +55,8 @@ pub fn linkup_router() -> Router {
     let client = https_client();
 
     Router::new()
-        .route("/linkup", post(linkup_config_handler))
-        .route("/linkup-check", get(always_ok))
+        .route("/linkup/local-session", post(linkup_config_handler))
+        .route("/linkup/check", get(always_ok))
         .fallback(any(linkup_request_handler))
         .layer(Extension(config_store))
         .layer(Extension(client))

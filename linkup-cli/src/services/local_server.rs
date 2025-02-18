@@ -105,7 +105,7 @@ impl LocalServer {
             .build()
             .expect("failed while creating an HTTP client to check readiness of LocalServer");
 
-        let url = format!("{}linkup-check", Self::url());
+        let url = format!("{}linkup/check", Self::url());
         let response = client.get(url).send().await;
 
         matches!(response, Ok(res) if res.status() == StatusCode::OK)

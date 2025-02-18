@@ -1,12 +1,10 @@
-use std::{
-    fs,
-    path::PathBuf,
-    process::{Command, Stdio},
-};
+use std::{env, fs, path::PathBuf, process::Command};
+
+use url::Url;
 
 use crate::{
-    commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState, signal,
-    LINKUP_CF_TLS_API_ENV_VAR,
+    commands::local_dns, current_version, linkup_bin_dir_path, linkup_dir_path, linkup_file_path,
+    local_config::LocalState, release, signal,
 };
 
 use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
@@ -17,12 +15,22 @@ pub enum Error {
     Starting,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
-    #[error("Cloudflare TLS API token is required for local-dns Cloudflare TLS certificates.")]
-    MissingTlsApiTokenEnv,
-    #[error("Redis shared storage is a new feature! You need to uninstall and reinstall local-dns to use it.")]
-    MissingRedisInstalation,
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum InstallError {
+    #[error("Failed while handing file: {0}")]
+    FileHandling(#[from] std::io::Error),
+    #[error("Failed to fetch release information: {0}")]
+    FetchError(#[from] reqwest::Error),
+    #[error("Release not found for version {0}")]
+    ReleaseNotFound(release::Version),
+    #[error("Caddy asset not found on release for version {0}")]
+    AssetNotFound(release::Version),
+    #[error("Failed to download Caddy asset: {0}")]
+    AssetDownload(String),
 }
 
 pub struct Caddy {
@@ -42,45 +50,76 @@ impl Caddy {
         }
     }
 
-    pub fn install_extra_packages() {
-        Command::new("sudo")
-            .args(["caddy", "add-package", "github.com/caddy-dns/cloudflare"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap();
+    pub async fn install() -> Result<(), InstallError> {
+        let bin_dir_path = linkup_bin_dir_path();
+        fs::create_dir_all(&bin_dir_path)?;
 
-        Command::new("sudo")
-            .args([
-                "caddy",
-                "add-package",
-                "github.com/pberkel/caddy-storage-redis",
-            ])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .unwrap();
+        let mut caddy_path = bin_dir_path.clone();
+        caddy_path.push("caddy");
+
+        if fs::exists(&caddy_path)? {
+            log::debug!(
+                "Caddy executable already exists on {}",
+                &bin_dir_path.display()
+            );
+            return Ok(());
+        }
+
+        let version = current_version();
+        match release::fetch_release(&version).await? {
+            Some(release) => {
+                let os = env::consts::OS;
+                let arch = env::consts::ARCH;
+
+                match release.caddy_asset(os, arch) {
+                    Some(asset) => match asset.download_decompressed("caddy").await {
+                        Ok(downloaded_caddy_path) => {
+                            log::debug!(
+                                "Moving downloaded Caddy file from {:?} to {:?}",
+                                &downloaded_caddy_path,
+                                &caddy_path
+                            );
+
+                            fs::copy(&downloaded_caddy_path, &caddy_path)?;
+                            fs::remove_file(&downloaded_caddy_path)?;
+                        }
+                        Err(error) => return Err(InstallError::AssetDownload(error.to_string())),
+                    },
+                    None => {
+                        log::warn!(
+                            "Failed to find Caddy asset on release for version {}",
+                            &version
+                        );
+
+                        return Err(InstallError::AssetNotFound(version.clone()));
+                    }
+                }
+            }
+            None => {
+                log::warn!("Failed to find release for version {}", &version);
+
+                return Err(InstallError::ReleaseNotFound(version.clone()));
+            }
+        }
+
+        Ok(())
     }
 
-    fn start(&self, domains: &[String]) -> Result<(), Error> {
+    fn start(&self, worker_url: &Url, worker_token: &str, domains: &[String]) -> Result<(), Error> {
         log::debug!("Starting {}", Self::NAME);
-
-        if std::env::var(LINKUP_CF_TLS_API_ENV_VAR).is_err() {
-            return Err(Error::MissingTlsApiTokenEnv);
-        }
 
         let domains_and_subdomains: Vec<String> = domains
             .iter()
             .map(|domain| format!("{domain}, *.{domain}"))
             .collect();
 
-        self.write_caddyfile(&domains_and_subdomains)?;
+        self.write_caddyfile(worker_url, worker_token, &domains_and_subdomains)?;
 
         let stdout_file = fs::File::create(&self.stdout_file_path)?;
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
 
         #[cfg(target_os = "macos")]
-        let status = Command::new("caddy")
+        let status = Command::new("./bin/caddy")
             .current_dir(linkup_dir_path())
             .arg("start")
             .arg("--pidfile")
@@ -97,11 +136,11 @@ impl Caddy {
 
             Command::new("sudo")
                 .current_dir(linkup_dir_path())
-                .arg("caddy")
+                .arg("./bin/caddy")
                 .arg("start")
                 .arg("--pidfile")
                 .arg(&self.pidfile_path)
-                .stdin(Stdio::null())
+                .stdin(std::process::Stdio::null())
                 .stdout(stdout_file)
                 .stderr(stderr_file)
                 .status()?
@@ -122,32 +161,15 @@ impl Caddy {
         Ok(())
     }
 
-    fn write_caddyfile(&self, domains: &[String]) -> Result<(), Error> {
-        let mut redis_storage = String::new();
-
-        if let Ok(redis_url) = std::env::var("LINKUP_CERT_STORAGE_REDIS_URL") {
-            if !self.check_redis_installed() {
-                return Err(Error::MissingRedisInstalation);
-            }
-
-            let url = url::Url::parse(&redis_url).expect("failed to parse Redis URL");
-            redis_storage = format!(
-                "
-                storage redis {{
-                    host           {}
-                    port           {}
-                    username       \"{}\"
-                    password       \"{}\"
-                    key_prefix     \"caddy\"
-                    compression    true
-                }}
-                ",
-                url.host().unwrap(),
-                url.port().unwrap_or(6379),
-                url.username(),
-                url.password().unwrap(),
-            );
-        }
+    fn write_caddyfile(
+        &self,
+        worker_url: &Url,
+        worker_token: &str,
+        domains: &[String],
+    ) -> Result<(), Error> {
+        let worker_url_str = worker_url.as_str().trim_end_matches('/');
+        let logfile_path = self.stdout_file_path.display();
+        let domains_str = domains.join(", ");
 
         let caddy_template = format!(
             "
@@ -155,23 +177,25 @@ impl Caddy {
                 http_port 80
                 https_port 443
                 log {{
-                    output file {}
+                    output file {logfile_path}
                 }}
-                {}
+                storage linkup {{
+                    worker_url \"{worker_url_str}\"
+                    token \"{worker_token}\"
+                }}
             }}
 
-            {} {{
-                reverse_proxy localhost:{}
+            {domains_str} {{
+                reverse_proxy localhost:{LINKUP_LOCAL_SERVER_PORT}
                 tls {{
-                    dns cloudflare {{env.{}}}
+                    resolvers 1.1.1.1
+                    dns linkup {{
+                        worker_url \"{worker_url_str}\"
+                        token \"{worker_token}\"
+                    }}
                 }}
             }}
             ",
-            self.stdout_file_path.display(),
-            redis_storage,
-            domains.join(", "),
-            LINKUP_LOCAL_SERVER_PORT,
-            LINKUP_CF_TLS_API_ENV_VAR,
         );
 
         fs::write(&self.caddyfile_path, caddy_template)?;
@@ -179,15 +203,11 @@ impl Caddy {
         Ok(())
     }
 
-    fn check_redis_installed(&self) -> bool {
-        let output = Command::new("caddy").arg("list-modules").output().unwrap();
-
-        let output_str = String::from_utf8(output.stdout).unwrap();
-
-        output_str.contains("redis")
-    }
-
     pub fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
+        if !is_installed() {
+            return Ok(false);
+        }
+
         let resolvers = local_dns::list_resolvers()?;
 
         Ok(domains.iter().any(|domain| resolvers.contains(domain)))
@@ -244,7 +264,7 @@ impl BackgroundService<Error> for Caddy {
             return Ok(());
         }
 
-        if let Err(e) = self.start(domains) {
+        if let Err(e) = self.start(&state.linkup.remote, &state.linkup.worker_token, domains) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,
@@ -261,13 +281,8 @@ impl BackgroundService<Error> for Caddy {
 }
 
 pub fn is_installed() -> bool {
-    let res = Command::new("which")
-        .args(["caddy"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .stdin(Stdio::null())
-        .status()
-        .unwrap();
+    let mut caddy_path = linkup_bin_dir_path();
+    caddy_path.push("caddy");
 
-    res.success()
+    caddy_path.exists()
 }

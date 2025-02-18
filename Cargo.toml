@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
 
-members = ["linkup-cli", "linkup", "worker", "local-server", "server-tests"]
+members = ["linkup-cli", "linkup", "worker", "local-server", "server-tests", "cloudflare"]

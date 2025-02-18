@@ -53,12 +53,23 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
 
     let cloudflare_api = AccountCloudflareApi::new(
         args.account_id.to_string(),
-        zone_ids_strings,
+        zone_ids_strings.clone(),
         Box::new(auth),
     );
     let notifier = ConsoleNotifier::new();
 
-    let resources = cf_resources();
+    let mut zone_names = Vec::with_capacity(zone_ids_strings.len());
+    for zone_id in zone_ids_strings {
+        let zone_name = cloudflare_api.get_zone_name(&zone_id).await?;
+        zone_names.push(zone_name);
+    }
+
+    let resources = cf_resources(
+        args.account_id.clone(),
+        args.zone_ids[0].clone(),
+        &zone_names,
+        &args.zone_ids,
+    );
 
     deploy_to_cloudflare(&resources, &cloudflare_api, &notifier).await?;
 
@@ -106,9 +117,9 @@ mod tests {
         api::Token,
         cf_destroy::destroy_from_cloudflare,
         resources::{
-            rules_equal, DNSRecord, Rule, TargectCfZoneResources, TargetCacheRules,
-            TargetDNSRecord, TargetWorkerRoute, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart,
-            LINKUP_ACCOUNT_TOKEN_NAME,
+            rules_equal, DNSRecord, KvNamespace, Rule, TargectCfZoneResources, TargetCacheRules,
+            TargetDNSRecord, TargetWorkerRoute, WorkerBinding, WorkerMetadata, WorkerScriptInfo,
+            WorkerScriptPart, LINKUP_ACCOUNT_TOKEN_NAME,
         },
     };
 
@@ -220,7 +231,7 @@ export default {
             Ok(())
         }
 
-        async fn get_worker_subdomain(&self) -> Result<Option<String>, DeployError> {
+        async fn get_account_worker_subdomain(&self) -> Result<Option<String>, DeployError> {
             // Simulate having no subdomain for testing:
             Ok(None)
         }
@@ -263,7 +274,7 @@ export default {
             Ok(())
         }
 
-        async fn get_zone_name(&self, _zone_id: String) -> Result<String, DeployError> {
+        async fn get_zone_name(&self, _zone_id: &str) -> Result<String, DeployError> {
             Ok("example.com".to_string())
         }
 
@@ -344,6 +355,22 @@ export default {
         async fn remove_account_token(&self, _id: &str) -> Result<(), DeployError> {
             Ok(())
         }
+
+        async fn get_worker_subdomain(
+            &self,
+            _script_name: String,
+        ) -> Result<deploy::api::WorkerSubdomain, DeployError> {
+            Ok(deploy::api::WorkerSubdomain { enabled: true })
+        }
+
+        async fn post_worker_subdomain(
+            &self,
+            _script_name: String,
+            _enabled: bool,
+            _previews_enabled: Option<bool>,
+        ) -> Result<(), DeployError> {
+            Ok(())
+        }
     }
 
     struct TestNotifier {
@@ -372,7 +399,14 @@ export default {
                 data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
                 content_type: "application/javascript+module".to_string(),
             }],
-            kv_name: "linkup-integration-test-kv".to_string(),
+            worker_script_bindings: vec![WorkerBinding::PlainText {
+                name: "INTEGRATION_TEST_ARG".to_string(),
+                text: "plain_text".to_string(),
+            }],
+            kv_namespaces: vec![KvNamespace {
+                name: "linkup-integration-test-kv".to_string(),
+                binding: "LINKUP_SESSIONS".to_string(),
+            }],
             zone_resources: TargectCfZoneResources {
                 dns_records: vec![TargetDNSRecord {
                     route: "linkup-integration-test".to_string(),
@@ -418,7 +452,7 @@ export default {
 
         assert_eq!(script_name, "linkup-integration-test-script");
         assert_eq!(metadata.main_module, "index.js");
-        assert_eq!(metadata.bindings.len(), 1);
+        assert_eq!(metadata.bindings.len(), 3);
         assert_eq!(metadata.compatibility_date, "2024-12-18");
 
         assert_eq!(parts.len(), 1);
@@ -449,7 +483,7 @@ export default {
 
         assert_eq!(script_name, "linkup-integration-test-script");
         assert_eq!(metadata.main_module, "index.js");
-        assert_eq!(metadata.bindings.len(), 1);
+        assert_eq!(metadata.bindings.len(), 3);
         assert_eq!(metadata.compatibility_date, "2024-12-18");
 
         assert_eq!(parts.len(), 1);
@@ -628,16 +662,34 @@ export default {
         );
 
         // Verify the KV namespace
-        let kv_name = &res.kv_name;
-        let kv_ns_id = cloudflare_api.get_kv_namespace_id(kv_name.clone()).await;
+        for kv_namespace in &res.kv_namespaces {
+            let kv_ns_id = cloudflare_api
+                .get_kv_namespace_id(kv_namespace.name.clone())
+                .await;
+            assert!(
+                kv_ns_id.is_ok(),
+                "Failed to get KV namespace info: {:?}",
+                kv_ns_id
+            );
+            assert!(
+                kv_ns_id.unwrap().is_some(),
+                "KV namespace not found after deploy."
+            );
+        }
+
+        // Verify worker subdomain
+        let worker_subdomain = cloudflare_api
+            .get_worker_subdomain(script_name.clone())
+            .await;
+        println!("worker_subdomain: {:?}", worker_subdomain);
         assert!(
-            kv_ns_id.is_ok(),
-            "Failed to get KV namespace info: {:?}",
-            kv_ns_id
+            worker_subdomain.is_ok(),
+            "Failed to get worker subdomain info: {:?}",
+            worker_subdomain
         );
         assert!(
-            kv_ns_id.unwrap().is_some(),
-            "KV namespace not found after deploy."
+            worker_subdomain.unwrap().enabled,
+            "Worker subdomain should be enabled after deploy."
         );
 
         // Verify DNS record exists
@@ -659,7 +711,7 @@ export default {
         }
 
         // Verify Worker route exists
-        let zone_name = cloudflare_api.get_zone_name(zone_id.clone()).await.unwrap();
+        let zone_name = cloudflare_api.get_zone_name(&zone_id).await.unwrap();
         for route_config in &res.zone_resources.routes {
             let existing_route = cloudflare_api
                 .get_worker_route(
@@ -737,16 +789,20 @@ export default {
         );
 
         // Verify KV namespace is gone
-        let kv_ns_id = cloudflare_api.get_kv_namespace_id(kv_name.clone()).await;
-        assert!(
-            kv_ns_id.is_ok(),
-            "Failed to get KV namespace after destroy: {:?}",
-            kv_ns_id
-        );
-        assert!(
-            kv_ns_id.unwrap().is_none(),
-            "KV namespace still exists after destroy"
-        );
+        for kv_namespace in &res.kv_namespaces {
+            let kv_ns_id = cloudflare_api
+                .get_kv_namespace_id(kv_namespace.name.clone())
+                .await;
+            assert!(
+                kv_ns_id.is_ok(),
+                "Failed to get KV namespace after destroy: {:?}",
+                kv_ns_id
+            );
+            assert!(
+                kv_ns_id.unwrap().is_none(),
+                "KV namespace still exists after destroy"
+            );
+        }
 
         // Verify DNS record is gone
         for dns_record in &res.zone_resources.dns_records {
