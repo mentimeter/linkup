@@ -338,18 +338,18 @@ fn create_config_yml(tunnel_id: &str) -> Result<(), Error> {
         fs::create_dir_all(&dir_path)?;
     }
 
-    let file_path = dir_path.join(format!("{}.json", tunnel_id));
-    let file_path_str = file_path.to_string_lossy().to_string();
+    let credentials_file_path = dir_path.join(format!("{}.json", tunnel_id));
+    let credentials_file_path_str = credentials_file_path.to_string_lossy().to_string();
 
     let config = Config {
         url: format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
         tunnel: tunnel_id.to_string(),
-        credentials_file: file_path_str,
+        credentials_file: credentials_file_path_str,
     };
 
     let serialized = serde_yaml::to_string(&config).expect("Failed to serialize config");
 
-    fs::write(&file_path, serialized)?;
+    fs::write(dir_path.join("config.yml"), serialized)?;
 
     Ok(())
 }
