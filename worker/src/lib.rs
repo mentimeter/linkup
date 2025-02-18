@@ -121,37 +121,14 @@ async fn get_tunnel_handler(
             return Json(tunnel_data);
         }
         None => {
-            let (tunnel_id, tunnel_secret) = tunnel::create_tunnel(
+            let tunnel_data = tunnel::create_tunnel(
                 &state.cloudflare.api_token,
                 &state.cloudflare.account_id,
+                &state.cloudflare.tunnel_zone_id,
                 &tunnel_name,
             )
             .await
             .unwrap();
-
-            tunnel::create_dns_record(
-                &state.cloudflare.api_token,
-                &state.cloudflare.tunnel_zone_id,
-                &tunnel_id,
-                &tunnel_name,
-            )
-            .await
-            .unwrap();
-
-            let zone_domain = tunnel::get_zone_domain(
-                &state.cloudflare.api_token,
-                &state.cloudflare.tunnel_zone_id,
-            )
-            .await;
-
-            let tunnel_data = TunnelData {
-                account_id: state.cloudflare.account_id,
-                name: tunnel_name.clone(),
-                url: format!("https://{}.{}", &tunnel_name, &zone_domain),
-                id: tunnel_id,
-                secret: tunnel_secret,
-                last_started: worker::Date::now().as_millis(),
-            };
 
             kv.put(&tunnel_name, &tunnel_data)
                 .unwrap()
