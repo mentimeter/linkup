@@ -1,13 +1,32 @@
-// TODO: Replace String errors for proper error Enum
+use std::fmt::Display;
 
 use crate::TunnelData;
+
+#[derive(Debug)]
+pub enum Error {
+    CreateCloudflareTunnel(String),
+    CreateDNS(String),
+    FetchZone(String),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::CreateCloudflareTunnel(text) => write!(f, "Failed to crate tunnel: {}", text),
+            Error::CreateDNS(text) => write!(f, "Failed to crate DNS record: {}", text),
+            Error::FetchZone(text) => write!(f, "Failed to fetch Zone details: {}", text),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 pub async fn create_tunnel(
     api_token: &str,
     account_id: &str,
     zone_id: &str,
     tunnel_name: &str,
-) -> Result<TunnelData, String> {
+) -> Result<TunnelData, Error> {
     let client = crate::cloudflare_client(api_token);
     let tunnel_secret = generate_tunnel_secret();
 
@@ -24,7 +43,7 @@ pub async fn create_tunnel(
     let tunnel = client
         .request(&create_tunnel_req)
         .await
-        .map_err(|err| err.to_string())?
+        .map_err(|err| Error::CreateCloudflareTunnel(err.to_string()))?
         .result;
 
     let create_dns_req = cloudflare::endpoints::dns::CreateDnsRecord {
@@ -43,7 +62,7 @@ pub async fn create_tunnel(
     client
         .request(&create_dns_req)
         .await
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| Error::CreateDNS(err.to_string()))?;
 
     let get_zone_req = cloudflare::endpoints::zone::ZoneDetails {
         identifier: zone_id,
@@ -52,7 +71,7 @@ pub async fn create_tunnel(
     let zone = client
         .request(&get_zone_req)
         .await
-        .map_err(|err| err.to_string())?
+        .map_err(|err| Error::FetchZone(err.to_string()))?
         .result;
 
     let tunnel_data = TunnelData {
