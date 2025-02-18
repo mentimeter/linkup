@@ -404,29 +404,6 @@ async fn set_cached_req(cache_key: String, resp: worker::Response) -> worker::Re
     Ok(())
 }
 
-async fn get_zone(
-    client: &cloudflare::framework::async_api::Client,
-    zone: &str,
-) -> cloudflare::endpoints::zone::Zone {
-    let req = cloudflare::endpoints::zone::ListZones {
-        params: cloudflare::endpoints::zone::ListZonesParams {
-            name: Some(zone.to_string()),
-            ..Default::default()
-        },
-    };
-
-    let mut res = client.request(&req).await.unwrap().result;
-    if res.is_empty() {
-        panic!("Zone not found");
-    }
-
-    if res.len() > 1 {
-        panic!("Found more than one zone for name");
-    }
-
-    res.pop().unwrap()
-}
-
 fn cloudflare_client(api_token: &str) -> cloudflare::framework::async_api::Client {
     cloudflare::framework::async_api::Client::new(
         cloudflare::framework::auth::Credentials::UserAuthToken {
