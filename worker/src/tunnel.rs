@@ -62,7 +62,7 @@ pub async fn _get_tunnel_id(
         "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
         account_id
     );
-    let (client, headers) = prepare_client_and_headers(api_token)?;
+    let (client, headers) = prepare_client_and_headers(api_token);
     let query_url = format!("{}?name={}", url, tunnel_name);
 
     let parsed: GetTunnelApiResponse =
@@ -93,7 +93,7 @@ pub async fn create_tunnel(
         "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
         account_id,
     );
-    let (client, headers) = prepare_client_and_headers(api_token)?;
+    let (client, headers) = prepare_client_and_headers(api_token);
     let body = serde_json::to_string(&CreateTunnelRequest {
         name: tunnel_name.to_string(),
         tunnel_secret: tunnel_secret.clone(),
@@ -116,7 +116,7 @@ pub async fn create_dns_record(
         "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
         zone_id
     );
-    let (client, headers) = prepare_client_and_headers(api_token)?;
+    let (client, headers) = prepare_client_and_headers(api_token);
     let body = serde_json::to_string(&DNSRecord {
         name: tunnel_name.to_string(),
         content: format!("{}.cfargotunnel.com", tunnel_id),
@@ -142,8 +142,7 @@ pub async fn get_zone_domain(api_token: &str, zone_id: &str) -> String {
     }
 
     let url = format!("https://api.cloudflare.com/client/v4/zones/{}", &zone_id);
-    let (client, headers) =
-        prepare_client_and_headers(api_token).expect("client to be proper built");
+    let (client, headers) = prepare_client_and_headers(api_token);
 
     let zone_response: ZoneResponse = send_request(&client, &url, headers, None, "GET")
         .await
@@ -153,9 +152,7 @@ pub async fn get_zone_domain(api_token: &str, zone_id: &str) -> String {
 }
 
 // Helper to create an HTTP client and prepare headers
-fn prepare_client_and_headers(api_token: &str) -> Result<(reqwest::Client, HeaderMap), String> {
-    // this should be a string, not a result
-    // let bearer_token = sys.get_env("LINKUP_CF_API_TOKEN")?;
+fn prepare_client_and_headers(api_token: &str) -> (reqwest::Client, HeaderMap) {
     let client = reqwest::Client::new();
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -164,7 +161,7 @@ fn prepare_client_and_headers(api_token: &str) -> Result<(reqwest::Client, Heade
         HeaderValue::from_str(&format!("Bearer {}", api_token)).expect("api_token should be valid"),
     );
 
-    Ok((client, headers))
+    (client, headers)
 }
 
 // Helper for sending requests and handling responses
