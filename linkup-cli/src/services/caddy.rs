@@ -121,8 +121,8 @@ impl Caddy {
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
 
         #[cfg(target_os = "macos")]
-        let status = Command::new("./caddy")
-            .current_dir(linkup_bin_dir_path())
+        let status = Command::new("./bin/caddy")
+            .current_dir(linkup_dir_path())
             .arg("start")
             .arg("--pidfile")
             .arg(&self.pidfile_path)
@@ -137,8 +137,8 @@ impl Caddy {
             let _ = fs::File::create(&self.pidfile_path)?;
 
             Command::new("sudo")
-                .current_dir(linkup_bin_dir_path())
-                .arg("./caddy")
+                .current_dir(linkup_dir_path())
+                .arg("./bin/caddy")
                 .arg("start")
                 .arg("--pidfile")
                 .arg(&self.pidfile_path)
