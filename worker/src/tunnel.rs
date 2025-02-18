@@ -7,7 +7,6 @@ pub async fn create_tunnel(
     account_id: &str,
     zone_id: &str,
     tunnel_name: &str,
-    // TODO: Make this tuple into a proper type
 ) -> Result<TunnelData, String> {
     let client = crate::cloudflare_client(api_token);
     let tunnel_secret = generate_tunnel_secret();
