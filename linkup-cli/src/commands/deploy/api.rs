@@ -36,7 +36,7 @@ pub trait CloudflareApi {
     async fn create_kv_namespace(&self, namespace_id: String) -> Result<String, DeployError>;
     async fn remove_kv_namespace(&self, namespace_id: String) -> Result<(), DeployError>;
 
-    async fn get_zone_name(&self, zone_id: String) -> Result<String, DeployError>;
+    async fn get_zone_name(&self, zone_id: &str) -> Result<String, DeployError>;
 
     async fn get_dns_record(
         &self,
@@ -754,7 +754,7 @@ impl CloudflareApi for AccountCloudflareApi {
         Ok(())
     }
 
-    async fn get_zone_name(&self, zone_id: String) -> Result<String, DeployError> {
+    async fn get_zone_name(&self, zone_id: &str) -> Result<String, DeployError> {
         let url = format!("https://api.cloudflare.com/client/v4/zones/{}", zone_id);
 
         let resp = self

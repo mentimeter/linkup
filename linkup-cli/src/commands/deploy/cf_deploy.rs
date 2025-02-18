@@ -53,14 +53,21 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
 
     let cloudflare_api = AccountCloudflareApi::new(
         args.account_id.to_string(),
-        zone_ids_strings,
+        zone_ids_strings.clone(),
         Box::new(auth),
     );
     let notifier = ConsoleNotifier::new();
 
+    let mut zone_names = Vec::with_capacity(zone_ids_strings.len());
+    for zone_id in zone_ids_strings {
+        let zone_name = cloudflare_api.get_zone_name(&zone_id).await?;
+        zone_names.push(zone_name);
+    }
+
     let resources = cf_resources(
         args.account_id.clone(),
         args.zone_ids[0].clone(),
+        &zone_names,
         &args.zone_ids,
     );
 
@@ -267,7 +274,7 @@ export default {
             Ok(())
         }
 
-        async fn get_zone_name(&self, _zone_id: String) -> Result<String, DeployError> {
+        async fn get_zone_name(&self, _zone_id: &str) -> Result<String, DeployError> {
             Ok("example.com".to_string())
         }
 
@@ -704,7 +711,7 @@ export default {
         }
 
         // Verify Worker route exists
-        let zone_name = cloudflare_api.get_zone_name(zone_id.clone()).await.unwrap();
+        let zone_name = cloudflare_api.get_zone_name(&zone_id).await.unwrap();
         for route_config in &res.zone_resources.routes {
             let existing_route = cloudflare_api
                 .get_worker_route(
