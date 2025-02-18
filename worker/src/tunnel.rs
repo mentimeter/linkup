@@ -88,7 +88,7 @@ pub async fn create_tunnel(
     tunnel_name: &str,
     // TODO: Make this tuple into a proper type
 ) -> Result<(String, String), String> {
-    let tunnel_secret = generate_tunnel_secret();
+    let tunnel_secret = crate::generate_secret();
     let url = format!(
         "https://api.cloudflare.com/client/v4/accounts/{}/cfd_tunnel",
         account_id,
@@ -226,13 +226,4 @@ async fn send_request<T: for<'de> serde::Deserialize<'de>>(
 
         Err("Wot".into())
     }
-}
-
-fn generate_tunnel_secret() -> String {
-    // TODO: Use rand and getrandom (with 'js' feature)
-    // let mut rng = rand::thread_rng();
-    // let random_bytes: [u8; 32] = rng.gen();
-    // BASE64_STANDARD.encode(random_bytes)
-
-    "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=".into()
 }
