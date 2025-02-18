@@ -93,6 +93,7 @@ impl LocalState {
 pub struct LinkupState {
     pub session_name: String,
     pub session_token: String,
+    pub worker_token: String,
     pub config_path: String,
     pub remote: Url,
     pub tunnel: Option<Url>,
@@ -179,6 +180,7 @@ impl YamlLocalConfig {
 #[derive(Deserialize, Clone)]
 pub struct LinkupConfig {
     pub remote: Url,
+    pub worker_token: String,
     cache_routes: Option<Vec<String>>,
 }
 
@@ -218,6 +220,7 @@ pub fn config_to_state(
         is_paid: Some(is_paid),
         session_name: String::new(),
         session_token: random_token,
+        worker_token: yaml_config.linkup.worker_token,
         config_path,
         remote: yaml_config.linkup.remote,
         tunnel,
@@ -397,6 +400,7 @@ mod tests {
     const CONF_STR: &str = r#"
 linkup:
   remote: https://remote-linkup.example.com
+  worker_token: test_token_123
 services:
   - name: frontend
     remote: http://remote-service1.example.com
@@ -434,6 +438,10 @@ domains:
         assert_eq!(
             local_state.linkup.remote,
             Url::parse("https://remote-linkup.example.com").unwrap()
+        );
+        assert_eq!(
+            local_state.linkup.worker_token,
+            String::from("test_token_123"),
         );
 
         assert_eq!(local_state.services.len(), 2);

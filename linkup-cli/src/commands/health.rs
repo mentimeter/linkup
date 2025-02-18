@@ -72,19 +72,6 @@ impl Session {
 }
 
 #[derive(Debug, Serialize)]
-struct EnvironmentVariables {
-    linkup_worker_token: bool,
-}
-
-impl EnvironmentVariables {
-    fn load() -> Self {
-        Self {
-            linkup_worker_token: env::var("LINKUP_WORKER_TOKEN").is_ok(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
     caddy: BackgroundServiceHealth,
@@ -183,7 +170,6 @@ impl LocalDNS {
 struct Health {
     system: System,
     session: Option<Session>,
-    environment_variables: EnvironmentVariables,
     background_services: BackgroudServices,
     linkup: Linkup,
     local_dns: LocalDNS,
@@ -203,7 +189,6 @@ impl Health {
         Ok(Self {
             system: System::load(),
             session,
-            environment_variables: EnvironmentVariables::load(),
             background_services: BackgroudServices::load(),
             linkup: Linkup::load()?,
             local_dns: LocalDNS::load()?,
@@ -261,15 +246,6 @@ impl Display for Health {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-        }
-
-        writeln!(f, "{}", "Environment variables:".bold().italic())?;
-
-        write!(f, "  - LINKUP_WORKER_TOKEN   ")?;
-        if self.environment_variables.linkup_worker_token {
-            writeln!(f, "{}", "OK".blue())?;
-        } else {
-            writeln!(f, "{}", "MISSING".yellow())?;
         }
 
         writeln!(f, "{}", "Linkup:".bold().italic())?;

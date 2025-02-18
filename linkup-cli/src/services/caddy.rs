@@ -107,7 +107,7 @@ impl Caddy {
         Ok(())
     }
 
-    fn start(&self, worker_url: &Url, domains: &[String]) -> Result<(), Error> {
+    fn start(&self, worker_url: &Url, worker_token: &str, domains: &[String]) -> Result<(), Error> {
         log::debug!("Starting {}", Self::NAME);
 
         let domains_and_subdomains: Vec<String> = domains
@@ -115,7 +115,7 @@ impl Caddy {
             .map(|domain| format!("{domain}, *.{domain}"))
             .collect();
 
-        self.write_caddyfile(worker_url, &domains_and_subdomains)?;
+        self.write_caddyfile(worker_url, worker_token, &domains_and_subdomains)?;
 
         let stdout_file = fs::File::create(&self.stdout_file_path)?;
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
@@ -163,37 +163,41 @@ impl Caddy {
         Ok(())
     }
 
-    fn write_caddyfile(&self, worker_url: &Url, domains: &[String]) -> Result<(), Error> {
+    fn write_caddyfile(
+        &self,
+        worker_url: &Url,
+        worker_token: &str,
+        domains: &[String],
+    ) -> Result<(), Error> {
+        let worker_url_str = worker_url.as_str();
+        let logfile_path = self.stdout_file_path.display();
+        let domains_str = domains.join(", ");
+
         let caddy_template = format!(
             "
             {{
                 http_port 80
                 https_port 443
                 log {{
-                    output file {}
+                    output file {logfile_path}
                 }}
                 storage linkup {{
-                    worker_url \"{}\"
-                    token \"{{env.LINKUP_WORKER_TOKEN}}\"
+                    worker_url \"{worker_url_str}\"
+                    token \"{worker_token}\"
                 }}
             }}
 
-            {} {{
-                reverse_proxy localhost:{}
+            {domains_str} {{
+                reverse_proxy localhost:{LINKUP_LOCAL_SERVER_PORT}
                 tls {{
                     resolvers 1.1.1.1
                     dns linkup {{
-                        worker_url \"{}\"
-                        token \"{{env.LINKUP_WORKER_TOKEN}}\"
+                        worker_url \"{worker_url_str}\"
+                        token \"{worker_token}\"
                     }}
                 }}
             }}
             ",
-            self.stdout_file_path.display(),
-            worker_url.as_str(),
-            domains.join(", "),
-            LINKUP_LOCAL_SERVER_PORT,
-            worker_url.as_str(),
         );
 
         fs::write(&self.caddyfile_path, caddy_template)?;
@@ -268,7 +272,7 @@ impl BackgroundService<Error> for Caddy {
             return Ok(());
         }
 
-        if let Err(e) = self.start(&state.linkup.remote, domains) {
+        if let Err(e) = self.start(&state.linkup.remote, &state.linkup.worker_token, domains) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,
