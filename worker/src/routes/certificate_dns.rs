@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{cloudflare_client, get_zone, libdns::LibDnsRecord, LinkupState};
+use crate::{cloudflare_client, libdns::LibDnsRecord, LinkupState};
 
 pub fn router() -> Router<LinkupState> {
     Router::new().route(
@@ -153,6 +153,29 @@ async fn delete_certificate_dns_handler(
     format_records_names(&mut deleted_records, &zone.name);
 
     Json(deleted_records)
+}
+
+async fn get_zone(
+    client: &cloudflare::framework::async_api::Client,
+    zone: &str,
+) -> cloudflare::endpoints::zone::Zone {
+    let req = cloudflare::endpoints::zone::ListZones {
+        params: cloudflare::endpoints::zone::ListZonesParams {
+            name: Some(zone.to_string()),
+            ..Default::default()
+        },
+    };
+
+    let mut res = client.request(&req).await.unwrap().result;
+    if res.is_empty() {
+        panic!("Zone not found");
+    }
+
+    if res.len() > 1 {
+        panic!("Found more than one zone for name");
+    }
+
+    res.pop().unwrap()
 }
 
 fn format_records_names(records: &mut [LibDnsRecord], zone: &str) {
