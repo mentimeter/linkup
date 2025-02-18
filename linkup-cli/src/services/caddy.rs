@@ -169,7 +169,7 @@ impl Caddy {
         worker_token: &str,
         domains: &[String],
     ) -> Result<(), Error> {
-        let worker_url_str = worker_url.as_str();
+        let worker_url_str = worker_url.as_str().trim_end_matches('/');
         let logfile_path = self.stdout_file_path.display();
         let domains_str = domains.join(", ");
 
