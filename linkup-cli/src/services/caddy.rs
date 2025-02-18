@@ -3,7 +3,7 @@ use std::{env, fs, path::PathBuf, process::Command};
 use url::Url;
 
 use crate::{
-    commands::local_dns, current_version, linkup_bin_dir_path, linkup_file_path,
+    commands::local_dns, current_version, linkup_bin_dir_path, linkup_dir_path, linkup_file_path,
     local_config::LocalState, release, signal,
 };
 
@@ -15,8 +15,6 @@ pub enum Error {
     Starting,
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
-    #[error("Missing environment variable '{0}'.")]
-    MissingEnvVar(String),
     #[error("Failed to stop pid: {0}")]
     StoppingPid(#[from] signal::PidError),
 }
@@ -206,12 +204,6 @@ impl Caddy {
     }
 
     pub fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
-        for env_var in ["LINKUP_WORKER_TOKEN"] {
-            if env::var(env_var).is_err() {
-                return Err(Error::MissingEnvVar(env_var.into()));
-            }
-        }
-
         if !is_installed() {
             return Ok(false);
         }
