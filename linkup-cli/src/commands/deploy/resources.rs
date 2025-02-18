@@ -840,7 +840,7 @@ pub fn cf_resources(
     all_zone_names: &[String],
     all_zone_ids: &[String],
 ) -> TargetCfResources {
-    let joined_zone_names = all_zone_names.join("-");
+    let joined_zone_names = all_zone_names.join("-").replace(".", "-");
     let linkup_script_name = format!("linkup-worker-{joined_zone_names}");
 
     TargetCfResources {
