@@ -32,7 +32,7 @@ pub async fn create_tunnel(
         zone_identifier: zone_id,
         params: cloudflare::endpoints::dns::CreateDnsRecordParams {
             proxied: Some(true),
-            name: &tunnel_name,
+            name: tunnel_name,
             content: cloudflare::endpoints::dns::DnsContent::CNAME {
                 content: format!("{}.cfargotunnel.com", tunnel.id),
             },
@@ -47,7 +47,7 @@ pub async fn create_tunnel(
         .map_err(|err| err.to_string())?;
 
     let get_zone_req = cloudflare::endpoints::zone::ZoneDetails {
-        identifier: &zone_id,
+        identifier: zone_id,
     };
 
     let zone = client
