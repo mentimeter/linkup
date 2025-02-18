@@ -28,7 +28,7 @@ pub async fn create_tunnel(
     tunnel_name: &str,
 ) -> Result<TunnelData, Error> {
     let client = crate::cloudflare_client(api_token);
-    let tunnel_secret = generate_tunnel_secret();
+    let tunnel_secret = crate::generate_secret();
 
     let create_tunnel_req = cloudflare::endpoints::cfd_tunnel::create_tunnel::CreateTunnel {
         account_identifier: account_id,
@@ -84,13 +84,4 @@ pub async fn create_tunnel(
     };
 
     Ok(tunnel_data)
-}
-
-fn generate_tunnel_secret() -> String {
-    // TODO: Use rand and getrandom (with 'js' feature)
-    // let mut rng = rand::thread_rng();
-    // let random_bytes: [u8; 32] = rng.gen();
-    // BASE64_STANDARD.encode(random_bytes)
-
-    "AQIDBAUGBwgBAgMEBQYHCAECAwQFBgcIAQIDBAUGBwg=".into()
 }
