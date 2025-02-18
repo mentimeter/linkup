@@ -103,7 +103,7 @@ pub async fn create_tunnel(
     let parsed: CreateTunnelResponse =
         send_request(&client, &url, headers, Some(body), "POST").await?;
 
-    Ok((parsed.result.id, tunnel_name.to_string()))
+    Ok((parsed.result.id, tunnel_secret))
 }
 
 pub async fn create_dns_record(
