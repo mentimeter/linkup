@@ -17,7 +17,7 @@ pub async fn create_tunnel(
         params: cloudflare::endpoints::cfd_tunnel::create_tunnel::Params {
             name: tunnel_name,
             tunnel_secret: &tunnel_secret.as_bytes().to_vec(),
-            config_src: &cloudflare::endpoints::cfd_tunnel::ConfigurationSrc::Cloudflare,
+            config_src: &cloudflare::endpoints::cfd_tunnel::ConfigurationSrc::Local,
             metadata: None,
         },
     };
