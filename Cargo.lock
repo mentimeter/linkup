@@ -1534,6 +1534,7 @@ dependencies = [
  "linkup-local-server",
  "log",
  "mockall",
+ "mockito",
  "nix",
  "rand",
  "regex",

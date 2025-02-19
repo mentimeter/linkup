@@ -446,176 +446,186 @@ export default {
         }
     }
 
-    // TODO(augustoccesar)[2025-02-19]: Fix tests to support Cloudflare client
-
-    // #[tokio::test]
-    // async fn test_deploy_to_cloudflare_creates_script_when_none_exists() {
-    //     let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
-
-    //     let notifier = TestNotifier {
-    //         messages: RefCell::new(vec![]),
-    //         confirmation_response: true,
-    //         confirmations_asked: RefCell::new(0),
-    //     };
-
-    //     // Call deploy_to_cloudflare directly
-    //     let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
-    //     assert!(result.is_ok());
-
-    //     // Check that a worker script was created
-    //     let created = api.create_called_with.borrow();
-    //     let (script_name, metadata, parts) = created.as_ref().unwrap();
-
-    //     assert_eq!(script_name, "linkup-integration-test-script");
-    //     assert_eq!(metadata.main_module, "index.js");
-    //     assert_eq!(metadata.bindings.len(), 3);
-    //     assert_eq!(metadata.compatibility_date, "2024-12-18");
-
-    //     assert_eq!(parts.len(), 1);
-    //     assert_eq!(parts[0].name, "index.js");
-    //     assert_eq!(
-    //         String::from_utf8(parts[0].data.clone()).unwrap(),
-    //         LOCAL_SCRIPT_CONTENT
-    //     );
-    // }
-
-    // #[tokio::test]
-    // async fn test_deploy_to_cloudflare_creates_script_when_content_differs() {
-    //     let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
-
-    //     let notifier = TestNotifier {
-    //         messages: RefCell::new(vec![]),
-    //         confirmation_response: true,
-    //         confirmations_asked: RefCell::new(0),
-    //     };
-
-    //     let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
-    //     assert!(result.is_ok());
-
-    //     assert_eq!(*notifier.confirmations_asked.borrow(), 1);
-
-    //     let created = api.create_called_with.borrow();
-    //     let (script_name, metadata, parts) = created.as_ref().unwrap();
-
-    //     assert_eq!(script_name, "linkup-integration-test-script");
-    //     assert_eq!(metadata.main_module, "index.js");
-    //     assert_eq!(metadata.bindings.len(), 3);
-    //     assert_eq!(metadata.compatibility_date, "2024-12-18");
-
-    //     assert_eq!(parts.len(), 1);
-    //     assert_eq!(parts[0].name, "index.js");
-    //     assert_eq!(
-    //         String::from_utf8(parts[0].data.clone()).unwrap(),
-    //         LOCAL_SCRIPT_CONTENT
-    //     );
-    // }
-
-    // #[tokio::test]
-    // async fn test_deploy_to_cloudflare_canceled_by_user() {
-    //     let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
-
-    //     let notifier = TestNotifier {
-    //         messages: RefCell::new(vec![]),
-    //         confirmation_response: false,
-    //         confirmations_asked: RefCell::new(0),
-    //     };
-
-    //     let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
-    //     assert!(result.is_ok());
-
-    //     assert_eq!(*notifier.confirmations_asked.borrow(), 1);
-
-    //     let created = api.create_called_with.borrow();
-    //     assert!(created.is_none());
-    // }
-
-    // #[tokio::test]
-    // async fn test_deploy_creates_dns_and_route_if_not_exist() {
-    //     let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
-
-    //     let notifier = TestNotifier {
-    //         messages: RefCell::new(vec![]),
-    //         confirmation_response: true,
-    //         confirmations_asked: RefCell::new(0),
-    //     };
-
-    //     let res = test_resources();
-
-    //     // Call deploy_to_cloudflare directly
-    //     let result = deploy_to_cloudflare(&res, &api, &notifier).await;
-    //     assert!(result.is_ok());
-
-    //     // Check DNS record created
-    //     let dns_records = api.dns_records.borrow();
-    //     assert_eq!(dns_records.len(), 1);
-    //     assert_eq!(dns_records[0].name, "linkup-integration-test");
-    //     assert!(dns_records[0]
-    //         .content
-    //         .contains("linkup-integration-test-script.workers.dev"));
-
-    //     // Check route created
-    //     let routes = api.worker_routes.borrow();
-    //     assert_eq!(routes.len(), 1);
-    //     assert_eq!(routes[0].1, "linkup-integration-test.example.com/*");
-    //     assert_eq!(routes[0].2, "linkup-integration-test-script");
-    // }
-
-    // #[tokio::test]
-    // async fn test_deploy_creates_account_token() {
-    //     let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
-
-    //     let notifier = TestNotifier {
-    //         messages: RefCell::new(vec![]),
-    //         confirmation_response: true,
-    //         confirmations_asked: RefCell::new(0),
-    //     };
-
-    //     let res = test_resources();
-
-    //     // Call deploy_to_cloudflare directly
-    //     let result = deploy_to_cloudflare(&res, &api, &notifier).await;
-    //     assert!(result.is_ok());
-
-    //     let tokens = api.account_tokens.borrow();
-    //     assert_eq!(tokens.len(), 1);
-    //     assert_eq!(tokens[0].0, "created".to_string());
-    //     assert_eq!(tokens[0].1, LINKUP_ACCOUNT_TOKEN_NAME.to_string());
-    // }
-
-    // #[tokio::test]
-    // async fn test_deploy_skips_creating_account_token_if_already_exists() {
-    //     let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
-    //     api.account_tokens.borrow_mut().push((
-    //         "existing".to_string(),
-    //         LINKUP_ACCOUNT_TOKEN_NAME.to_string(),
-    //     ));
-
-    //     let notifier = TestNotifier {
-    //         messages: RefCell::new(vec![]),
-    //         confirmation_response: true,
-    //         confirmations_asked: RefCell::new(0),
-    //     };
-
-    //     let res = test_resources();
-
-    //     // Call deploy_to_cloudflare directly
-    //     let result = deploy_to_cloudflare(&res, &api, &notifier).await;
-    //     assert!(result.is_ok());
-
-    //     let tokens = api.account_tokens.borrow();
-    //     assert_eq!(tokens.len(), 1);
-    //     assert_eq!(tokens[0].0, "existing".to_string());
-    //     assert_eq!(tokens[0].1, LINKUP_ACCOUNT_TOKEN_NAME.to_string());
-    // }
-
     #[tokio::test]
-    async fn test_deploy_and_destroy_real_integration() {
+    async fn test_deploy_to_cloudflare_creates_script_when_none_exists() {
+        let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+
         let notifier = TestNotifier {
             messages: RefCell::new(vec![]),
             confirmation_response: true,
             confirmations_asked: RefCell::new(0),
         };
 
+        let resources = test_resources();
+        let _mocks = mock_cloudflare_endpoints(&resources);
+
+        // Call deploy_to_cloudflare directly
+        let result =
+            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        assert!(result.is_ok());
+
+        // Check that a worker script was created
+        let created = api.create_called_with.borrow();
+        let (script_name, metadata, parts) = created.as_ref().unwrap();
+
+        assert_eq!(script_name, "linkup-integration-test-script");
+        assert_eq!(metadata.main_module, "index.js");
+        assert_eq!(metadata.bindings.len(), 4);
+        assert_eq!(metadata.compatibility_date, "2024-12-18");
+
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].name, "index.js");
+        assert_eq!(
+            String::from_utf8(parts[0].data.clone()).unwrap(),
+            LOCAL_SCRIPT_CONTENT
+        );
+    }
+
+    #[tokio::test]
+    async fn test_deploy_to_cloudflare_creates_script_when_content_differs() {
+        let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+
+        let notifier = TestNotifier {
+            messages: RefCell::new(vec![]),
+            confirmation_response: true,
+            confirmations_asked: RefCell::new(0),
+        };
+
+        let resources = test_resources();
+        let _mocks = mock_cloudflare_endpoints(&resources);
+
+        let result =
+            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        assert!(result.is_ok());
+
+        assert_eq!(*notifier.confirmations_asked.borrow(), 1);
+
+        let created = api.create_called_with.borrow();
+        let (script_name, metadata, parts) = created.as_ref().unwrap();
+
+        assert_eq!(script_name, "linkup-integration-test-script");
+        assert_eq!(metadata.main_module, "index.js");
+        assert_eq!(metadata.bindings.len(), 4);
+        assert_eq!(metadata.compatibility_date, "2024-12-18");
+
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].name, "index.js");
+        assert_eq!(
+            String::from_utf8(parts[0].data.clone()).unwrap(),
+            LOCAL_SCRIPT_CONTENT
+        );
+    }
+
+    #[tokio::test]
+    async fn test_deploy_to_cloudflare_canceled_by_user() {
+        let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+
+        let notifier = TestNotifier {
+            messages: RefCell::new(vec![]),
+            confirmation_response: false,
+            confirmations_asked: RefCell::new(0),
+        };
+
+        let resources = test_resources();
+        let _mocks = mock_cloudflare_endpoints(&resources);
+
+        let result =
+            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        assert!(result.is_ok());
+
+        assert_eq!(*notifier.confirmations_asked.borrow(), 1);
+
+        let created = api.create_called_with.borrow();
+        assert!(created.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_deploy_creates_dns_and_route_if_not_exist() {
+        let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+
+        let notifier = TestNotifier {
+            messages: RefCell::new(vec![]),
+            confirmation_response: true,
+            confirmations_asked: RefCell::new(0),
+        };
+
+        let resources = test_resources();
+        let _mocks = mock_cloudflare_endpoints(&resources);
+
+        // Call deploy_to_cloudflare directly
+        let result =
+            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        assert!(result.is_ok());
+
+        // Check DNS record created
+        let dns_records = api.dns_records.borrow();
+        assert_eq!(dns_records.len(), 1);
+        assert_eq!(dns_records[0].name, "linkup-integration-test");
+        assert!(dns_records[0]
+            .content
+            .contains("linkup-integration-test-script.workers.dev"));
+
+        // Check route created
+        let routes = api.worker_routes.borrow();
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].1, "linkup-integration-test.example.com/*");
+        assert_eq!(routes[0].2, "linkup-integration-test-script");
+    }
+
+    #[tokio::test]
+    async fn test_deploy_creates_account_token() {
+        let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+
+        let notifier = TestNotifier {
+            messages: RefCell::new(vec![]),
+            confirmation_response: true,
+            confirmations_asked: RefCell::new(0),
+        };
+
+        let resources = test_resources();
+        let _mocks = mock_cloudflare_endpoints(&resources);
+
+        // Call deploy_to_cloudflare directly
+        let result =
+            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        assert!(result.is_ok());
+
+        let tokens = api.account_tokens.borrow();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].0, "created".to_string());
+        assert_eq!(tokens[0].1, LINKUP_ACCOUNT_TOKEN_NAME.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_deploy_skips_creating_account_token_if_already_exists() {
+        let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+        api.account_tokens.borrow_mut().push((
+            "existing".to_string(),
+            LINKUP_ACCOUNT_TOKEN_NAME.to_string(),
+        ));
+
+        let notifier = TestNotifier {
+            messages: RefCell::new(vec![]),
+            confirmation_response: true,
+            confirmations_asked: RefCell::new(0),
+        };
+
+        let resources = test_resources();
+        let _mocks = mock_cloudflare_endpoints(&resources);
+
+        // Call deploy_to_cloudflare directly
+        let result =
+            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        assert!(result.is_ok());
+
+        let tokens = api.account_tokens.borrow();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].0, "existing".to_string());
+        assert_eq!(tokens[0].1, LINKUP_ACCOUNT_TOKEN_NAME.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_deploy_and_destroy_real_integration() {
         // Skip test if environment variables aren't set
         let account_id = match std::env::var("CLOUDFLARE_ACCOUNT_ID") {
             Ok(val) => val,
@@ -894,5 +904,40 @@ export default {
             "Linkup account token '{}' still exists after destroy.",
             linkup_account_token.unwrap().id,
         );
+    }
+
+    // NOTE(augustoccesar)[2025-02-19]: This does not cover for testing when the binding for WORKER_TOKEN is already set.
+    //   This code just allows us to keep the current tests working.
+    fn mock_cloudflare_endpoints(resources: &TargetCfResources) -> Vec<mockito::Mock> {
+        use cloudflare::framework::endpoint::spec::EndpointSpec;
+
+        let req = cloudflare::endpoints::workers::ListBindings {
+            account_id: &resources.account_id,
+            script_name: &resources.worker_script_name,
+        };
+
+        let res = serde_json::to_string(&cloudflare::framework::response::ApiSuccess::<Vec<()>> {
+            result: vec![],
+            result_info: None,
+            messages: serde_json::json!([]),
+            errors: vec![],
+        })
+        .unwrap();
+
+        let path = format!("/{}", req.path().to_string().as_str());
+        let bindings_mock = mockito::mock("GET", path.as_str()).with_body(res).create();
+
+        vec![bindings_mock]
+    }
+
+    fn cloudflare_test_client() -> cloudflare::framework::async_api::Client {
+        cloudflare::framework::async_api::Client::new(
+            cloudflare::framework::auth::Credentials::UserAuthToken {
+                token: "token_123".to_string(),
+            },
+            cloudflare::framework::HttpApiClientConfig::default(),
+            cloudflare::framework::Environment::Mockito,
+        )
+        .expect("Cloudflare test client to have been created")
     }
 }
