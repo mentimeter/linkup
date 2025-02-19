@@ -88,7 +88,17 @@ impl ApiResult for Vec<WorkersTail> {}
 pub struct WorkersBinding {
     pub name: String,
     pub r#type: String,
-    pub namespace_id: String,
+    // Namespace is not guarantee to exist on all bindings. It exists for type `kv_namespace`, but not for `plain_text`, for example.
+    // This should probably be an enum over the possible types of bindings. Something like what we did on deploy/api.rs:
+    //
+    // #[derive(Debug, Clone)]
+    // pub enum WorkerBinding {
+    //    KvNamespace { name: String, namespace_id: String },
+    //    PlainText { name: String, text: String },
+    //    SecretText { name: String, text: String },
+    // }
+    //
+    // pub namespace_id: String,
     pub class_name: Option<String>,
 }
 

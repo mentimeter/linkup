@@ -1,5 +1,6 @@
 use std::fmt;
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -14,6 +15,7 @@ const LINKUP_WORKER_INDEX_WASM: &[u8] =
 
 #[derive(Debug, Clone)]
 pub struct TargetCfResources {
+    pub account_id: String,
     pub worker_script_name: String,
     pub worker_script_parts: Vec<WorkerScriptPart>,
     pub worker_script_entry: String,
@@ -237,10 +239,13 @@ impl TargetCfResources {
     pub async fn check_deploy_plan(
         &self,
         api: &impl CloudflareApi,
+        cloudflare_client: &cloudflare::framework::async_api::Client,
     ) -> Result<DeployPlan, DeployError> {
         let account_token_action = self.check_account_token(api).await?;
         let kv_action = self.check_kv_namespaces(api).await?;
-        let script_action = self.check_worker_script(api, &account_token_action).await?;
+        let script_action = self
+            .check_worker_script(api, cloudflare_client, &account_token_action)
+            .await?;
         let worker_subdomain_action = self.check_worker_subdomain(api).await?;
         let dns_actions = self.check_dns_records(api).await?;
         let route_actions = self.check_worker_routes(api).await?;
@@ -279,6 +284,7 @@ impl TargetCfResources {
     pub async fn check_worker_script(
         &self,
         api: &impl CloudflareApi,
+        cloudflare_client: &cloudflare::framework::async_api::Client,
         account_token_plan: &Option<AccountTokenPlan>,
     ) -> Result<Option<WorkerScriptPlan>, DeployError> {
         let script_name = &self.worker_script_name;
@@ -303,6 +309,13 @@ impl TargetCfResources {
 
             for binding in &self.worker_script_bindings {
                 bindings.push(binding.clone());
+            }
+
+            if !self.check_worker_token(cloudflare_client).await? {
+                bindings.push(WorkerBinding::PlainText {
+                    name: "WORKER_TOKEN".to_string(),
+                    text: generate_secret(),
+                });
             }
 
             if account_token_plan.is_some() {
@@ -469,6 +482,28 @@ impl TargetCfResources {
                 token_name: LINKUP_ACCOUNT_TOKEN_NAME.to_string(),
             })),
         }
+    }
+
+    /// Check if the worker already has a binding of a worker token. We don't want to create a new one
+    /// on every deploy, so we use this to check if one already exists.
+    pub async fn check_worker_token(
+        &self,
+        client: &cloudflare::framework::async_api::Client,
+    ) -> Result<bool, DeployError> {
+        let req = cloudflare::endpoints::workers::ListBindings {
+            account_id: &self.account_id,
+            script_name: &self.worker_script_name,
+        };
+
+        let bindings = client.request(&req).await?.result;
+
+        for binding in bindings {
+            if binding.name == "WORKER_TOKEN" {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     pub async fn execute_deploy_plan(
@@ -844,6 +879,7 @@ pub fn cf_resources(
     let linkup_script_name = format!("linkup-worker-{joined_zone_names}");
 
     TargetCfResources {
+        account_id: account_id.clone(),
         worker_script_name: linkup_script_name.clone(),
         worker_script_entry: "shim.mjs".to_string(),
         worker_script_parts: vec![
@@ -920,4 +956,11 @@ pub fn cf_resources(
             },
         },
     }
+}
+
+pub fn generate_secret() -> String {
+    let mut rng = rand::thread_rng();
+    let bytes: [u8; 32] = rng.gen();
+
+    base64::Engine::encode(&base64::prelude::BASE64_STANDARD, bytes)
 }

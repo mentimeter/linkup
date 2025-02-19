@@ -1522,6 +1522,7 @@ dependencies = [
  "base64",
  "clap",
  "clap_complete",
+ "cloudflare",
  "colored 3.0.0",
  "crossterm",
  "ctrlc",

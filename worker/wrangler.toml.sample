@@ -13,6 +13,7 @@ CLOUDFLARE_ACCOUNT_ID = ""
 CLOUDFLARE_TUNNEL_ZONE_ID = ""
 CLOUDLFLARE_ALL_ZONE_IDS = ""
 CLOUDFLARE_API_TOKEN = ""
+WORKER_TOKEN = ""
 
 [build]
 command = "cargo install -q worker-build && worker-build --release"
