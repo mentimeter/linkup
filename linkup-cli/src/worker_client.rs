@@ -1,5 +1,5 @@
 use linkup::{CreatePreviewRequest, UpdateSessionRequest};
-use reqwest::StatusCode;
+use reqwest::{header, StatusCode};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -42,10 +42,21 @@ struct GetTunnelParams {
 }
 
 impl WorkerClient {
-    pub fn new(url: &Url) -> Self {
+    pub fn new(url: &Url, worker_token: &str) -> Self {
+        let mut headers = header::HeaderMap::new();
+        let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", worker_token))
+            .expect("token to contain only valid bytes");
+        auth_value.set_sensitive(true);
+        headers.insert(header::AUTHORIZATION, auth_value);
+
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .expect("reqwest client to be valid and created");
+
         Self {
             url: url.clone(),
-            inner: reqwest::Client::new(),
+            inner: client,
         }
     }
 
@@ -103,6 +114,6 @@ impl WorkerClient {
 
 impl From<&YamlLocalConfig> for WorkerClient {
     fn from(config: &YamlLocalConfig) -> Self {
-        Self::new(&config.linkup.remote)
+        Self::new(&config.linkup.remote, &config.linkup.worker_token)
     }
 }

@@ -58,7 +58,12 @@ impl CloudflareTunnel {
         }
     }
 
-    async fn start(&self, worker_url: &Url, linkup_session_name: &str) -> Result<Url, Error> {
+    async fn start(
+        &self,
+        worker_url: &Url,
+        worker_token: &str,
+        linkup_session_name: &str,
+    ) -> Result<Url, Error> {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
@@ -67,7 +72,7 @@ impl CloudflareTunnel {
             linkup_session_name
         );
 
-        let worker_client = WorkerClient::new(worker_url);
+        let worker_client = WorkerClient::new(worker_url, worker_token);
         let tunnel_data = worker_client
             .get_tunnel(linkup_session_name)
             .await
@@ -190,7 +195,11 @@ impl BackgroundService<Error> for CloudflareTunnel {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
         let tunnel_url = self
-            .start(&state.linkup.remote, &state.linkup.session_name)
+            .start(
+                &state.linkup.remote,
+                &state.linkup.worker_token,
+                &state.linkup.session_name,
+            )
             .await;
 
         match tunnel_url {
