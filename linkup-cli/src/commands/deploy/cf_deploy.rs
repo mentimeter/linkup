@@ -115,7 +115,9 @@ pub async fn deploy_to_cloudflare(
 
     // 4) Execute the plan
     notifier.notify("Applying changes to Cloudflare...");
-    resources.execute_deploy_plan(api, &plan, notifier).await?;
+    resources
+        .execute_deploy_plan(api, cloudflare_client, &plan, notifier)
+        .await?;
     notifier.notify("Deployment complete.");
 
     Ok(())
@@ -416,6 +418,10 @@ export default {
             worker_script_bindings: vec![WorkerBinding::PlainText {
                 name: "INTEGRATION_TEST_ARG".to_string(),
                 text: "plain_text".to_string(),
+            }],
+            worker_script_schedules: vec![cloudflare::endpoints::workers::WorkersSchedule {
+                cron: Some("0 12 * * 2-6".to_string()),
+                ..Default::default()
             }],
             kv_namespaces: vec![KvNamespace {
                 name: "linkup-integration-test-kv".to_string(),
