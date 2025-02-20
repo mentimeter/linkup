@@ -123,6 +123,10 @@ pub async fn deploy_to_cloudflare(
 
 #[cfg(test)]
 mod tests {
+    use cloudflare::framework::{
+        async_api::Client, auth, endpoint::spec::EndpointSpec, Environment, HttpApiClientConfig,
+    };
+    use mockito::ServerGuard;
     use std::cell::RefCell;
 
     use crate::commands::deploy::{
@@ -137,6 +141,46 @@ mod tests {
     };
 
     use super::*;
+
+    fn test_client(mock_server_url: String) -> Client {
+        let mock_server_url = url::Url::parse(&mock_server_url).unwrap();
+        Client::new(
+            auth::Credentials::UserAuthKey {
+                email: "test@example.com".to_string(),
+                key: "test-api-key".to_string(),
+            },
+            HttpApiClientConfig::default(),
+            Environment::Custom(mock_server_url),
+        )
+        .unwrap()
+    }
+
+    async fn mock_cloudflare_endpoints(
+        mock_server: &mut ServerGuard,
+        resources: &TargetCfResources,
+    ) {
+        let req = cloudflare::endpoints::workers::ListBindings {
+            account_id: &resources.account_id,
+            script_name: &resources.worker_script_name,
+        };
+
+        let res = serde_json::to_string(&cloudflare::framework::response::ApiSuccess::<Vec<()>> {
+            result: vec![],
+            result_info: None,
+            messages: serde_json::json!([]),
+            errors: vec![],
+        })
+        .unwrap();
+
+        let path = format!("/{}", req.path().to_string().as_str());
+
+        mock_server
+            .mock("GET", path.as_str())
+            .with_status(200)
+            .with_body(res)
+            .create_async()
+            .await;
+    }
 
     const LOCAL_SCRIPT_CONTENT: &str = r#"
 export default {
@@ -457,11 +501,13 @@ export default {
         };
 
         let resources = test_resources();
-        let _mocks = mock_cloudflare_endpoints(&resources);
+
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        mock_cloudflare_endpoints(&mut mock_server, &resources).await;
 
         // Call deploy_to_cloudflare directly
-        let result =
-            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        let result = deploy_to_cloudflare(&resources, &api, &client, &notifier).await;
         assert!(result.is_ok());
 
         // Check that a worker script was created
@@ -492,10 +538,11 @@ export default {
         };
 
         let resources = test_resources();
-        let _mocks = mock_cloudflare_endpoints(&resources);
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        mock_cloudflare_endpoints(&mut mock_server, &resources).await;
 
-        let result =
-            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        let result = deploy_to_cloudflare(&resources, &api, &client, &notifier).await;
         assert!(result.is_ok());
 
         assert_eq!(*notifier.confirmations_asked.borrow(), 1);
@@ -527,10 +574,11 @@ export default {
         };
 
         let resources = test_resources();
-        let _mocks = mock_cloudflare_endpoints(&resources);
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        mock_cloudflare_endpoints(&mut mock_server, &resources).await;
 
-        let result =
-            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        let result = deploy_to_cloudflare(&resources, &api, &client, &notifier).await;
         assert!(result.is_ok());
 
         assert_eq!(*notifier.confirmations_asked.borrow(), 1);
@@ -550,11 +598,12 @@ export default {
         };
 
         let resources = test_resources();
-        let _mocks = mock_cloudflare_endpoints(&resources);
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        mock_cloudflare_endpoints(&mut mock_server, &resources).await;
 
         // Call deploy_to_cloudflare directly
-        let result =
-            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        let result = deploy_to_cloudflare(&resources, &api, &client, &notifier).await;
         assert!(result.is_ok());
 
         // Check DNS record created
@@ -583,11 +632,12 @@ export default {
         };
 
         let resources = test_resources();
-        let _mocks = mock_cloudflare_endpoints(&resources);
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        mock_cloudflare_endpoints(&mut mock_server, &resources).await;
 
         // Call deploy_to_cloudflare directly
-        let result =
-            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        let result = deploy_to_cloudflare(&resources, &api, &client, &notifier).await;
         assert!(result.is_ok());
 
         let tokens = api.account_tokens.borrow();
@@ -611,11 +661,12 @@ export default {
         };
 
         let resources = test_resources();
-        let _mocks = mock_cloudflare_endpoints(&resources);
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        mock_cloudflare_endpoints(&mut mock_server, &resources).await;
 
         // Call deploy_to_cloudflare directly
-        let result =
-            deploy_to_cloudflare(&resources, &api, &cloudflare_test_client(), &notifier).await;
+        let result = deploy_to_cloudflare(&resources, &api, &client, &notifier).await;
         assert!(result.is_ok());
 
         let tokens = api.account_tokens.borrow();
@@ -721,7 +772,7 @@ export default {
         let worker_subdomain = cloudflare_api
             .get_worker_subdomain(script_name.clone())
             .await;
-        println!("worker_subdomain: {:?}", worker_subdomain);
+
         assert!(
             worker_subdomain.is_ok(),
             "Failed to get worker subdomain info: {:?}",
@@ -904,40 +955,5 @@ export default {
             "Linkup account token '{}' still exists after destroy.",
             linkup_account_token.unwrap().id,
         );
-    }
-
-    // NOTE(augustoccesar)[2025-02-19]: This does not cover for testing when the binding for WORKER_TOKEN is already set.
-    //   This code just allows us to keep the current tests working.
-    fn mock_cloudflare_endpoints(resources: &TargetCfResources) -> Vec<mockito::Mock> {
-        use cloudflare::framework::endpoint::spec::EndpointSpec;
-
-        let req = cloudflare::endpoints::workers::ListBindings {
-            account_id: &resources.account_id,
-            script_name: &resources.worker_script_name,
-        };
-
-        let res = serde_json::to_string(&cloudflare::framework::response::ApiSuccess::<Vec<()>> {
-            result: vec![],
-            result_info: None,
-            messages: serde_json::json!([]),
-            errors: vec![],
-        })
-        .unwrap();
-
-        let path = format!("/{}", req.path().to_string().as_str());
-        let bindings_mock = mockito::mock("GET", path.as_str()).with_body(res).create();
-
-        vec![bindings_mock]
-    }
-
-    fn cloudflare_test_client() -> cloudflare::framework::async_api::Client {
-        cloudflare::framework::async_api::Client::new(
-            cloudflare::framework::auth::Credentials::UserAuthToken {
-                token: "token_123".to_string(),
-            },
-            cloudflare::framework::HttpApiClientConfig::default(),
-            cloudflare::framework::Environment::Mockito,
-        )
-        .expect("Cloudflare test client to have been created")
     }
 }

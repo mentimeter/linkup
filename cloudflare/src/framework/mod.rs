@@ -47,9 +47,6 @@ pub enum Environment {
     Production,
     /// A custom endpoint
     Custom(url::Url),
-    #[cfg(feature = "mockito")]
-    /// The local mock endpoint associated with `mockito`
-    Mockito,
 }
 
 impl<'a> From<&'a Environment> for url::Url {
@@ -59,8 +56,6 @@ impl<'a> From<&'a Environment> for url::Url {
                 url::Url::parse("https://api.cloudflare.com/client/v4/").unwrap()
             }
             Environment::Custom(url) => url.clone(),
-            #[cfg(feature = "mockito")]
-            Environment::Mockito => url::Url::parse(&mockito::server_url()).unwrap(),
         }
     }
 }
@@ -72,14 +67,6 @@ pub struct HttpApiClient {
     environment: Environment,
     credentials: auth::Credentials,
     http_client: reqwest::blocking::Client,
-}
-
-#[cfg(all(feature = "blocking", not(target_arch = "wasm32")))]
-impl HttpApiClient {
-    #[cfg(feature = "mockito")]
-    pub fn is_mock(&self) -> bool {
-        matches!(self.environment, Environment::Mockito)
-    }
 }
 
 /// Configuration for the API client. Allows users to customize its behaviour.
