@@ -20,6 +20,7 @@ pub struct TargetCfResources {
     pub worker_script_parts: Vec<WorkerScriptPart>,
     pub worker_script_entry: String,
     pub worker_script_bindings: Vec<WorkerBinding>,
+    pub worker_script_schedules: Vec<cloudflare::endpoints::workers::WorkersSchedule>,
     pub kv_namespaces: Vec<KvNamespace>,
     pub zone_resources: TargectCfZoneResources,
 }
@@ -132,6 +133,7 @@ pub struct DeployPlan {
     pub kv_actions: Vec<KvPlan>,
     pub script_action: Option<WorkerScriptPlan>,
     pub worker_subdomain_action: Option<WorkerSubdomainPlan>,
+    pub worker_schedules_action: Option<WorkerSchedulesPlan>,
     pub dns_actions: Vec<DnsRecordPlan>,
     pub route_actions: Vec<WorkerRoutePlan>,
     pub ruleset_actions: Vec<RulesetPlan>,
@@ -166,6 +168,11 @@ pub enum WorkerScriptPlan {
 pub enum WorkerSubdomainPlan {
     /// Upload the script with the given metadata & parts
     Create { enabled: bool, script_name: String },
+}
+
+#[derive(Debug)]
+pub struct WorkerSchedulesPlan {
+    schedules: Vec<cloudflare::endpoints::workers::WorkersSchedule>,
 }
 
 /// Plan describing how to reconcile a DNS record.
@@ -250,6 +257,7 @@ impl TargetCfResources {
         let dns_actions = self.check_dns_records(api).await?;
         let route_actions = self.check_worker_routes(api).await?;
         let ruleset_actions = self.check_rulesets(api).await?;
+        let worker_schedules_action = self.check_worker_schedules(cloudflare_client).await?;
 
         Ok(DeployPlan {
             kv_actions: kv_action,
@@ -259,6 +267,7 @@ impl TargetCfResources {
             ruleset_actions,
             account_token_action,
             worker_subdomain_action,
+            worker_schedules_action,
         })
     }
     /// Check if the KV namespace exists and return the plan if not.
@@ -506,9 +515,47 @@ impl TargetCfResources {
         Ok(false)
     }
 
+    pub async fn check_worker_schedules(
+        &self,
+        client: &cloudflare::framework::async_api::Client,
+    ) -> Result<Option<WorkerSchedulesPlan>, DeployError> {
+        let req = cloudflare::endpoints::workers::ListSchedules {
+            account_identifier: &self.account_id,
+            script_name: &self.worker_script_name,
+        };
+
+        let mut existing_schedules = client.request(&req).await?.result.schedules;
+
+        if existing_schedules.len() != self.worker_script_schedules.len() {
+            return Ok(Some(WorkerSchedulesPlan {
+                schedules: self.worker_script_schedules.clone(),
+            }));
+        }
+
+        existing_schedules.sort();
+
+        let mut planned_schedules = self.worker_script_schedules.clone();
+        planned_schedules.sort();
+
+        let matching = existing_schedules
+            .iter()
+            .zip(planned_schedules.iter())
+            .filter(|&(a, b)| a.cron == b.cron)
+            .count();
+
+        if matching != existing_schedules.len() {
+            return Ok(Some(WorkerSchedulesPlan {
+                schedules: self.worker_script_schedules.clone(),
+            }));
+        }
+
+        Ok(None)
+    }
+
     pub async fn execute_deploy_plan(
         &self,
         api: &impl CloudflareApi,
+        client: &cloudflare::framework::async_api::Client,
         plan: &DeployPlan,
         notifier: &impl DeployNotifier,
     ) -> Result<(), DeployError> {
@@ -674,6 +721,20 @@ impl TargetCfResources {
             ));
             api.update_ruleset_rules(zone_id.clone(), final_id, rules.clone())
                 .await?;
+        }
+
+        if let Some(WorkerSchedulesPlan { schedules }) = &plan.worker_schedules_action {
+            notifier.notify("Upserting worker schedules...");
+
+            let schedules = schedules.clone();
+
+            let req = cloudflare::endpoints::workers::UpsertSchedules {
+                account_identifier: &self.account_id,
+                script_name: &self.worker_script_name,
+                schedules,
+            };
+
+            client.request(&req).await?;
         }
 
         Ok(())
@@ -848,6 +909,7 @@ impl DeployPlan {
             && self.route_actions.is_empty()
             && self.ruleset_actions.is_empty()
             && self.account_token_action.is_none()
+            && self.worker_schedules_action.is_none()
     }
 }
 
@@ -908,6 +970,10 @@ pub fn cf_resources(
                 text: all_zone_ids.join(","),
             },
         ],
+        worker_script_schedules: vec![cloudflare::endpoints::workers::WorkersSchedule {
+            cron: Some("0 12 * * 2-6".to_string()),
+            ..Default::default()
+        }],
         kv_namespaces: vec![
             KvNamespace {
                 name: format!("linkup-session-kv-{joined_zone_names}"),
