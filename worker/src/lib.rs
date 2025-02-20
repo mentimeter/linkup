@@ -1,6 +1,7 @@
 use axum::{
     extract::{Json, Query, Request, State},
     http::StatusCode,
+    middleware::{from_fn_with_state, Next},
     response::IntoResponse,
     routing::{any, get, post},
     Router,
@@ -14,7 +15,7 @@ use linkup::{
 };
 use serde::{Deserialize, Serialize};
 use tower_service::Service;
-use worker::{event, kv::KvStore, Env, Fetch, HttpRequest, HttpResponse};
+use worker::{console_warn, event, kv::KvStore, Env, Fetch, HttpRequest, HttpResponse};
 use ws::handle_ws_resp;
 
 mod http_error;
@@ -31,6 +32,7 @@ pub struct CloudflareEnvironemnt {
     tunnel_zone_id: String,
     all_zone_ids: Vec<String>,
     api_token: String,
+    worker_token: String,
 }
 
 #[derive(Clone)]
@@ -50,6 +52,7 @@ pub fn linkup_router(state: LinkupState) -> Router {
         .route("/linkup/no-tunnel", get(no_tunnel))
         .merge(routes::certificate_dns::router())
         .merge(routes::certificate_cache::router())
+        .route_layer(from_fn_with_state(state.clone(), authenticate))
         // Fallback for all other requests
         .fallback(any(linkup_request_handler))
         .with_state(state)
@@ -75,6 +78,7 @@ async fn fetch(
         .map(String::from)
         .collect();
     let cf_api_token = env.var("CLOUDFLARE_API_TOKEN")?;
+    let worker_token = env.var("WORKER_TOKEN")?;
 
     let state = LinkupState {
         sessions_kv,
@@ -85,6 +89,7 @@ async fn fetch(
             tunnel_zone_id: cf_tunnel_zone_id.to_string(),
             all_zone_ids: cf_all_zone_ids,
             api_token: cf_api_token.to_string(),
+            worker_token: worker_token.to_string(),
         },
     };
 
@@ -420,4 +425,39 @@ pub fn generate_secret() -> String {
     getrandom::getrandom(&mut random_bytes).unwrap();
 
     base64::Engine::encode(&base64::prelude::BASE64_STANDARD, random_bytes)
+}
+
+async fn authenticate(
+    State(state): State<LinkupState>,
+    headers: HeaderMap,
+    request: Request,
+    next: Next,
+) -> impl IntoResponse {
+    if request.uri().path().starts_with("/linkup/certificate") {
+        let authorization = headers.get(http::header::AUTHORIZATION);
+        match authorization {
+            Some(token) => match token.to_str() {
+                Ok(token) => {
+                    let parsed_token = token.replace("Bearer ", "");
+                    if parsed_token != state.cloudflare.worker_token {
+                        return StatusCode::UNAUTHORIZED.into_response();
+                    }
+                }
+                Err(err) => {
+                    console_warn!(
+                        "Token on Authorization header contains unsupported characters: '{:?}', {}",
+                        token,
+                        err.to_string()
+                    );
+
+                    return StatusCode::UNAUTHORIZED.into_response();
+                }
+            },
+            None => {
+                return StatusCode::UNAUTHORIZED.into_response();
+            }
+        }
+    }
+
+    next.run(request).await
 }
