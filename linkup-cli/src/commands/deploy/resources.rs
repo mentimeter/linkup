@@ -950,7 +950,7 @@ pub fn cf_resources(
                     action: "set_cache_settings".to_string(),
                     description: "linkup cache rule - do not cache tunnel requests".to_string(),
                     enabled: true,
-                    expression: "(starts_with(http.host, \"tunnel-\"))".to_string(),
+                    expression: "(starts_with(http.host, \"linkup-tunnel-\"))".to_string(),
                     action_parameters: Some(serde_json::json!({"cache": false})),
                 }],
             },
