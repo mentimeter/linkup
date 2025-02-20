@@ -41,8 +41,8 @@ sha2 = "0.10.8"
 hex = "0.4.3"
 tar = "0.4.43"
 flate2 = "1.0.35"
-# NOTE(augustoccesar)[2025-02-19]: This old version is to match the one being used by cloudflare
-mockito = "0.31"
 
 [dev-dependencies]
 mockall = "0.13.1"
+# NOTE(augustoccesar)[2025-02-19]: This old version is to match the one being used by cloudflare
+mockito = "0.31"
