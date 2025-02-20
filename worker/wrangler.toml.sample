@@ -15,5 +15,8 @@ CLOUDLFLARE_ALL_ZONE_IDS = ""
 CLOUDFLARE_API_TOKEN = ""
 WORKER_TOKEN = "token123"
 
+[triggers]
+crons = [ "0 12 * * 2-6" ]
+
 [build]
 command = "cargo install -q worker-build && worker-build --release"
