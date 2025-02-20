@@ -433,7 +433,7 @@ async fn authenticate(
     request: Request,
     next: Next,
 ) -> impl IntoResponse {
-    if request.uri().path().starts_with("/linkup/certificate") {
+    if request.uri().path().starts_with("/linkup") {
         let authorization = headers.get(http::header::AUTHORIZATION);
         match authorization {
             Some(token) => match token.to_str() {

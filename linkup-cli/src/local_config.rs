@@ -303,10 +303,21 @@ pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::E
     let server_config = ServerConfig::from(state);
     let session_name = &state.linkup.session_name;
 
-    let server_session_name =
-        upload_config_to_server(&state.linkup.remote, session_name, server_config.remote).await?;
-    let local_session_name =
-        upload_config_to_server(&local_url, &server_session_name, server_config.local).await?;
+    let server_session_name = upload_config_to_server(
+        &state.linkup.remote,
+        &state.linkup.worker_token,
+        session_name,
+        server_config.remote,
+    )
+    .await?;
+
+    let local_session_name = upload_config_to_server(
+        &local_url,
+        &state.linkup.worker_token,
+        &server_session_name,
+        server_config.local,
+    )
+    .await?;
 
     if server_session_name != local_session_name {
         log::error!(
@@ -323,6 +334,7 @@ pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::E
 
 async fn upload_config_to_server(
     linkup_url: &Url,
+    worker_token: &str,
     desired_name: &str,
     config: StorableSession,
 ) -> Result<String, worker_client::Error> {
@@ -334,7 +346,7 @@ async fn upload_config_to_server(
         cache_routes: config.cache_routes,
     };
 
-    let session_name = WorkerClient::new(linkup_url)
+    let session_name = WorkerClient::new(linkup_url, worker_token)
         .linkup(&session_update_req)
         .await?;
 
