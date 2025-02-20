@@ -126,7 +126,7 @@ mod tests {
     use cloudflare::framework::{
         async_api::Client, auth, endpoint::spec::EndpointSpec, Environment, HttpApiClientConfig,
     };
-    use mockito::{Mock, ServerGuard};
+    use mockito::ServerGuard;
     use std::cell::RefCell;
 
     use crate::commands::deploy::{
@@ -144,7 +144,6 @@ mod tests {
 
     fn test_client(mock_server_url: String) -> Client {
         let mock_server_url = url::Url::parse(&mock_server_url).unwrap();
-        println!("mock_server_url: {:?}", mock_server_url);
         Client::new(
             auth::Credentials::UserAuthKey {
                 email: "test@example.com".to_string(),
@@ -173,9 +172,7 @@ mod tests {
         })
         .unwrap();
 
-        println!("req.path(): {:?}", req.path().to_string());
         let path = format!("/{}", req.path().to_string().as_str());
-        println!("path: {:?}", path);
 
         mock_server
             .mock("GET", path.as_str())
@@ -507,7 +504,7 @@ export default {
 
         let mut mock_server = mockito::Server::new_async().await;
         let client = test_client(mock_server.url());
-        let _mocks = mock_cloudflare_endpoints(&mut mock_server, &resources).await;
+        mock_cloudflare_endpoints(&mut mock_server, &resources).await;
 
         // Call deploy_to_cloudflare directly
         let result = deploy_to_cloudflare(&resources, &api, &client, &notifier).await;
@@ -775,7 +772,7 @@ export default {
         let worker_subdomain = cloudflare_api
             .get_worker_subdomain(script_name.clone())
             .await;
-        println!("worker_subdomain: {:?}", worker_subdomain);
+
         assert!(
             worker_subdomain.is_ok(),
             "Failed to get worker subdomain info: {:?}",
