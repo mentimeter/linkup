@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
-    auth::CloudflareApiAuth,
+    old_auth::CloudflareApiAuth,
     resources::{
         DNSRecord, Rule, WorkerBinding, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart,
     },
