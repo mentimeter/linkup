@@ -49,7 +49,7 @@ pub enum Environment {
     Custom(url::Url),
     #[cfg(feature = "mockito")]
     /// The local mock endpoint associated with `mockito`
-    Mockito,
+    Mockito(String),
 }
 
 impl<'a> From<&'a Environment> for url::Url {
@@ -60,7 +60,7 @@ impl<'a> From<&'a Environment> for url::Url {
             }
             Environment::Custom(url) => url.clone(),
             #[cfg(feature = "mockito")]
-            Environment::Mockito => url::Url::parse(&mockito::server_url()).unwrap(),
+            Environment::Mockito(url) => url::Url::parse(url).unwrap(),
         }
     }
 }

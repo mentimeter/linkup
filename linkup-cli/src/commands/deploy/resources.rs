@@ -1,5 +1,6 @@
 use std::fmt;
 
+use cloudflare::framework::async_api::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -238,13 +239,14 @@ impl TargetCfResources {
     pub async fn check_deploy_plan(
         &self,
         api: &impl CloudflareApi,
+        api_client: Client,
     ) -> Result<DeployPlan, DeployError> {
         let account_token_action = self.check_account_token(api).await?;
         let kv_action = self.check_kv_namespaces(api).await?;
         let script_action = self.check_worker_script(api, &account_token_action).await?;
         let worker_subdomain_action = self.check_worker_subdomain(api).await?;
         let dns_actions = self.check_dns_records(api).await?;
-        let route_actions = self.check_worker_routes(api).await?;
+        let route_actions = self.check_worker_routes(api, api_client).await?;
         let ruleset_actions = self.check_rulesets(api).await?;
 
         Ok(DeployPlan {
@@ -390,6 +392,7 @@ impl TargetCfResources {
     pub async fn check_worker_routes(
         &self,
         api: &impl CloudflareApi,
+        api_client: Client,
     ) -> Result<Vec<WorkerRoutePlan>, DeployError> {
         let mut plans = Vec::new();
 
@@ -398,11 +401,21 @@ impl TargetCfResources {
             for route_config in &self.zone_resources.routes {
                 let route_pattern = route_config.worker_route(zone_name.clone());
                 let script_name = route_config.script.clone();
-                let existing_route = api
-                    .get_worker_route(zone_id.clone(), route_pattern.clone(), script_name.clone())
-                    .await?;
 
-                if existing_route.is_none() {
+                println!("Checking route: {} -> {}", route_pattern, script_name);
+
+                let cf_existing_route_req = cloudflare::endpoints::workers::ListRoutes {
+                    zone_identifier: zone_id,
+                };
+
+                let existing_routes_response = api_client.request(&cf_existing_route_req).await?;
+                println!("{:?}", existing_routes_response);
+
+                let worker_route_exists = existing_routes_response.result.iter().any(|route| {
+                    route.pattern == route_pattern && route.script == Some(script_name.clone())
+                });
+
+                if !worker_route_exists {
                     plans.push(WorkerRoutePlan::Create {
                         zone_id: zone_id.clone(),
                         pattern: route_pattern,

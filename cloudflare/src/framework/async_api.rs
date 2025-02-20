@@ -72,6 +72,8 @@ impl Client {
             .http_client
             .request(endpoint.method(), endpoint.url(&self.environment));
 
+        println!("{:?}", request);
+
         if let Some(body) = endpoint.body() {
             request = request.body(body);
             request = request.header(
@@ -82,6 +84,7 @@ impl Client {
 
         request = request.auth(&self.credentials);
         let response = request.send().await?;
+        println!("{:?}", response);
         map_api_response(response).await
     }
 }

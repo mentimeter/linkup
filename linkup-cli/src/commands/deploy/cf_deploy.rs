@@ -1,4 +1,7 @@
-use crate::commands::deploy::auth;
+use cloudflare::framework::async_api::Client;
+use cloudflare::framework::auth;
+
+use crate::commands::deploy::old_auth;
 use crate::commands::deploy::resources::cf_resources;
 
 use super::api::{AccountCloudflareApi, CloudflareApi};
@@ -10,7 +13,9 @@ pub enum DeployError {
     #[error("No authentication method found, please set CLOUDFLARE_API_KEY and CLOUDFLARE_EMAIL or CLOUDFLARE_API_TOKEN")]
     NoAuthenticationError,
     #[error("Cloudflare API error: {0}")]
-    CloudflareApiError(#[from] reqwest::Error),
+    OldCloudflareApiError(#[from] reqwest::Error),
+    #[error("Cloudflare API failure: {0}")]
+    CfApiError(#[from] cloudflare::framework::response::ApiFailure),
     #[error("Unexpected Cloudflare API response: {0}")]
     UnexpectedResponse(String),
     #[error("Other failure")]
@@ -48,7 +53,7 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
     println!("Account ID: {}", args.account_id);
     println!("Zone IDs: {:?}", args.zone_ids);
 
-    let auth = auth::CloudflareGlobalTokenAuth::new(args.api_key.clone(), args.email.clone());
+    let auth = old_auth::CloudflareGlobalTokenAuth::new(args.api_key.clone(), args.email.clone());
     let zone_ids_strings: Vec<String> = args.zone_ids.iter().map(|s| s.to_string()).collect();
 
     let cloudflare_api = AccountCloudflareApi::new(
@@ -64,7 +69,22 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
         &args.zone_ids,
     );
 
-    deploy_to_cloudflare(&resources, &cloudflare_api, &notifier).await?;
+    let cloudflare_client = match Client::new(
+        auth::Credentials::UserAuthKey {
+            email: args.email.clone(),
+            key: args.api_key.clone(),
+        },
+        Default::default(),
+        cloudflare::framework::Environment::Production,
+    ) {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!("Failed to create Cloudflare client: {:?}", e);
+            return Err(DeployError::OtherError);
+        }
+    };
+
+    deploy_to_cloudflare(&resources, &cloudflare_api, cloudflare_client, &notifier).await?;
 
     Ok(())
 }
@@ -72,10 +92,11 @@ pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
 pub async fn deploy_to_cloudflare(
     resources: &TargetCfResources,
     api: &impl CloudflareApi,
+    api_client: Client,
     notifier: &impl DeployNotifier,
 ) -> Result<(), DeployError> {
     // 1) Check what needs to change
-    let plan = resources.check_deploy_plan(api).await?;
+    let plan = resources.check_deploy_plan(api, api_client).await?;
 
     // 2) If nothing changed, we can just early-out
     if plan.is_empty() {
@@ -103,6 +124,8 @@ pub async fn deploy_to_cloudflare(
 
 #[cfg(test)]
 mod tests {
+    use cloudflare::framework::{async_api::Client, auth, Environment, HttpApiClientConfig};
+    use mockito::ServerGuard;
     use std::cell::RefCell;
 
     use crate::commands::deploy::{
@@ -425,9 +448,36 @@ export default {
         }
     }
 
+    fn test_client(mock_server_url: String) -> Client {
+        Client::new(
+            // Your credentials here
+            auth::Credentials::UserAuthKey {
+                email: "test@example.com".to_string(),
+                key: "test-api-key".to_string(),
+            },
+            HttpApiClientConfig::default(),
+            Environment::Mockito(mock_server_url),
+        )
+        .unwrap()
+    }
+
+    async fn default_mocks(mut mock_server: ServerGuard) -> ServerGuard {
+        mock_server
+            .mock("GET", "/zones/test-zone-id/workers/routes")
+            .with_status(200)
+            .with_body(r#"{"result":[]}"#)
+            .create_async()
+            .await;
+
+        mock_server
+    }
+
     #[tokio::test]
     async fn test_deploy_to_cloudflare_creates_script_when_none_exists() {
         let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        default_mocks(mock_server).await;
 
         let notifier = TestNotifier {
             messages: RefCell::new(vec![]),
@@ -436,7 +486,7 @@ export default {
         };
 
         // Call deploy_to_cloudflare directly
-        let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
+        let result = deploy_to_cloudflare(&test_resources(), &api, client, &notifier).await;
         assert!(result.is_ok());
 
         // Check that a worker script was created
@@ -457,7 +507,12 @@ export default {
     }
 
     #[tokio::test]
-    async fn test_deploy_to_cloudflare_creates_script_when_content_differs() {
+    async fn test_deploy_creates_worker_routes_when_none_exists() {
+        // 1) Start by setting up mockito-based mocks for Cloudflare endpoints
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        default_mocks(mock_server).await;
+
         let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
 
         let notifier = TestNotifier {
@@ -466,7 +521,31 @@ export default {
             confirmations_asked: RefCell::new(0),
         };
 
-        let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
+        let result = deploy_to_cloudflare(&test_resources(), &api, client, &notifier).await;
+        assert!(result.is_ok());
+
+        assert_eq!(*notifier.confirmations_asked.borrow(), 1);
+
+        // get_worker_routes_mock.assert_async().await;
+
+        // 5) Assert your code returned the expected results
+        // assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_deploy_to_cloudflare_creates_script_when_content_differs() {
+        let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        default_mocks(mock_server).await;
+
+        let notifier = TestNotifier {
+            messages: RefCell::new(vec![]),
+            confirmation_response: true,
+            confirmations_asked: RefCell::new(0),
+        };
+
+        let result = deploy_to_cloudflare(&test_resources(), &api, client, &notifier).await;
         assert!(result.is_ok());
 
         assert_eq!(*notifier.confirmations_asked.borrow(), 1);
@@ -490,6 +569,9 @@ export default {
     #[tokio::test]
     async fn test_deploy_to_cloudflare_canceled_by_user() {
         let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        default_mocks(mock_server).await;
 
         let notifier = TestNotifier {
             messages: RefCell::new(vec![]),
@@ -497,7 +579,7 @@ export default {
             confirmations_asked: RefCell::new(0),
         };
 
-        let result = deploy_to_cloudflare(&test_resources(), &api, &notifier).await;
+        let result = deploy_to_cloudflare(&test_resources(), &api, client, &notifier).await;
         assert!(result.is_ok());
 
         assert_eq!(*notifier.confirmations_asked.borrow(), 1);
@@ -509,6 +591,9 @@ export default {
     #[tokio::test]
     async fn test_deploy_creates_dns_and_route_if_not_exist() {
         let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+        let mut mock_server = mockito::Server::new_async().await;
+        let client = test_client(mock_server.url());
+        default_mocks(mock_server).await;
 
         let notifier = TestNotifier {
             messages: RefCell::new(vec![]),
@@ -519,7 +604,7 @@ export default {
         let res = test_resources();
 
         // Call deploy_to_cloudflare directly
-        let result = deploy_to_cloudflare(&res, &api, &notifier).await;
+        let result = deploy_to_cloudflare(&res, &api, client, &notifier).await;
         assert!(result.is_ok());
 
         // Check DNS record created
@@ -540,6 +625,7 @@ export default {
     #[tokio::test]
     async fn test_deploy_creates_account_token() {
         let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
+        let mut mock_server = mockito::Server::new_async().await;
 
         let notifier = TestNotifier {
             messages: RefCell::new(vec![]),
@@ -550,7 +636,8 @@ export default {
         let res = test_resources();
 
         // Call deploy_to_cloudflare directly
-        let result = deploy_to_cloudflare(&res, &api, &notifier).await;
+        let result =
+            deploy_to_cloudflare(&res, &api, test_client(mock_server.url()), &notifier).await;
         assert!(result.is_ok());
 
         let tokens = api.account_tokens.borrow();
@@ -566,6 +653,7 @@ export default {
             "existing".to_string(),
             LINKUP_ACCOUNT_TOKEN_NAME.to_string(),
         ));
+        let mut mock_server = mockito::Server::new_async().await;
 
         let notifier = TestNotifier {
             messages: RefCell::new(vec![]),
@@ -576,7 +664,8 @@ export default {
         let res = test_resources();
 
         // Call deploy_to_cloudflare directly
-        let result = deploy_to_cloudflare(&res, &api, &notifier).await;
+        let result =
+            deploy_to_cloudflare(&res, &api, test_client(mock_server.url()), &notifier).await;
         assert!(result.is_ok());
 
         let tokens = api.account_tokens.borrow();
@@ -592,6 +681,7 @@ export default {
             confirmation_response: true,
             confirmations_asked: RefCell::new(0),
         };
+        let mut mock_server = mockito::Server::new_async().await;
 
         // Skip test if environment variables aren't set
         let account_id = match std::env::var("CLOUDFLARE_ACCOUNT_ID") {
@@ -627,7 +717,8 @@ export default {
         let api_key = std::env::var("CLOUDFLARE_API_KEY").expect("CLOUDFLARE_API_KEY is not set");
         let email = std::env::var("CLOUDFLARE_EMAIL").expect("CLOUDFLARE_EMAIL is not set");
 
-        let global_api_auth = deploy::auth::CloudflareGlobalTokenAuth::new(api_key.clone(), email);
+        let global_api_auth =
+            deploy::old_auth::CloudflareGlobalTokenAuth::new(api_key.clone(), email);
         let cloudflare_api = AccountCloudflareApi::new(
             account_id.clone(),
             vec![zone_id.to_string()],
@@ -636,7 +727,13 @@ export default {
 
         // Deploy the resources
         let res = test_resources();
-        let result = deploy_to_cloudflare(&res, &cloudflare_api, &notifier).await;
+        let result = deploy_to_cloudflare(
+            &res,
+            &cloudflare_api,
+            test_client(mock_server.url()),
+            &notifier,
+        )
+        .await;
         assert!(result.is_ok(), "Deploy failed: {:?}", result);
 
         // Verify the worker

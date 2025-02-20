@@ -1,5 +1,5 @@
 use crate::commands::deploy::{
-    api::AccountCloudflareApi, auth, console_notify::ConsoleNotifier, resources::cf_resources,
+    api::AccountCloudflareApi, console_notify::ConsoleNotifier, old_auth, resources::cf_resources,
 };
 
 use super::{
@@ -32,7 +32,7 @@ pub async fn destroy(args: &DestroyArgs) -> Result<(), DeployError> {
     println!("Account ID: {}", args.account_id);
     println!("Zone IDs: {:?}", args.zone_ids);
 
-    let auth = auth::CloudflareGlobalTokenAuth::new(args.api_key.clone(), args.email.clone());
+    let auth = old_auth::CloudflareGlobalTokenAuth::new(args.api_key.clone(), args.email.clone());
     let zone_ids_strings: Vec<String> = args.zone_ids.iter().map(|s| s.to_string()).collect();
 
     let cloudflare_api = AccountCloudflareApi::new(

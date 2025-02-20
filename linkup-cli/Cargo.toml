@@ -12,6 +12,7 @@ clap = { version = "4.5.27", features = ["derive", "cargo"] }
 clap_complete = "4.5.42"
 colored = "3.0.0"
 ctrlc = { version = "3.4.5", features = ["termination"] }
+cloudflare = { path = "../cloudflare", features = ["mockito", "rustls-tls"]}
 hickory-resolver = { version = "0.24.2", features = ["tokio-runtime"] }
 linkup = { path = "../linkup" }
 linkup-local-server = { path = "../local-server" }
@@ -43,3 +44,4 @@ flate2 = "1.0.35"
 
 [dev-dependencies]
 mockall = "0.13.1"
+mockito = "1.6.1"
