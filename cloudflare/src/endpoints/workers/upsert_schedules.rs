@@ -1,8 +1,11 @@
+use serde::Deserialize;
+
 use super::WorkersSchedule;
 
-use crate::framework::endpoint::{EndpointSpec, Method};
-
-use serde::Serialize;
+use crate::framework::{
+    endpoint::{EndpointSpec, Method},
+    response::ApiResult,
+};
 
 /// Upsert Schedules
 /// <https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/schedules/methods/update/>
@@ -13,10 +16,17 @@ pub struct UpsertSchedules<'a> {
     /// The name of the script to upsert the schedules
     pub script_name: &'a str,
     /// Params for upserting the schedules
-    pub params: UpsertSchedulesParams,
+    pub schedules: Vec<WorkersSchedule>,
 }
 
-impl<'a> EndpointSpec<Vec<WorkersSchedule>> for UpsertSchedules<'a> {
+#[derive(Debug, Deserialize)]
+pub struct UpsertSchedulesResponse {
+    pub schedules: Vec<WorkersSchedule>,
+}
+
+impl ApiResult for UpsertSchedulesResponse {}
+
+impl<'a> EndpointSpec<UpsertSchedulesResponse> for UpsertSchedules<'a> {
     fn method(&self) -> Method {
         Method::PUT
     }
@@ -30,11 +40,6 @@ impl<'a> EndpointSpec<Vec<WorkersSchedule>> for UpsertSchedules<'a> {
 
     #[inline]
     fn body(&self) -> Option<String> {
-        Some(serde_json::to_string(&self.params).unwrap())
+        Some(serde_json::to_string(&self.schedules).unwrap())
     }
-}
-
-#[derive(Serialize, Clone, Debug, Default)]
-pub struct UpsertSchedulesParams {
-    pub schedules: Vec<WorkersSchedule>,
 }

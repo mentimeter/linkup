@@ -1,6 +1,11 @@
+use serde::Deserialize;
+
 use super::WorkersSchedule;
 
-use crate::framework::endpoint::{EndpointSpec, Method};
+use crate::framework::{
+    endpoint::{EndpointSpec, Method},
+    response::ApiResult,
+};
 
 /// List Schedules
 /// <https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/schedules/methods/get/>
@@ -12,7 +17,14 @@ pub struct ListSchedules<'a> {
     pub script_name: &'a str,
 }
 
-impl<'a> EndpointSpec<Vec<WorkersSchedule>> for ListSchedules<'a> {
+#[derive(Debug, Deserialize)]
+pub struct ListSchedulesResponse {
+    pub schedules: Vec<WorkersSchedule>,
+}
+
+impl ApiResult for ListSchedulesResponse {}
+
+impl<'a> EndpointSpec<ListSchedulesResponse> for ListSchedules<'a> {
     fn method(&self) -> Method {
         Method::GET
     }

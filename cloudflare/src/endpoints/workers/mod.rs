@@ -29,9 +29,11 @@ pub use delete_secret::DeleteSecret;
 pub use delete_tail::DeleteTail;
 pub use list_bindings::ListBindings;
 pub use list_routes::ListRoutes;
+pub use list_schedules::ListSchedules;
 pub use list_secrets::ListSecrets;
 pub use list_tails::ListTails;
 pub use send_tail_heartbeat::SendTailHeartbeat;
+pub use upsert_schedules::UpsertSchedules;
 
 /// Workers KV Route
 /// Routes are basic patterns used to enable or disable workers that match requests.
@@ -108,7 +110,7 @@ impl ApiResult for WorkersBinding {}
 impl ApiResult for Vec<WorkersBinding> {}
 
 // Schedule for a Workers Script
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default, PartialOrd, Ord)]
 pub struct WorkersSchedule {
     pub created_on: Option<String>,
     pub cron: Option<String>,
