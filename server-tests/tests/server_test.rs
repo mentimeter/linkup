@@ -71,6 +71,7 @@ pub async fn get(url: String) -> reqwest::Response {
     let client = reqwest::Client::new();
     client
         .get(url)
+        .header("Authorization", "Bearer token123")
         .send()
         .await
         .expect("Failed to send request")
