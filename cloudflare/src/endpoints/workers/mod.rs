@@ -13,9 +13,11 @@ mod delete_secret;
 mod delete_tail;
 mod list_bindings;
 mod list_routes;
+mod list_schedules;
 mod list_secrets;
 mod list_tails;
 mod send_tail_heartbeat;
+mod upsert_schedules;
 
 pub use create_route::{CreateRoute, CreateRouteParams};
 pub use create_secret::{CreateSecret, CreateSecretParams};
@@ -104,3 +106,14 @@ pub struct WorkersBinding {
 
 impl ApiResult for WorkersBinding {}
 impl ApiResult for Vec<WorkersBinding> {}
+
+// Schedule for a Workers Script
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct WorkersSchedule {
+    pub created_on: Option<String>,
+    pub cron: Option<String>,
+    pub modified_on: Option<String>,
+}
+
+impl ApiResult for WorkersSchedule {}
+impl ApiResult for Vec<WorkersSchedule> {}
