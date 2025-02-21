@@ -11,10 +11,6 @@ if ! command -v -- "cloudflared" >/dev/null 2>&1; then
     printf '%s\n' "WARN: 'cloudflared' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" 1>&2
 fi
 
-if ! command -v -- "caddy" >/dev/null 2>&1; then
-    printf '%s\n' "WARN: 'caddy' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://caddyserver.com/docs/install" 1>&2
-fi
-
 if ! command -v -- "dnsmasq" >/dev/null 2>&1; then
     printf '%s\n' "WARN: 'dnsmasq' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://thekelleys.org.uk/dnsmasq/doc.html" 1>&2
 fi

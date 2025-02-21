@@ -72,25 +72,6 @@ impl Session {
 }
 
 #[derive(Debug, Serialize)]
-struct EnvironmentVariables {
-    cf_api_token: bool,
-    cf_zone_id: bool,
-    cf_account_id: bool,
-    cert_storage_redis_url: bool,
-}
-
-impl EnvironmentVariables {
-    fn load() -> Self {
-        Self {
-            cf_api_token: env::var("LINKUP_CF_API_TOKEN").is_ok(),
-            cf_zone_id: env::var("LINKUP_CLOUDFLARE_ZONE_ID").is_ok(),
-            cf_account_id: env::var("LINKUP_CLOUDFLARE_ACCOUNT_ID").is_ok(),
-            cert_storage_redis_url: env::var("LINKUP_CERT_STORAGE_REDIS_URL").is_ok(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
     caddy: BackgroundServiceHealth,
@@ -189,7 +170,6 @@ impl LocalDNS {
 struct Health {
     system: System,
     session: Option<Session>,
-    environment_variables: EnvironmentVariables,
     background_services: BackgroudServices,
     linkup: Linkup,
     local_dns: LocalDNS,
@@ -209,7 +189,6 @@ impl Health {
         Ok(Self {
             system: System::load(),
             session,
-            environment_variables: EnvironmentVariables::load(),
             background_services: BackgroudServices::load(),
             linkup: Linkup::load()?,
             local_dns: LocalDNS::load()?,
@@ -267,36 +246,6 @@ impl Display for Health {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-        }
-
-        writeln!(f, "{}", "Environment variables:".bold().italic())?;
-
-        write!(f, "  - LINKUP_CF_API_TOKEN           ")?;
-        if self.environment_variables.cf_api_token {
-            writeln!(f, "{}", "OK".blue())?;
-        } else {
-            writeln!(f, "{}", "MISSING".yellow())?;
-        }
-
-        write!(f, "  - LINKUP_CLOUDFLARE_ZONE_ID     ")?;
-        if self.environment_variables.cf_zone_id {
-            writeln!(f, "{}", "OK".blue())?;
-        } else {
-            writeln!(f, "{}", "MISSING".yellow())?;
-        }
-
-        write!(f, "  - LINKUP_CLOUDFLARE_ACCOUNT_ID  ")?;
-        if self.environment_variables.cf_account_id {
-            writeln!(f, "{}", "OK".blue())?;
-        } else {
-            writeln!(f, "{}", "MISSING".yellow())?;
-        }
-
-        write!(f, "  - LINKUP_CERT_STORAGE_REDIS_URL ")?;
-        if self.environment_variables.cert_storage_redis_url {
-            writeln!(f, "{}", "OK".blue())?;
-        } else {
-            writeln!(f, "{}", "MISSING".yellow())?;
         }
 
         writeln!(f, "{}", "Linkup:".bold().italic())?;

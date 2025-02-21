@@ -39,8 +39,8 @@ jobs:
           fi
           xcaddy build \
             --output "caddy-${TARGET_OS}-${{ matrix.arch }}" \
-            --with github.com/mentimeter/caddy-storage-cf-kv \
-            --with github.com/caddy-dns/cloudflare
+            --with github.com/mentimeter/caddy-dns-linkup \
+            --with github.com/mentimeter/caddy-storage-linkup
         env:
           GOBIN: $HOME/go/bin  # Ensure Go binaries are in the PATH
 

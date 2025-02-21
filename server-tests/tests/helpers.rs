@@ -40,6 +40,7 @@ pub async fn post(url: String, body: String) -> reqwest::Response {
     client
         .post(url)
         .header("Content-Type", "application/json")
+        .header("Authorization", "Bearer token123")
         .body(body)
         .send()
         .await

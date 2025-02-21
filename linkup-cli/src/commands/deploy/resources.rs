@@ -1,12 +1,12 @@
 use std::fmt;
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
 
 pub(super) const LINKUP_ACCOUNT_TOKEN_NAME: &str = "linkup-account-owned-cli-access-token";
-const LINKUP_SCRIPT_NAME: &str = "linkup-worker";
 // To build the worker script, run in the worker directory:
 // cargo install -q worker-build && worker-build --release
 const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../../worker/build/worker/shim.mjs");
@@ -15,10 +15,13 @@ const LINKUP_WORKER_INDEX_WASM: &[u8] =
 
 #[derive(Debug, Clone)]
 pub struct TargetCfResources {
+    pub account_id: String,
     pub worker_script_name: String,
     pub worker_script_parts: Vec<WorkerScriptPart>,
     pub worker_script_entry: String,
-    pub kv_name: String,
+    pub worker_script_bindings: Vec<WorkerBinding>,
+    pub worker_script_schedules: Vec<cloudflare::endpoints::workers::WorkersSchedule>,
+    pub kv_namespaces: Vec<KvNamespace>,
     pub zone_resources: TargectCfZoneResources,
 }
 
@@ -66,7 +69,7 @@ pub struct WorkerScriptInfo {}
 #[derive(Debug, Clone)]
 pub struct WorkerMetadata {
     pub main_module: String,
-    pub bindings: Vec<WorkerKVBinding>,
+    pub bindings: Vec<WorkerBinding>,
     pub compatibility_date: String,
     pub tag: String,
 }
@@ -98,10 +101,10 @@ impl fmt::Display for WorkerScriptPart {
 }
 
 #[derive(Debug, Clone)]
-pub struct WorkerKVBinding {
-    pub type_: String,
-    pub name: String,
-    pub namespace_id: String,
+pub enum WorkerBinding {
+    KvNamespace { name: String, namespace_id: String },
+    PlainText { name: String, text: String },
+    SecretText { name: String, text: String },
 }
 
 #[derive(Debug, Clone)]
@@ -127,8 +130,10 @@ pub struct Rule {
 /// resources to match the desired state.
 #[derive(Debug, Default)]
 pub struct DeployPlan {
-    pub kv_action: Option<KvPlan>,
+    pub kv_actions: Vec<KvPlan>,
     pub script_action: Option<WorkerScriptPlan>,
+    pub worker_subdomain_action: Option<WorkerSubdomainPlan>,
+    pub worker_schedules_action: Option<WorkerSchedulesPlan>,
     pub dns_actions: Vec<DnsRecordPlan>,
     pub route_actions: Vec<WorkerRoutePlan>,
     pub ruleset_actions: Vec<RulesetPlan>,
@@ -142,6 +147,12 @@ pub enum KvPlan {
     Create { namespace_name: String },
 }
 
+#[derive(Debug, Clone)]
+pub struct KvNamespace {
+    pub name: String,
+    pub binding: String,
+}
+
 /// Plan describing how to reconcile a worker script.
 #[derive(Debug)]
 pub enum WorkerScriptPlan {
@@ -151,6 +162,17 @@ pub enum WorkerScriptPlan {
         metadata: WorkerMetadata,
         parts: Vec<WorkerScriptPart>,
     },
+}
+
+#[derive(Debug)]
+pub enum WorkerSubdomainPlan {
+    /// Upload the script with the given metadata & parts
+    Create { enabled: bool, script_name: String },
+}
+
+#[derive(Debug)]
+pub struct WorkerSchedulesPlan {
+    schedules: Vec<cloudflare::endpoints::workers::WorkersSchedule>,
 }
 
 /// Plan describing how to reconcile a DNS record.
@@ -192,7 +214,7 @@ pub struct DestroyPlan {
     pub remove_worker_script: Option<String>,
 
     /// ID of the KV namespace that should be removed (if any).
-    pub remove_kv_namespace: Option<String>,
+    pub remove_kv_namespaces: Vec<String>,
 
     /// (zone_id, dns_record_id) for each DNS record to remove.
     pub remove_dns_records: Vec<(String, String)>,
@@ -211,7 +233,7 @@ impl DestroyPlan {
     /// Return true if nothing needs to be removed.
     pub fn is_empty(&self) -> bool {
         self.remove_worker_script.is_none()
-            && self.remove_kv_namespace.is_none()
+            && self.remove_kv_namespaces.is_empty()
             && self.remove_dns_records.is_empty()
             && self.remove_worker_routes.is_empty()
             && self.remove_rulesets.is_empty()
@@ -224,44 +246,55 @@ impl TargetCfResources {
     pub async fn check_deploy_plan(
         &self,
         api: &impl CloudflareApi,
+        cloudflare_client: &cloudflare::framework::async_api::Client,
     ) -> Result<DeployPlan, DeployError> {
-        let kv_action = self.check_kv_namespace(api).await?;
-        let script_action = self.check_worker_script(api).await?;
+        let account_token_action = self.check_account_token(api).await?;
+        let kv_action = self.check_kv_namespaces(api).await?;
+        let script_action = self
+            .check_worker_script(api, cloudflare_client, &account_token_action)
+            .await?;
+        let worker_subdomain_action = self.check_worker_subdomain(api).await?;
         let dns_actions = self.check_dns_records(api).await?;
         let route_actions = self.check_worker_routes(api).await?;
         let ruleset_actions = self.check_rulesets(api).await?;
-        let account_token_action = self.check_account_token(api).await?;
+        let worker_schedules_action = self.check_worker_schedules(cloudflare_client).await?;
 
         Ok(DeployPlan {
-            kv_action,
+            kv_actions: kv_action,
             script_action,
             dns_actions,
             route_actions,
             ruleset_actions,
             account_token_action,
+            worker_subdomain_action,
+            worker_schedules_action,
         })
     }
     /// Check if the KV namespace exists and return the plan if not.
-    pub async fn check_kv_namespace(
+    pub async fn check_kv_namespaces(
         &self,
         api: &impl CloudflareApi,
-    ) -> Result<Option<KvPlan>, DeployError> {
-        let existing = api.get_kv_namespace_id(self.kv_name.clone()).await?;
-        if existing.is_none() {
-            // We need to create this KV namespace
-            Ok(Some(KvPlan::Create {
-                namespace_name: self.kv_name.clone(),
-            }))
-        } else {
-            // KV namespace is already present, no plan needed
-            Ok(None)
+    ) -> Result<Vec<KvPlan>, DeployError> {
+        let mut plans = Vec::with_capacity(self.kv_namespaces.len());
+        for kv_namespace in &self.kv_namespaces {
+            let existing = api.get_kv_namespace_id(kv_namespace.name.clone()).await?;
+            if existing.is_none() {
+                // We need to create this KV namespace
+                plans.push(KvPlan::Create {
+                    namespace_name: kv_namespace.name.clone(),
+                });
+            }
         }
+
+        Ok(plans)
     }
 
     /// Check if the worker script needs to be uploaded. Return the plan if an upload is needed.
     pub async fn check_worker_script(
         &self,
         api: &impl CloudflareApi,
+        cloudflare_client: &cloudflare::framework::async_api::Client,
+        account_token_plan: &Option<AccountTokenPlan>,
     ) -> Result<Option<WorkerScriptPlan>, DeployError> {
         let script_name = &self.worker_script_name;
         let last_version = api.get_worker_script_version(script_name.clone()).await?;
@@ -275,17 +308,40 @@ impl TargetCfResources {
         };
 
         if needs_upload {
+            let mut bindings = Vec::with_capacity(self.kv_namespaces.len());
+            for kv_namespace in &self.kv_namespaces {
+                bindings.push(WorkerBinding::KvNamespace {
+                    name: kv_namespace.binding.clone(),
+                    namespace_id: "<to-be-filled-on-deploy>".to_string(),
+                });
+            }
+
+            for binding in &self.worker_script_bindings {
+                bindings.push(binding.clone());
+            }
+
+            if !self.check_worker_token(cloudflare_client).await? {
+                bindings.push(WorkerBinding::PlainText {
+                    name: "WORKER_TOKEN".to_string(),
+                    text: generate_secret(),
+                });
+            }
+
+            if account_token_plan.is_some() {
+                bindings.push(WorkerBinding::SecretText {
+                    name: "CLOUDFLARE_API_TOKEN".to_string(),
+                    text: "<to-be-filled-on-deploy>".to_string(),
+                });
+            }
+
             // Construct the metadata
             let metadata = WorkerMetadata {
                 main_module: self.worker_script_entry.clone(),
-                bindings: vec![WorkerKVBinding {
-                    type_: "kv_namespace".to_string(),
-                    name: "LINKUP_SESSIONS".to_string(),
-                    namespace_id: "<to-be-filled-on-deploy>".to_string(),
-                }],
+                bindings,
                 compatibility_date: "2024-12-18".to_string(),
                 tag: current_version,
             };
+
             Ok(Some(WorkerScriptPlan::Upload {
                 script_name: script_name.clone(),
                 metadata,
@@ -294,6 +350,27 @@ impl TargetCfResources {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn check_worker_subdomain(
+        &self,
+        api: &impl CloudflareApi,
+    ) -> Result<Option<WorkerSubdomainPlan>, DeployError> {
+        let script_name = &self.worker_script_name;
+        if let Ok(subdomain) = api.get_worker_subdomain(script_name.clone()).await {
+            if !subdomain.enabled {
+                return Ok(Some(WorkerSubdomainPlan::Create {
+                    enabled: true,
+                    script_name: script_name.clone(),
+                }));
+            } else {
+                return Ok(None);
+            }
+        }
+        Ok(Some(WorkerSubdomainPlan::Create {
+            enabled: true,
+            script_name: script_name.clone(),
+        }))
     }
 
     /// Check if we need to create DNS records for each zone.
@@ -338,7 +415,7 @@ impl TargetCfResources {
         let mut plans = Vec::new();
 
         for zone_id in api.zone_ids() {
-            let zone_name = api.get_zone_name(zone_id.clone()).await?;
+            let zone_name = api.get_zone_name(zone_id).await?;
             for route_config in &self.zone_resources.routes {
                 let route_pattern = route_config.worker_route(zone_name.clone());
                 let script_name = route_config.script.clone();
@@ -416,20 +493,105 @@ impl TargetCfResources {
         }
     }
 
+    /// Check if the worker already has a binding of a worker token. We don't want to create a new one
+    /// on every deploy, so we use this to check if one already exists.
+    pub async fn check_worker_token(
+        &self,
+        client: &cloudflare::framework::async_api::Client,
+    ) -> Result<bool, DeployError> {
+        let req = cloudflare::endpoints::workers::ListBindings {
+            account_id: &self.account_id,
+            script_name: &self.worker_script_name,
+        };
+
+        let bindings = client.request(&req).await?.result;
+
+        for binding in bindings {
+            if binding.name == "WORKER_TOKEN" {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    pub async fn check_worker_schedules(
+        &self,
+        client: &cloudflare::framework::async_api::Client,
+    ) -> Result<Option<WorkerSchedulesPlan>, DeployError> {
+        let req = cloudflare::endpoints::workers::ListSchedules {
+            account_identifier: &self.account_id,
+            script_name: &self.worker_script_name,
+        };
+
+        let mut existing_schedules = client.request(&req).await?.result.schedules;
+
+        if existing_schedules.len() != self.worker_script_schedules.len() {
+            return Ok(Some(WorkerSchedulesPlan {
+                schedules: self.worker_script_schedules.clone(),
+            }));
+        }
+
+        existing_schedules.sort();
+
+        let mut planned_schedules = self.worker_script_schedules.clone();
+        planned_schedules.sort();
+
+        let matching = existing_schedules
+            .iter()
+            .zip(planned_schedules.iter())
+            .filter(|&(a, b)| a.cron == b.cron)
+            .count();
+
+        if matching != existing_schedules.len() {
+            return Ok(Some(WorkerSchedulesPlan {
+                schedules: self.worker_script_schedules.clone(),
+            }));
+        }
+
+        Ok(None)
+    }
+
     pub async fn execute_deploy_plan(
         &self,
         api: &impl CloudflareApi,
+        client: &cloudflare::framework::async_api::Client,
         plan: &DeployPlan,
         notifier: &impl DeployNotifier,
     ) -> Result<(), DeployError> {
         // We may need the worker subdomain for DNS records, so fetch it once:
-        let worker_subdomain = api.get_worker_subdomain().await?;
+        let worker_subdomain = api.get_account_worker_subdomain().await?;
 
         // 1) Reconcile KV
-        if let Some(KvPlan::Create { namespace_name }) = &plan.kv_action {
-            notifier.notify(&format!("Creating KV namespace: {}", namespace_name));
-            let new_id = api.create_kv_namespace(namespace_name.clone()).await?;
-            notifier.notify(&format!("KV namespace created with ID: {}", new_id));
+        for kv_plan in &plan.kv_actions {
+            match kv_plan {
+                KvPlan::Create { namespace_name } => {
+                    notifier.notify(&format!("Creating KV namespace: {}", namespace_name));
+                    let new_id = api.create_kv_namespace(namespace_name.clone()).await?;
+                    notifier.notify(&format!("KV namespace created with ID: {}", new_id));
+                }
+            }
+        }
+
+        let mut token: Option<String> = None;
+        // 6) Reconcile account token
+        if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
+            notifier.notify("Creating account token...");
+
+            let created_token = api.create_account_token(token_name).await?;
+            token = Some(created_token.clone());
+
+            notifier.notify("Account token created successfully");
+            notifier.notify(
+                "-----------------------------------------------------------------------------",
+            );
+            notifier.notify(
+                "-------------------------------- NOTICE -------------------------------------",
+            );
+            notifier.notify(
+                "This is the only time you'll get to see this token, make sure to make a copy.",
+            );
+            notifier.notify(&format!("Access token: {}", created_token));
         }
 
         // 2) Reconcile Worker Script
@@ -440,27 +602,51 @@ impl TargetCfResources {
             parts,
         }) = &plan.script_action
         {
-            let kv_ns_id = api.get_kv_namespace_id(self.kv_name.clone()).await?;
-            let kv_ns_id = kv_ns_id.ok_or_else(|| {
-                DeployError::UnexpectedResponse(
-                    "KV namespace should exist but was not found".to_string(),
-                )
-            })?;
-
-            // Update metadata with correct ID
             let mut final_metadata = metadata.clone();
-            if let Some(binding) = final_metadata
-                .bindings
-                .iter_mut()
-                .find(|b| b.name == "LINKUP_SESSIONS")
-            {
-                binding.namespace_id = kv_ns_id;
+
+            for kv_namespace in &self.kv_namespaces {
+                let kv_ns_id = api.get_kv_namespace_id(kv_namespace.name.clone()).await?;
+                let kv_ns_id = kv_ns_id.ok_or_else(|| {
+                    DeployError::UnexpectedResponse(
+                        "KV namespace should exist but was not found".to_string(),
+                    )
+                })?;
+
+                for binding in final_metadata.bindings.iter_mut() {
+                    if let WorkerBinding::KvNamespace { name, namespace_id } = binding {
+                        if *name == kv_namespace.binding {
+                            *namespace_id = kv_ns_id.clone();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if let Some(token) = token {
+                for binding in final_metadata.bindings.iter_mut() {
+                    if let WorkerBinding::SecretText { name, text } = binding {
+                        if *name == "CLOUDFLARE_API_TOKEN" {
+                            *text = token.clone();
+                        }
+                    }
+                }
             }
 
             notifier.notify("Uploading worker script...");
             api.create_worker_script(script_name.clone(), final_metadata, parts.clone())
                 .await?;
             notifier.notify("Worker script uploaded successfully.");
+        }
+
+        if let Some(WorkerSubdomainPlan::Create {
+            enabled,
+            script_name,
+        }) = &plan.worker_subdomain_action
+        {
+            notifier.notify("Updating worker subdomain...");
+            api.post_worker_subdomain(script_name.clone(), *enabled, None)
+                .await?;
+            notifier.notify("Worker subdomain updated successfully.");
         }
 
         // 3) Reconcile DNS records
@@ -537,21 +723,18 @@ impl TargetCfResources {
                 .await?;
         }
 
-        // 6) Reconcile account token
-        if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
-            notifier.notify("Creating account token...");
-            let token = api.create_account_token(token_name).await?;
-            notifier.notify("Account token created successfully");
-            notifier.notify(
-                "-----------------------------------------------------------------------------",
-            );
-            notifier.notify(
-                "-------------------------------- NOTICE -------------------------------------",
-            );
-            notifier.notify(
-                "This is the only time you'll get to see this token, make sure to make a copy.",
-            );
-            notifier.notify(&format!("Access token: {}", token));
+        if let Some(WorkerSchedulesPlan { schedules }) = &plan.worker_schedules_action {
+            notifier.notify("Upserting worker schedules...");
+
+            let schedules = schedules.clone();
+
+            let req = cloudflare::endpoints::workers::UpsertSchedules {
+                account_identifier: &self.account_id,
+                script_name: &self.worker_script_name,
+                schedules,
+            };
+
+            client.request(&req).await?;
         }
 
         Ok(())
@@ -572,9 +755,10 @@ impl TargetCfResources {
         }
 
         // 2) KV namespace
-        let kv_name = &self.kv_name;
-        if let Some(ns_id) = api.get_kv_namespace_id(kv_name.clone()).await? {
-            plan.remove_kv_namespace = Some(ns_id);
+        for kv_namespace in &self.kv_namespaces {
+            if let Some(ns_id) = api.get_kv_namespace_id(kv_namespace.name.clone()).await? {
+                plan.remove_kv_namespaces.push(ns_id);
+            }
         }
 
         // 3) DNS records
@@ -591,7 +775,7 @@ impl TargetCfResources {
 
         // 4) Worker routes
         for zone_id in api.zone_ids() {
-            let zone_name = api.get_zone_name(zone_id.clone()).await?;
+            let zone_name = api.get_zone_name(zone_id).await?;
             for route_config in &self.zone_resources.routes {
                 let pattern = route_config.worker_route(zone_name.clone());
                 let script_name = route_config.script.clone();
@@ -666,13 +850,10 @@ impl TargetCfResources {
         }
 
         // 4) KV namespace
-        if let Some(ns_id) = &plan.remove_kv_namespace {
-            notifier.notify(&format!("Removing KV namespace '{}'...", self.kv_name));
+        for ns_id in &plan.remove_kv_namespaces {
+            notifier.notify(&format!("Removing KV namespace '{}'...", ns_id));
             api.remove_kv_namespace(ns_id.clone()).await?;
-            notifier.notify(&format!(
-                "KV namespace '{}' removed successfully.",
-                self.kv_name
-            ));
+            notifier.notify(&format!("KV namespace '{}' removed successfully.", ns_id));
         }
 
         // 5) Cache rulesets
@@ -722,12 +903,13 @@ impl TargetCfResources {
 impl DeployPlan {
     /// Return `true` if there are no actions to execute.
     pub fn is_empty(&self) -> bool {
-        self.kv_action.is_none()
+        self.kv_actions.is_empty()
             && self.script_action.is_none()
             && self.dns_actions.is_empty()
             && self.route_actions.is_empty()
             && self.ruleset_actions.is_empty()
             && self.account_token_action.is_none()
+            && self.worker_schedules_action.is_none()
     }
 }
 
@@ -749,9 +931,18 @@ pub fn rules_equal(current: &[Rule], desired: &[Rule]) -> bool {
     true
 }
 
-pub fn cf_resources() -> TargetCfResources {
+pub fn cf_resources(
+    account_id: String,
+    tunnel_zone_id: String,
+    all_zone_names: &[String],
+    all_zone_ids: &[String],
+) -> TargetCfResources {
+    let joined_zone_names = all_zone_names.join("-").replace(".", "-");
+    let linkup_script_name = format!("linkup-worker-{joined_zone_names}");
+
     TargetCfResources {
-        worker_script_name: LINKUP_SCRIPT_NAME.to_string(),
+        account_id: account_id.clone(),
+        worker_script_name: linkup_script_name.clone(),
         worker_script_entry: "shim.mjs".to_string(),
         worker_script_parts: vec![
             WorkerScriptPart {
@@ -765,26 +956,57 @@ pub fn cf_resources() -> TargetCfResources {
                 content_type: "application/wasm".to_string(),
             },
         ],
-        kv_name: "linkup-session-kv".to_string(),
+        worker_script_bindings: vec![
+            WorkerBinding::PlainText {
+                name: "CLOUDFLARE_ACCOUNT_ID".to_string(),
+                text: account_id,
+            },
+            WorkerBinding::PlainText {
+                name: "CLOUDFLARE_TUNNEL_ZONE_ID".to_string(),
+                text: tunnel_zone_id,
+            },
+            WorkerBinding::PlainText {
+                name: "CLOUDLFLARE_ALL_ZONE_IDS".to_string(),
+                text: all_zone_ids.join(","),
+            },
+        ],
+        worker_script_schedules: vec![cloudflare::endpoints::workers::WorkersSchedule {
+            cron: Some("0 12 * * 2-6".to_string()),
+            ..Default::default()
+        }],
+        kv_namespaces: vec![
+            KvNamespace {
+                name: format!("linkup-session-kv-{joined_zone_names}"),
+                binding: "LINKUP_SESSIONS".to_string(),
+            },
+            KvNamespace {
+                name: format!("linkup-tunnels-kv-{joined_zone_names}"),
+                binding: "LINKUP_TUNNELS".to_string(),
+            },
+            KvNamespace {
+                name: format!("linkup-certificate-cache-kv-{joined_zone_names}"),
+                binding: "LINKUP_CERTIFICATE_CACHE".to_string(),
+            },
+        ],
         zone_resources: TargectCfZoneResources {
             dns_records: vec![
                 TargetDNSRecord {
                     route: "*".to_string(),
-                    script: LINKUP_SCRIPT_NAME.to_string(),
+                    script: linkup_script_name.clone(),
                 },
                 TargetDNSRecord {
                     route: "@".to_string(),
-                    script: LINKUP_SCRIPT_NAME.to_string(),
+                    script: linkup_script_name.clone(),
                 },
             ],
             routes: vec![
                 TargetWorkerRoute {
                     route: "*.".to_string(),
-                    script: LINKUP_SCRIPT_NAME.to_string(),
+                    script: linkup_script_name.clone(),
                 },
                 TargetWorkerRoute {
                     route: "".to_string(),
-                    script: LINKUP_SCRIPT_NAME.to_string(),
+                    script: linkup_script_name.clone(),
                 },
             ],
             cache_rules: TargetCacheRules {
@@ -794,10 +1016,17 @@ pub fn cf_resources() -> TargetCfResources {
                     action: "set_cache_settings".to_string(),
                     description: "linkup cache rule - do not cache tunnel requests".to_string(),
                     enabled: true,
-                    expression: "(starts_with(http.host, \"tunnel-\"))".to_string(),
+                    expression: "(starts_with(http.host, \"linkup-tunnel-\"))".to_string(),
                     action_parameters: Some(serde_json::json!({"cache": false})),
                 }],
             },
         },
     }
+}
+
+pub fn generate_secret() -> String {
+    let mut rng = rand::thread_rng();
+    let bytes: [u8; 32] = rng.gen();
+
+    base64::Engine::encode(&base64::prelude::BASE64_STANDARD, bytes)
 }

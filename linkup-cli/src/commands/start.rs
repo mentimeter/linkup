@@ -36,11 +36,8 @@ pub async fn start(
     fresh_state: bool,
     config_arg: &Option<String>,
 ) -> Result<(), CliError> {
-    env_logger::init();
-
     let mut state = if fresh_state {
-        let is_paid = services::CloudflareTunnel::use_paid_tunnels();
-        let state = load_and_save_state(config_arg, args.no_tunnel, is_paid)?;
+        let state = load_and_save_state(config_arg, args.no_tunnel, true)?;
         set_linkup_env(state.clone())?;
 
         state
@@ -264,6 +261,7 @@ fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
     Ok(())
 }
 
+// TODO: Remove this `is_paid` arg
 fn load_and_save_state(
     config_arg: &Option<String>,
     no_tunnel: bool,

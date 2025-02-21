@@ -75,7 +75,7 @@ impl LocalState {
             Some(url) => url.clone(),
             None => {
                 let mut remote = self.linkup.remote.clone();
-                remote.set_path("/linkup-no-tunnel");
+                remote.set_path("/linkup/no-tunnel");
                 remote
             }
         }
@@ -93,6 +93,7 @@ impl LocalState {
 pub struct LinkupState {
     pub session_name: String,
     pub session_token: String,
+    pub worker_token: String,
     pub config_path: String,
     pub remote: Url,
     pub tunnel: Option<Url>,
@@ -179,6 +180,7 @@ impl YamlLocalConfig {
 #[derive(Deserialize, Clone)]
 pub struct LinkupConfig {
     pub remote: Url,
+    pub worker_token: String,
     cache_routes: Option<Vec<String>>,
 }
 
@@ -218,6 +220,7 @@ pub fn config_to_state(
         is_paid: Some(is_paid),
         session_name: String::new(),
         session_token: random_token,
+        worker_token: yaml_config.linkup.worker_token,
         config_path,
         remote: yaml_config.linkup.remote,
         tunnel,
@@ -300,10 +303,21 @@ pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::E
     let server_config = ServerConfig::from(state);
     let session_name = &state.linkup.session_name;
 
-    let server_session_name =
-        upload_config_to_server(&state.linkup.remote, session_name, server_config.remote).await?;
-    let local_session_name =
-        upload_config_to_server(&local_url, &server_session_name, server_config.local).await?;
+    let server_session_name = upload_config_to_server(
+        &state.linkup.remote,
+        &state.linkup.worker_token,
+        session_name,
+        server_config.remote,
+    )
+    .await?;
+
+    let local_session_name = upload_config_to_server(
+        &local_url,
+        &state.linkup.worker_token,
+        &server_session_name,
+        server_config.local,
+    )
+    .await?;
 
     if server_session_name != local_session_name {
         log::error!(
@@ -320,6 +334,7 @@ pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::E
 
 async fn upload_config_to_server(
     linkup_url: &Url,
+    worker_token: &str,
     desired_name: &str,
     config: StorableSession,
 ) -> Result<String, worker_client::Error> {
@@ -331,7 +346,7 @@ async fn upload_config_to_server(
         cache_routes: config.cache_routes,
     };
 
-    let session_name = WorkerClient::new(linkup_url)
+    let session_name = WorkerClient::new(linkup_url, worker_token)
         .linkup(&session_update_req)
         .await?;
 
@@ -397,6 +412,7 @@ mod tests {
     const CONF_STR: &str = r#"
 linkup:
   remote: https://remote-linkup.example.com
+  worker_token: test_token_123
 services:
   - name: frontend
     remote: http://remote-service1.example.com
@@ -434,6 +450,10 @@ domains:
         assert_eq!(
             local_state.linkup.remote,
             Url::parse("https://remote-linkup.example.com").unwrap()
+        );
+        assert_eq!(
+            local_state.linkup.worker_token,
+            String::from("test_token_123"),
         );
 
         assert_eq!(local_state.services.len(), 2);

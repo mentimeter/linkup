@@ -7,16 +7,16 @@ use thiserror::Error;
 mod commands;
 mod env_files;
 mod local_config;
+mod release;
 mod services;
 mod signal;
-mod system;
 mod worker_client;
 
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
-const LINKUP_CF_TLS_API_ENV_VAR: &str = "LINKUP_CF_API_TOKEN";
 
 pub fn linkup_dir_path() -> PathBuf {
     let storage_dir = match env::var("HOME") {
@@ -27,6 +27,12 @@ pub fn linkup_dir_path() -> PathBuf {
     let mut path = PathBuf::new();
     path.push(storage_dir);
     path.push(LINKUP_DIR);
+    path
+}
+
+pub fn linkup_bin_dir_path() -> PathBuf {
+    let mut path = linkup_dir_path();
+    path.push("bin");
     path
 }
 
@@ -50,6 +56,11 @@ fn ensure_linkup_dir() -> Result<()> {
             ))),
         },
     }
+}
+
+fn current_version() -> release::Version {
+    release::Version::try_from(CURRENT_VERSION)
+        .expect("current version on CARGO_PKG_VERSION should be a valid version")
 }
 
 fn is_sudo() -> bool {
@@ -225,6 +236,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+
     let cli = Cli::parse();
 
     ensure_linkup_dir()?;
@@ -246,7 +259,7 @@ async fn main() -> Result<()> {
         Commands::Local(args) => commands::local(args).await,
         Commands::Remote(args) => commands::remote(args).await,
         Commands::Status(args) => commands::status(args),
-        Commands::LocalDNS(args) => commands::local_dns(args, &cli.config),
+        Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
         Commands::Server(args) => commands::server(args).await,

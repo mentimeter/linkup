@@ -14,7 +14,7 @@ async fn can_respond_to_health_check(
 ) {
     let url = setup_server(server_kind).await;
 
-    let response = get(format!("{}/linkup-check", url)).await;
+    let response = get(format!("{}/linkup/check", url)).await;
 
     assert_eq!(response.status(), reqwest::StatusCode::OK);
 }
@@ -36,7 +36,7 @@ async fn method_not_allowed_config_get(
 ) {
     let url = setup_server(server_kind).await;
 
-    let response = get(format!("{}/linkup", url)).await;
+    let response = get(format!("{}/linkup/local-session", url)).await;
 
     assert_eq!(response.status(), reqwest::StatusCode::METHOD_NOT_ALLOWED);
 }
@@ -49,7 +49,7 @@ async fn can_create_session(
     let url = setup_server(server_kind).await;
 
     let session_req = create_session_request("potatoname".to_string(), None);
-    let response = post(format!("{}/linkup", url), session_req).await;
+    let response = post(format!("{}/linkup/local-session", url), session_req).await;
 
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     assert_eq!(response.text().await.unwrap(), "potatoname");
@@ -61,7 +61,7 @@ async fn can_create_preview(#[values(ServerKind::Worker)] server_kind: ServerKin
     let url = setup_server(server_kind).await;
 
     let session_req = create_preview_request(None);
-    let response = post(format!("{}/preview", url), session_req).await;
+    let response = post(format!("{}/linkup/preview-session", url), session_req).await;
 
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     assert_eq!(response.text().await.unwrap().len(), 6);
@@ -71,6 +71,7 @@ pub async fn get(url: String) -> reqwest::Response {
     let client = reqwest::Client::new();
     client
         .get(url)
+        .header("Authorization", "Bearer token123")
         .send()
         .await
         .expect("Failed to send request")

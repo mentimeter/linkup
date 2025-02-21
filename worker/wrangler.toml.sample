@@ -3,8 +3,20 @@ main = "build/worker/shim.mjs"
 compatibility_date = "2024-05-30"
 
 kv_namespaces = [
-  { binding = "LINKUP_SESSIONS", id = "xxx", preview_id = "xxx" },
+  { binding = "LINKUP_SESSIONS", id = "xxx_sessions" },
+  { binding = "LINKUP_TUNNELS", id = "xxx_tunnels" },
+  { binding = "LINKUP_CERTIFICATE_CACHE", id = "xxx_cache" },
 ]
+
+[vars]
+CLOUDFLARE_ACCOUNT_ID = ""
+CLOUDFLARE_TUNNEL_ZONE_ID = ""
+CLOUDLFLARE_ALL_ZONE_IDS = ""
+CLOUDFLARE_API_TOKEN = ""
+WORKER_TOKEN = "token123"
+
+[triggers]
+crons = [ "0 12 * * 2-6" ]
 
 [build]
 command = "cargo install -q worker-build && worker-build --release"

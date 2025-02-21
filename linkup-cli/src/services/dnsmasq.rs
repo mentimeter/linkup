@@ -9,7 +9,7 @@ use crate::{
     commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState, signal,
 };
 
-use super::BackgroundService;
+use super::{caddy, BackgroundService};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -91,6 +91,10 @@ pid-file={}\n",
     }
 
     fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
+        if !caddy::is_installed() {
+            return Ok(false);
+        }
+
         let resolvers = local_dns::list_resolvers()?;
 
         Ok(domains.iter().any(|domain| resolvers.contains(domain)))
