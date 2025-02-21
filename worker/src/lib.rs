@@ -50,6 +50,7 @@ pub fn linkup_router(state: LinkupState) -> Router {
         .route("/linkup/tunnel", get(get_tunnel_handler))
         .route("/linkup/check", get(always_ok))
         .route("/linkup/no-tunnel", get(no_tunnel))
+        .route("/linkup", any(deprecated_linkup_session_handler))
         .merge(routes::certificate_dns::router())
         .merge(routes::certificate_cache::router())
         .route_layer(from_fn_with_state(state.clone(), authenticate))
@@ -454,10 +455,23 @@ async fn authenticate(
                 }
             },
             None => {
-                return StatusCode::UNAUTHORIZED.into_response();
+                // TODO: Remove this once we've migrated all users to the new token
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    "no linkup access token provided. This token was added in linkup 2.0, check to see if your cli is up to date"
+                ).into_response();
             }
         }
     }
 
     next.run(request).await
+}
+
+#[worker::send]
+async fn deprecated_linkup_session_handler() -> impl IntoResponse {
+    (
+        StatusCode::NOT_FOUND,
+        "This endpoint was deprecated in linkup 2.0, please check that your cli is up to date",
+    )
+        .into_response()
 }
