@@ -182,6 +182,37 @@ mod tests {
             .with_body(res)
             .create_async()
             .await;
+
+        let req = cloudflare::endpoints::workers::ListSchedules {
+            account_identifier: &resources.account_id,
+            script_name: &resources.worker_script_name,
+        };
+
+        let res = serde_json::to_string(&cloudflare::framework::response::ApiSuccess::<
+            cloudflare::endpoints::workers::ListSchedulesResponse,
+        > {
+            result: cloudflare::endpoints::workers::ListSchedulesResponse { schedules: vec![] },
+            result_info: None,
+            messages: serde_json::json!([]),
+            errors: vec![],
+        })
+        .unwrap();
+
+        let path = format!("/{}", req.path().to_string().as_str());
+
+        mock_server
+            .mock("GET", path.as_str())
+            .with_status(200)
+            .with_body(&res)
+            .create_async()
+            .await;
+
+        mock_server
+            .mock("PUT", path.as_str())
+            .with_status(200)
+            .with_body(&res)
+            .create_async()
+            .await;
     }
 
     const LOCAL_SCRIPT_CONTENT: &str = r#"

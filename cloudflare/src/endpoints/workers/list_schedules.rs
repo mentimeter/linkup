@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::WorkersSchedule;
 
@@ -17,7 +17,7 @@ pub struct ListSchedules<'a> {
     pub script_name: &'a str,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ListSchedulesResponse {
     pub schedules: Vec<WorkersSchedule>,
 }

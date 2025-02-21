@@ -29,7 +29,7 @@ pub use delete_secret::DeleteSecret;
 pub use delete_tail::DeleteTail;
 pub use list_bindings::ListBindings;
 pub use list_routes::ListRoutes;
-pub use list_schedules::ListSchedules;
+pub use list_schedules::{ListSchedules, ListSchedulesResponse};
 pub use list_secrets::ListSecrets;
 pub use list_tails::ListTails;
 pub use send_tail_heartbeat::SendTailHeartbeat;
