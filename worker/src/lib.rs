@@ -99,14 +99,11 @@ pub fn linkup_router(state: LinkupState) -> Router {
 }
 
 #[event(scheduled)]
-async fn scheduled(event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
-    // Is the every weekday at midday schedule
-    if event.cron() == "0 12 * * 2-6" {
-        let state = LinkupState::try_from(env)
-            .expect("LinkupState to be buildable from worker environment");
+async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
+    let state =
+        LinkupState::try_from(env).expect("LinkupState to be buildable from worker environment");
 
-        cleanup_unused_sessions(&state).await;
-    }
+    cleanup_unused_sessions(&state).await;
 }
 
 #[event(fetch)]
