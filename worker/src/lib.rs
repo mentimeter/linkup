@@ -15,7 +15,10 @@ use linkup::{
 };
 use serde::{Deserialize, Serialize};
 use tower_service::Service;
-use worker::{console_warn, event, kv::KvStore, Env, Fetch, HttpRequest, HttpResponse};
+use worker::{
+    console_error, console_log, console_warn, event, kv::KvStore, Env, Fetch, HttpRequest,
+    HttpResponse,
+};
 use ws::handle_ws_resp;
 
 mod http_error;
@@ -24,6 +27,8 @@ mod libdns;
 mod routes;
 mod tunnel;
 mod ws;
+
+const SEVEN_DAYS_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -43,6 +48,41 @@ pub struct LinkupState {
     pub cloudflare: CloudflareEnvironemnt,
 }
 
+impl TryFrom<Env> for LinkupState {
+    type Error = worker::Error;
+
+    fn try_from(value: Env) -> Result<Self, Self::Error> {
+        let sessions_kv = value.kv("LINKUP_SESSIONS")?;
+        let tunnels_kv = value.kv("LINKUP_TUNNELS")?;
+        let certs_kv = value.kv("LINKUP_CERTIFICATE_CACHE")?;
+        let cf_account_id = value.var("CLOUDFLARE_ACCOUNT_ID")?;
+        let cf_tunnel_zone_id = value.var("CLOUDFLARE_TUNNEL_ZONE_ID")?;
+        let cf_all_zone_ids: Vec<String> = value
+            .var("CLOUDLFLARE_ALL_ZONE_IDS")?
+            .to_string()
+            .split(",")
+            .map(String::from)
+            .collect();
+        let cf_api_token = value.var("CLOUDFLARE_API_TOKEN")?;
+        let worker_token = value.var("WORKER_TOKEN")?;
+
+        let state = LinkupState {
+            sessions_kv,
+            tunnels_kv,
+            certs_kv,
+            cloudflare: CloudflareEnvironemnt {
+                account_id: cf_account_id.to_string(),
+                tunnel_zone_id: cf_tunnel_zone_id.to_string(),
+                all_zone_ids: cf_all_zone_ids,
+                api_token: cf_api_token.to_string(),
+                worker_token: worker_token.to_string(),
+            },
+        };
+
+        Ok(state)
+    }
+}
+
 pub fn linkup_router(state: LinkupState) -> Router {
     Router::new()
         .route("/linkup/local-session", post(linkup_session_handler))
@@ -59,6 +99,14 @@ pub fn linkup_router(state: LinkupState) -> Router {
         .with_state(state)
 }
 
+#[event(scheduled)]
+async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
+    let state =
+        LinkupState::try_from(env).expect("LinkupState to be buildable from worker environment");
+
+    cleanup_unused_sessions(&state).await;
+}
+
 #[event(fetch)]
 async fn fetch(
     req: HttpRequest,
@@ -67,32 +115,7 @@ async fn fetch(
 ) -> Result<axum::http::Response<axum::body::Body>, worker::Error> {
     console_error_panic_hook::set_once();
 
-    let sessions_kv = env.kv("LINKUP_SESSIONS")?;
-    let tunnels_kv = env.kv("LINKUP_TUNNELS")?;
-    let certs_kv = env.kv("LINKUP_CERTIFICATE_CACHE")?;
-    let cf_account_id = env.var("CLOUDFLARE_ACCOUNT_ID")?;
-    let cf_tunnel_zone_id = env.var("CLOUDFLARE_TUNNEL_ZONE_ID")?;
-    let cf_all_zone_ids: Vec<String> = env
-        .var("CLOUDLFLARE_ALL_ZONE_IDS")?
-        .to_string()
-        .split(",")
-        .map(String::from)
-        .collect();
-    let cf_api_token = env.var("CLOUDFLARE_API_TOKEN")?;
-    let worker_token = env.var("WORKER_TOKEN")?;
-
-    let state = LinkupState {
-        sessions_kv,
-        tunnels_kv,
-        certs_kv,
-        cloudflare: CloudflareEnvironemnt {
-            account_id: cf_account_id.to_string(),
-            tunnel_zone_id: cf_tunnel_zone_id.to_string(),
-            all_zone_ids: cf_all_zone_ids,
-            api_token: cf_api_token.to_string(),
-            worker_token: worker_token.to_string(),
-        },
-    };
+    let state = LinkupState::try_from(env)?;
 
     Ok(linkup_router(state).call(req).await?)
 }
@@ -351,6 +374,60 @@ async fn linkup_request_handler(
             }
         }
         handle_http_resp(worker_resp).await.into_response()
+    }
+}
+
+async fn cleanup_unused_sessions(state: &LinkupState) {
+    let tunnels_keys = state
+        .tunnels_kv
+        .list()
+        .limit(1000)
+        .execute()
+        .await
+        .unwrap()
+        .keys;
+
+    let now = worker::Date::now();
+
+    for key in tunnels_keys {
+        match state.tunnels_kv.get(&key.name).json::<TunnelData>().await {
+            Ok(Some(tunnel_data)) => {
+                let last_started =
+                    worker::Date::from(worker::DateInit::Millis(tunnel_data.last_started));
+
+                if now.as_millis() - last_started.as_millis() > SEVEN_DAYS_MILLIS {
+                    console_log!(
+                        "Deleting unused tunnel '{}'. Last used: {}",
+                        &key.name,
+                        &last_started
+                    );
+
+                    match tunnel::delete_tunnel(
+                        &state.cloudflare.api_token,
+                        &state.cloudflare.account_id,
+                        &state.cloudflare.tunnel_zone_id,
+                        &tunnel_data.id,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            if let Err(error) = state.tunnels_kv.delete(&key.name).await {
+                                console_error!("Failed to delete tunnel info from KV: {}", error);
+                            }
+                        }
+                        Err(error) => {
+                            console_error!("Failed to delete tunnel: {}", error);
+                        }
+                    }
+                }
+            }
+            Ok(None) => {
+                console_warn!("Tunnel data for key '{}' not found.", &key.name);
+            }
+            Err(error) => {
+                console_error!("Failed to deserialize tunnel data: {}", error.to_string());
+            }
+        }
     }
 }
 

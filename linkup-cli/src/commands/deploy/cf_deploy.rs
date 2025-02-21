@@ -115,7 +115,9 @@ pub async fn deploy_to_cloudflare(
 
     // 4) Execute the plan
     notifier.notify("Applying changes to Cloudflare...");
-    resources.execute_deploy_plan(api, &plan, notifier).await?;
+    resources
+        .execute_deploy_plan(api, cloudflare_client, &plan, notifier)
+        .await?;
     notifier.notify("Deployment complete.");
 
     Ok(())
@@ -178,6 +180,37 @@ mod tests {
             .mock("GET", path.as_str())
             .with_status(200)
             .with_body(res)
+            .create_async()
+            .await;
+
+        let req = cloudflare::endpoints::workers::ListSchedules {
+            account_identifier: &resources.account_id,
+            script_name: &resources.worker_script_name,
+        };
+
+        let res = serde_json::to_string(&cloudflare::framework::response::ApiSuccess::<
+            cloudflare::endpoints::workers::ListSchedulesResponse,
+        > {
+            result: cloudflare::endpoints::workers::ListSchedulesResponse { schedules: vec![] },
+            result_info: None,
+            messages: serde_json::json!([]),
+            errors: vec![],
+        })
+        .unwrap();
+
+        let path = format!("/{}", req.path().to_string().as_str());
+
+        mock_server
+            .mock("GET", path.as_str())
+            .with_status(200)
+            .with_body(&res)
+            .create_async()
+            .await;
+
+        mock_server
+            .mock("PUT", path.as_str())
+            .with_status(200)
+            .with_body(&res)
             .create_async()
             .await;
     }
@@ -460,6 +493,10 @@ export default {
             worker_script_bindings: vec![WorkerBinding::PlainText {
                 name: "INTEGRATION_TEST_ARG".to_string(),
                 text: "plain_text".to_string(),
+            }],
+            worker_script_schedules: vec![cloudflare::endpoints::workers::WorkersSchedule {
+                cron: Some("0 12 * * 2-6".to_string()),
+                ..Default::default()
             }],
             kv_namespaces: vec![KvNamespace {
                 name: "linkup-integration-test-kv".to_string(),
