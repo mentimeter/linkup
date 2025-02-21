@@ -24,7 +24,7 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<(), CliErro
     let input_config = get_config(&config_path)?;
     let create_preview_request: CreatePreviewRequest =
         input_config.create_preview_request(&args.services);
-    let url = input_config.linkup.remote.clone();
+    let url = input_config.linkup.worker_url.clone();
     let create_req_json = serde_json::to_string(&create_preview_request)
         .map_err(|e| CliError::LoadConfig(url.to_string(), e.to_string()))?;
 

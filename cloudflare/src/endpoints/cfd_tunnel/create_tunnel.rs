@@ -1,10 +1,6 @@
 use crate::endpoints::cfd_tunnel::{ConfigurationSrc, Tunnel};
 use serde::Serialize;
-use serde_with::{
-    base64::{Base64, Standard},
-    formats::Padded,
-    serde_as,
-};
+use serde_with::serde_as;
 
 use crate::framework::endpoint::{EndpointSpec, Method};
 
@@ -39,10 +35,8 @@ impl<'a> EndpointSpec<Tunnel> for CreateTunnel<'a> {
 pub struct Params<'a> {
     /// The name for the Tunnel to be created. It must be unique within the account.
     pub name: &'a str,
-    /// The byte array (with 32 or more bytes) representing a secret for the tunnel. This is
-    /// encoded into JSON as a base64 String. This secret is necessary to run the tunnel.
-    #[serde_as(as = "Base64<Standard, Padded>")]
-    pub tunnel_secret: &'a Vec<u8>,
+    /// This should be a base64 string and it should be at least 32 bytes long.
+    pub tunnel_secret: &'a str,
 
     pub config_src: &'a ConfigurationSrc,
 

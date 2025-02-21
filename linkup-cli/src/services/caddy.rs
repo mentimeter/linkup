@@ -264,7 +264,11 @@ impl BackgroundService<Error> for Caddy {
             return Ok(());
         }
 
-        if let Err(e) = self.start(&state.linkup.remote, &state.linkup.worker_token, domains) {
+        if let Err(e) = self.start(
+            &state.linkup.worker_url,
+            &state.linkup.worker_token,
+            domains,
+        ) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,

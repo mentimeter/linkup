@@ -86,6 +86,9 @@ impl CloudflareTunnel {
         )?;
         create_config_yml(&tunnel_data.id)?;
 
+        log::debug!("Starting tunnel with name: {}", self.pidfile_path.display());
+        log::debug!("Starting tunnel with name: {}", tunnel_data.name);
+
         process::Command::new("cloudflared")
             .process_group(0)
             .stdout(stdout_file)
@@ -98,7 +101,6 @@ impl CloudflareTunnel {
                     .to_str()
                     .expect("pidfile path to be valid UTF-8"),
                 "run",
-                &tunnel_data.name,
             ])
             .spawn()?;
 
@@ -196,7 +198,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
 
         let tunnel_url = self
             .start(
-                &state.linkup.remote,
+                &state.linkup.worker_url,
                 &state.linkup.worker_token,
                 &state.linkup.session_name,
             )

@@ -1,6 +1,7 @@
 use std::fmt;
 
 use rand::Rng;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -248,15 +249,30 @@ impl TargetCfResources {
         api: &impl CloudflareApi,
         cloudflare_client: &cloudflare::framework::async_api::Client,
     ) -> Result<DeployPlan, DeployError> {
+        println!("Checking account token.");
         let account_token_action = self.check_account_token(api).await?;
+
+        println!("Checking kv namespace.");
         let kv_action = self.check_kv_namespaces(api).await?;
+
+        println!("Checking worker script.");
         let script_action = self
             .check_worker_script(api, cloudflare_client, &account_token_action)
             .await?;
+
+        println!("Checking worker subdomain.");
         let worker_subdomain_action = self.check_worker_subdomain(api).await?;
+
+        println!("Checking DNS records.");
         let dns_actions = self.check_dns_records(api).await?;
+
+        println!("Checking worker routes.");
         let route_actions = self.check_worker_routes(api).await?;
+
+        println!("Checking cache rulesets.");
         let ruleset_actions = self.check_rulesets(api).await?;
+
+        println!("Checking worker schedules.");
         let worker_schedules_action = self.check_worker_schedules(cloudflare_client).await?;
 
         Ok(DeployPlan {
@@ -504,7 +520,13 @@ impl TargetCfResources {
             script_name: &self.worker_script_name,
         };
 
-        let bindings = client.request(&req).await?.result;
+        let bindings = match client.request(&req).await {
+            Ok(response) => response.result,
+            Err(cloudflare::framework::response::ApiFailure::Error(StatusCode::NOT_FOUND, _)) => {
+                return Ok(false)
+            }
+            Err(error) => return Err(DeployError::from(error)),
+        };
 
         for binding in bindings {
             if binding.name == "WORKER_TOKEN" {
@@ -524,7 +546,13 @@ impl TargetCfResources {
             script_name: &self.worker_script_name,
         };
 
-        let mut existing_schedules = client.request(&req).await?.result.schedules;
+        let mut existing_schedules = match client.request(&req).await {
+            Ok(response) => response.result.schedules,
+            Err(cloudflare::framework::response::ApiFailure::Error(StatusCode::NOT_FOUND, _)) => {
+                return Ok(None)
+            }
+            Err(error) => return Err(DeployError::from(error)),
+        };
 
         if existing_schedules.len() != self.worker_script_schedules.len() {
             return Ok(Some(WorkerSchedulesPlan {

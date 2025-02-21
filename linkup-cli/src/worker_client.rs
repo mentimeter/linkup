@@ -114,6 +114,6 @@ impl WorkerClient {
 
 impl From<&YamlLocalConfig> for WorkerClient {
     fn from(config: &YamlLocalConfig) -> Self {
-        Self::new(&config.linkup.remote, &config.linkup.worker_token)
+        Self::new(&config.linkup.worker_url, &config.linkup.worker_token)
     }
 }

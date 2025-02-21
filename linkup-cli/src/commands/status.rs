@@ -295,8 +295,8 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
         },
         LocalService {
             name: "linkup_remote_server".to_string(),
-            remote: state.linkup.remote.clone(),
-            local: state.linkup.remote.clone(),
+            remote: state.linkup.worker_url.clone(),
+            local: state.linkup.worker_url.clone(),
             current: ServiceTarget::Remote,
             directory: None,
             rewrites: vec![],
