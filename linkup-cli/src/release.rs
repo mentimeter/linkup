@@ -343,6 +343,7 @@ async fn cached_latest_release() -> Option<CachedLatestRelease> {
         Ok(cached_latest_release) => cached_latest_release,
         Err(error) => {
             log::error!("Failed to parse cached latest release: {}", error);
+
             if fs::remove_file(&path).is_err() {
                 log::error!("Failed to delete latest release cache file");
             }
