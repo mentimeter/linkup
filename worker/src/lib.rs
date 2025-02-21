@@ -401,7 +401,7 @@ async fn cleanup_unused_sessions(state: &LinkupState) {
                         &last_started
                     );
 
-                    if let Err(error) = tunnel::delete_tunnel(
+                    match tunnel::delete_tunnel(
                         &state.cloudflare.api_token,
                         &state.cloudflare.account_id,
                         &state.cloudflare.tunnel_zone_id,
@@ -409,7 +409,14 @@ async fn cleanup_unused_sessions(state: &LinkupState) {
                     )
                     .await
                     {
-                        console_error!("Failed to delete tunnel: {}", error);
+                        Ok(_) => {
+                            if let Err(error) = state.tunnels_kv.delete(&key.name).await {
+                                console_error!("Failed to delete tunnel info from KV: {}", error);
+                            }
+                        }
+                        Err(error) => {
+                            console_error!("Failed to delete tunnel: {}", error);
+                        }
                     }
                 }
             }
