@@ -29,6 +29,7 @@ mod tunnel;
 mod ws;
 
 const SEVEN_DAYS_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
+const MIN_SUPPORTED_CLIENT_VERSION: &str = "2.1.0";
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -42,6 +43,7 @@ pub struct CloudflareEnvironemnt {
 
 #[derive(Clone)]
 pub struct LinkupState {
+    pub min_supported_client_version: Version,
     pub sessions_kv: KvStore,
     pub tunnels_kv: KvStore,
     pub certs_kv: KvStore,
@@ -52,6 +54,9 @@ impl TryFrom<Env> for LinkupState {
     type Error = worker::Error;
 
     fn try_from(value: Env) -> Result<Self, Self::Error> {
+        let min_supported_client_version = Version::try_from(MIN_SUPPORTED_CLIENT_VERSION)
+            .expect("MIN_SUPPORTED_CLIENT_VERSION to be a valid version");
+
         let sessions_kv = value.kv("LINKUP_SESSIONS")?;
         let tunnels_kv = value.kv("LINKUP_TUNNELS")?;
         let certs_kv = value.kv("LINKUP_CERTIFICATE_CACHE")?;
@@ -67,6 +72,7 @@ impl TryFrom<Env> for LinkupState {
         let worker_token = value.var("WORKER_TOKEN")?;
 
         let state = LinkupState {
+            min_supported_client_version,
             sessions_kv,
             tunnels_kv,
             certs_kv,
@@ -512,6 +518,33 @@ async fn authenticate(
     next: Next,
 ) -> impl IntoResponse {
     if request.uri().path().starts_with("/linkup") {
+        if request.uri().path() != "/linkup/preview-session" {
+            match headers.get("x-linkup-version") {
+                Some(value) => match Version::try_from(value.to_str().unwrap()) {
+                    Ok(client_version) => {
+                        if client_version.is_outdated(&state.min_supported_client_version) {
+                            return (
+                                    StatusCode::UNAUTHORIZED,
+                                    "Your Linkup CLI is outdated, please upgrade to the latest version.",
+                                )
+                                    .into_response();
+                        }
+                    }
+                    Err(_) => {
+                        return (StatusCode::UNAUTHORIZED, "Invalid x-linkup-version header.")
+                            .into_response();
+                    }
+                },
+                None => {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        "No x-linkup-version header, please upgrade your Linkup CLI.",
+                    )
+                        .into_response();
+                }
+            }
+        }
+
         let authorization = headers.get(http::header::AUTHORIZATION);
         match authorization {
             Some(token) => match token.to_str() {
@@ -551,4 +584,44 @@ async fn deprecated_linkup_session_handler() -> impl IntoResponse {
         "This endpoint was deprecated in linkup 2.0, please check that your cli is up to date",
     )
         .into_response()
+}
+
+// TODO(augustoccesar)[2025-02-24]: This Version is a copy of the one that is on CLI. We can probably move this to the shared `linkup` crate.
+#[derive(Debug, Clone)]
+pub struct Version {
+    major: u16,
+    minor: u16,
+    patch: u16,
+}
+
+impl Version {
+    fn is_outdated(&self, other: &Self) -> bool {
+        let same_major = self.major == other.major;
+        let same_minor = self.minor == other.minor;
+        let same_patch = self.patch == other.patch;
+
+        match (same_major, same_minor, same_patch) {
+            (true, true, true) => false,
+            (true, true, false) => self.patch < other.patch,
+            (true, false, _) => self.minor < other.minor,
+            (false, _, _) => self.major < other.major,
+        }
+    }
+}
+
+impl TryFrom<&str> for Version {
+    type Error = String;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let (major, minor, patch) = match value.split('.').collect::<Vec<&str>>()[..] {
+            [major, minor, patch] => (major, minor, patch),
+            _ => return Err("invalid version".to_string()),
+        };
+
+        Ok(Self {
+            major: major.parse::<u16>().unwrap(),
+            minor: minor.parse::<u16>().unwrap(),
+            patch: patch.parse::<u16>().unwrap(),
+        })
+    }
 }

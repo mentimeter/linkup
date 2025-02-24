@@ -48,6 +48,10 @@ impl WorkerClient {
             .expect("token to contain only valid bytes");
         auth_value.set_sensitive(true);
         headers.insert(header::AUTHORIZATION, auth_value);
+        headers.insert(
+            "x-linkup-version",
+            header::HeaderValue::from_static(crate::CURRENT_VERSION),
+        );
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
