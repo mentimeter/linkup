@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag to use for the release (e.g., 1.0.0)'
+        description: "Tag to use for the release (e.g., 1.0.0)"
         required: true
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+      - "[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
   build-and-release:
@@ -19,11 +19,33 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         arch: [amd64, arm64]
     steps:
+      - name: Get Tag name
+        id: get_tag_name
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let tagName;
+            if (context.eventName === 'workflow_dispatch') {
+              tagName = core.getInput('tag_name');
+              console.log(`Tag name from workflow_dispatch: ${tagName}`);
+            } else if (context.eventName === 'push' && context.ref.startsWith('refs/tags/')) {
+              tagName = context.ref.replace('refs/tags/', '');
+              console.log(`Tag name from push: ${tagName}`);
+            } else {
+              throw new Error('This workflow must be triggered by a push to a tag or a manual dispatch with a tag_name input.');
+            }
+
+            if (!tagName) {
+              throw new Error('Tag name is empty.');
+            }
+
+            core.setOutput('tag_name', tagName);
+
       # Set up Go environment
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.23'
+          go-version: "1.23"
 
       - name: Install xcaddy
         run: |
@@ -32,17 +54,24 @@ jobs:
       # Build Caddy with custom module
       - name: Build Caddy with Custom Module
         run: |
+          if [[ -z "${{ steps.get_tag_name.outputs.tag_name }}" ]]; then
+            echo "Tag name is empty"
+            exit 1
+          fi
+
           if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
             TARGET_OS="linux"
           else
             TARGET_OS="darwin"
           fi
+
           xcaddy build \
             --output "caddy-${TARGET_OS}-${{ matrix.arch }}" \
             --with github.com/mentimeter/caddy-dns-linkup \
             --with github.com/mentimeter/caddy-storage-linkup
         env:
-          GOBIN: $HOME/go/bin  # Ensure Go binaries are in the PATH
+          GOBIN: $HOME/go/bin # Ensure Go binaries are in the PATH
+          XCADDY_GO_BUILD_FLAGS: -ldflags="-X github.com/mentimeter/caddy-storage-linkup.linkupVersion=${{ steps.get_tag_name.outputs.tag_name }} -X github.com/mentimeter/caddy-dns-linkup.linkupVersion=${{ steps.get_tag_name.outputs.tag_name }}"
 
       # Archive the binary
       - name: Archive Caddy Binary
@@ -60,19 +89,12 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            let tagName;
-            if (context.eventName === 'workflow_dispatch') {
-              tagName = core.getInput('tag_name');
-              console.log(`Tag name from workflow_dispatch: ${tagName}`);
-            } else if (context.eventName === 'push' && context.ref.startsWith('refs/tags/')) {
-              tagName = context.ref.replace('refs/tags/', '');
-              console.log(`Tag name from push: ${tagName}`);
-            } else {
-              throw new Error('This workflow must be triggered by a push to a tag or a manual dispatch with a tag_name input.');
-            }
+            const tagName = '${{ steps.get_tag_name.outputs.tag_name }}';
+
             if (!tagName) {
               throw new Error('Tag name is empty.');
             }
+
             const releases = await github.rest.repos.listReleases({
               owner: context.repo.owner,
               repo: context.repo.repo
