@@ -26,7 +26,7 @@ pub enum LocalDNSSubcommand {
 pub async fn local_dns(args: &Args, config: &Option<String>) -> Result<()> {
     match args.subcommand {
         LocalDNSSubcommand::Install => install(config).await,
-        LocalDNSSubcommand::Uninstall => uninstall(config),
+        LocalDNSSubcommand::Uninstall => uninstall(config).await,
     }
 }
 
@@ -57,7 +57,7 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     Ok(())
 }
 
-pub fn uninstall(config_arg: &Option<String>) -> Result<()> {
+pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
@@ -70,6 +70,10 @@ pub fn uninstall(config_arg: &Option<String>) -> Result<()> {
     commands::stop(&commands::StopArgs {}, false)?;
 
     uninstall_resolvers(&input_config.top_level_domains())?;
+
+    services::Caddy::uninstall()
+        .await
+        .map_err(|e| CliError::LocalDNSUninstall(e.to_string()))?;
 
     Ok(())
 }

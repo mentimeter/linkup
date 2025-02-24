@@ -211,7 +211,12 @@ struct CachedLatestRelease {
     release: Release,
 }
 
-pub async fn available_update(current_version: &Version) -> Option<Asset> {
+pub struct Update {
+    pub linkup: Asset,
+    pub caddy: Asset,
+}
+
+pub async fn available_update(current_version: &Version) -> Option<Update> {
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
 
@@ -266,7 +271,14 @@ pub async fn available_update(current_version: &Version) -> Option<Asset> {
         return None;
     }
 
-    latest_release.linkup_asset(os, arch)
+    let caddy = latest_release
+        .caddy_asset(os, arch)
+        .expect("Caddy asset to be present on a release");
+    let linkup = latest_release
+        .linkup_asset(os, arch)
+        .expect("Linkup asset to be present on a release");
+
+    Some(Update { linkup, caddy })
 }
 
 async fn fetch_latest_release() -> Result<Release, reqwest::Error> {

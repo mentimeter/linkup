@@ -33,6 +33,12 @@ pub enum InstallError {
     AssetDownload(String),
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum UninstallError {
+    #[error("Failed while handing file: {0}")]
+    FileHandling(#[from] std::io::Error),
+}
+
 pub struct Caddy {
     caddyfile_path: PathBuf,
     stdout_file_path: PathBuf,
@@ -101,6 +107,21 @@ impl Caddy {
                 return Err(InstallError::ReleaseNotFound(version.clone()));
             }
         }
+
+        Ok(())
+    }
+
+    pub async fn uninstall() -> Result<(), UninstallError> {
+        let mut path = linkup_bin_dir_path();
+        path.push("caddy");
+
+        if !fs::exists(&path)? {
+            log::debug!("Caddy executable does not exist on {}", &path.display());
+
+            return Ok(());
+        }
+
+        fs::remove_file(&path)?;
 
         Ok(())
     }
