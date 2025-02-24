@@ -518,7 +518,7 @@ async fn authenticate(
     next: Next,
 ) -> impl IntoResponse {
     if request.uri().path().starts_with("/linkup") {
-        if request.uri().path() != "/linkup/preview-session" {
+        if request.uri().path() == "/linkup/local-session" {
             match headers.get("x-linkup-version") {
                 Some(value) => match Version::try_from(value.to_str().unwrap()) {
                     Ok(client_version) => {
