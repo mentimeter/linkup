@@ -72,6 +72,8 @@ pub async fn get(url: String) -> reqwest::Response {
     client
         .get(url)
         .header("Authorization", "Bearer token123")
+        // TODO(augustoccesar)[2025-02-24]: Proper test version header
+        .header("x-linkup-version", "99.99.99")
         .send()
         .await
         .expect("Failed to send request")
