@@ -1,7 +1,7 @@
 // TODO(augustoccesar)[2025-02-14]: Handle errors instead of using .unwrap()
 
 use axum::{
-    extract::{self, State},
+    extract::{self, Query, State},
     response::IntoResponse,
     routing::{get, put},
     Json, Router,
@@ -27,24 +27,40 @@ pub fn router() -> Router<LinkupState> {
         )
 }
 
+#[derive(Debug, Deserialize)]
+struct ListCertificateCacheQuery {
+    path: String,
+    recursive: bool,
+}
+
 #[worker::send]
 async fn list_certificate_cache_keys_handler(
     State(state): State<LinkupState>,
+    Query(query): Query<ListCertificateCacheQuery>,
 ) -> impl IntoResponse {
     // TODO(augustoccesar)[2025-02-17]: Add pagination here. We should be fine with 1000 for now, but might be a problem in the future.
-    Json(
-        state
-            .certs_kv
-            .list()
-            .limit(1000)
-            .execute()
-            .await
-            .unwrap()
-            .keys
-            .iter()
-            .map(|key| key.name.clone())
-            .collect::<Vec<String>>(),
-    )
+    let keys = state
+        .certs_kv
+        .list()
+        .prefix(query.path)
+        .limit(1000)
+        .execute()
+        .await
+        .unwrap()
+        .keys
+        .iter()
+        .map(|key| key.name.clone())
+        .collect::<Vec<String>>();
+
+    if query.recursive {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Recursive listing is not supported.",
+        )
+            .into_response();
+    }
+
+    Json(keys).into_response()
 }
 
 #[derive(Debug, Serialize)]
