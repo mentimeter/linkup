@@ -7,7 +7,6 @@ use sha2::{Digest, Sha256};
 
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
 
-pub(super) const LINKUP_ACCOUNT_TOKEN_NAME: &str = "linkup-account-owned-cli-access-token";
 // To build the worker script, run in the worker directory:
 // cargo install -q worker-build && worker-build --release
 const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../../worker/build/worker/shim.mjs");
@@ -17,6 +16,7 @@ const LINKUP_WORKER_INDEX_WASM: &[u8] =
 #[derive(Debug, Clone)]
 pub struct TargetCfResources {
     pub account_id: String,
+    pub account_token_name: String,
     pub worker_script_name: String,
     pub worker_script_parts: Vec<WorkerScriptPart>,
     pub worker_script_entry: String,
@@ -510,12 +510,12 @@ impl TargetCfResources {
         let tokens = api.list_account_tokens().await?;
         let linkup_token = tokens
             .iter()
-            .find(|token| token.name.as_deref() == Some(LINKUP_ACCOUNT_TOKEN_NAME));
+            .find(|token| token.name.as_deref() == Some(&self.account_token_name));
 
         match linkup_token {
             Some(_) => Ok(None),
             None => Ok(Some(AccountTokenPlan {
-                token_name: LINKUP_ACCOUNT_TOKEN_NAME.to_string(),
+                token_name: self.account_token_name.to_string(),
             })),
         }
     }
@@ -827,7 +827,7 @@ impl TargetCfResources {
         let tokens = api.list_account_tokens().await?;
         let linkup_token = tokens
             .iter()
-            .find(|token| token.name.as_deref() == Some(LINKUP_ACCOUNT_TOKEN_NAME));
+            .find(|token| token.name.as_deref() == Some(&self.account_token_name));
         if let Some(token) = linkup_token {
             plan.remove_account_token = Some(token.id.to_string());
         }
@@ -962,9 +962,11 @@ pub fn cf_resources(
 ) -> TargetCfResources {
     let joined_zone_names = all_zone_names.join("-").replace(".", "-");
     let linkup_script_name = format!("linkup-worker-{joined_zone_names}");
+    let account_token_name = format!("linkup-account-token-{joined_zone_names}");
 
     TargetCfResources {
         account_id: account_id.clone(),
+        account_token_name,
         worker_script_name: linkup_script_name.clone(),
         worker_script_entry: "shim.mjs".to_string(),
         worker_script_parts: vec![

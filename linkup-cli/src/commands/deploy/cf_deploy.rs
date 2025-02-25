@@ -138,7 +138,7 @@ mod tests {
         resources::{
             rules_equal, DNSRecord, KvNamespace, Rule, TargectCfZoneResources, TargetCacheRules,
             TargetDNSRecord, TargetWorkerRoute, WorkerBinding, WorkerMetadata, WorkerScriptInfo,
-            WorkerScriptPart, LINKUP_ACCOUNT_TOKEN_NAME,
+            WorkerScriptPart,
         },
     };
 
@@ -419,10 +419,12 @@ export default {
         }
 
         async fn create_account_token(&self, _name: &str) -> Result<String, DeployError> {
-            let token_name = LINKUP_ACCOUNT_TOKEN_NAME.to_string();
+            let token_name = "account_token_name_example".to_string();
+
             self.account_tokens
                 .borrow_mut()
                 .push(("created".to_string(), token_name.clone()));
+
             Ok(token_name)
         }
 
@@ -483,6 +485,7 @@ export default {
     fn test_resources() -> TargetCfResources {
         TargetCfResources {
             account_id: "acc_id_123".to_string(),
+            account_token_name: "account_token_name_example".to_string(),
             worker_script_name: "linkup-integration-test-script".to_string(),
             worker_script_entry: "index.js".to_string(),
             worker_script_parts: vec![WorkerScriptPart {
@@ -680,7 +683,7 @@ export default {
         let tokens = api.account_tokens.borrow();
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].0, "created".to_string());
-        assert_eq!(tokens[0].1, LINKUP_ACCOUNT_TOKEN_NAME.to_string());
+        assert_eq!(tokens[0].1, "account_token_name_example".to_string());
     }
 
     #[tokio::test]
@@ -688,7 +691,7 @@ export default {
         let api = TestCloudflareApi::new(vec!["test-zone-id".to_string()]);
         api.account_tokens.borrow_mut().push((
             "existing".to_string(),
-            LINKUP_ACCOUNT_TOKEN_NAME.to_string(),
+            "account_token_name_example".to_string(),
         ));
 
         let notifier = TestNotifier {
@@ -709,7 +712,7 @@ export default {
         let tokens = api.account_tokens.borrow();
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].0, "existing".to_string());
-        assert_eq!(tokens[0].1, LINKUP_ACCOUNT_TOKEN_NAME.to_string());
+        assert_eq!(tokens[0].1, "account_token_name_example".to_string());
     }
 
     #[tokio::test]
@@ -888,7 +891,7 @@ export default {
         let tokens = cloudflare_api.list_account_tokens().await.unwrap();
         let linkup_account_token = tokens
             .iter()
-            .find(|token| token.name.as_deref() == Some(LINKUP_ACCOUNT_TOKEN_NAME));
+            .find(|token| token.name.as_deref() == Some("account_token_name_example"));
         assert!(
             linkup_account_token.is_some(),
             "Linkup account token should exist after deploy"
@@ -986,7 +989,7 @@ export default {
         let tokens = cloudflare_api.list_account_tokens().await.unwrap();
         let linkup_account_token = tokens
             .iter()
-            .find(|token| token.name.as_deref() == Some(LINKUP_ACCOUNT_TOKEN_NAME));
+            .find(|token| token.name.as_deref() == Some("account_token_name_example"));
         assert!(
             linkup_account_token.is_none(),
             "Linkup account token '{}' still exists after destroy.",
