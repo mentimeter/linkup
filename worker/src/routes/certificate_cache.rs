@@ -13,8 +13,11 @@ use worker::console_log;
 
 use crate::LinkupState;
 
+use super::certificate_cache_lock;
+
 pub fn router() -> Router<LinkupState> {
     Router::new()
+        .merge(certificate_cache_lock::router())
         .route(
             "/linkup/certificate-cache/keys",
             get(list_certificate_cache_keys_handler),

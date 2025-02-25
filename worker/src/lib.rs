@@ -48,6 +48,7 @@ pub struct LinkupState {
     pub tunnels_kv: KvStore,
     pub certs_kv: KvStore,
     pub cloudflare: CloudflareEnvironemnt,
+    pub env: Env,
 }
 
 impl TryFrom<Env> for LinkupState {
@@ -83,6 +84,7 @@ impl TryFrom<Env> for LinkupState {
                 api_token: cf_api_token.to_string(),
                 worker_token: worker_token.to_string(),
             },
+            env: value,
         };
 
         Ok(state)
