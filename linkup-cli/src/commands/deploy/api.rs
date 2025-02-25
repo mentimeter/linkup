@@ -568,6 +568,9 @@ impl CloudflareApi for AccountCloudflareApi {
             "main_module": metadata.main_module,
             "compatibility_date": metadata.compatibility_date,
             "bindings": bindings_json,
+            "observability": json!({
+                "enabled": true,
+            })
         })
         .to_string();
 
