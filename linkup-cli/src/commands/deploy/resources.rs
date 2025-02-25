@@ -336,11 +336,19 @@ impl TargetCfResources {
                 bindings.push(binding.clone());
             }
 
-            if !self.check_worker_token(cloudflare_client).await? {
-                bindings.push(WorkerBinding::PlainText {
-                    name: "WORKER_TOKEN".to_string(),
-                    text: generate_secret(),
-                });
+            match self.check_worker_token(cloudflare_client).await? {
+                Some(existing_token) => {
+                    bindings.push(WorkerBinding::PlainText {
+                        name: "WORKER_TOKEN".to_string(),
+                        text: existing_token,
+                    });
+                }
+                None => {
+                    bindings.push(WorkerBinding::PlainText {
+                        name: "WORKER_TOKEN".to_string(),
+                        text: generate_secret(),
+                    });
+                }
             }
 
             if account_token_plan.is_some() {
@@ -514,7 +522,7 @@ impl TargetCfResources {
     pub async fn check_worker_token(
         &self,
         client: &cloudflare::framework::async_api::Client,
-    ) -> Result<bool, DeployError> {
+    ) -> Result<Option<String>, DeployError> {
         let req = cloudflare::endpoints::workers::ListBindings {
             account_id: &self.account_id,
             script_name: &self.worker_script_name,
@@ -523,18 +531,20 @@ impl TargetCfResources {
         let bindings = match client.request(&req).await {
             Ok(response) => response.result,
             Err(cloudflare::framework::response::ApiFailure::Error(StatusCode::NOT_FOUND, _)) => {
-                return Ok(false)
+                return Ok(None)
             }
             Err(error) => return Err(DeployError::from(error)),
         };
 
         for binding in bindings {
             if binding.name == "WORKER_TOKEN" {
-                return Ok(true);
+                if let Some(text) = binding.text {
+                    return Ok(Some(text));
+                }
             }
         }
 
-        Ok(false)
+        Ok(None)
     }
 
     pub async fn check_worker_schedules(

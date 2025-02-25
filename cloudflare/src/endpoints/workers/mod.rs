@@ -91,6 +91,7 @@ impl ApiResult for Vec<WorkersTail> {}
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct WorkersBinding {
     pub name: String,
+    pub text: Option<String>,
     pub r#type: String,
     // Namespace is not guarantee to exist on all bindings. It exists for type `kv_namespace`, but not for `plain_text`, for example.
     // This should probably be an enum over the possible types of bindings. Something like what we did on deploy/api.rs:
