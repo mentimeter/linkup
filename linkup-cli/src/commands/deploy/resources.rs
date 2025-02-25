@@ -24,13 +24,13 @@ pub struct TargetCfResources {
     pub worker_script_schedules: Vec<cloudflare::endpoints::workers::WorkersSchedule>,
     pub kv_namespaces: Vec<KvNamespace>,
     pub zone_resources: TargectCfZoneResources,
+    pub tunnel_zone_cache_rules: TargetCacheRules,
 }
 
 #[derive(Debug, Clone)]
 pub struct TargectCfZoneResources {
     pub dns_records: Vec<TargetDNSRecord>,
     pub routes: Vec<TargetWorkerRoute>,
-    pub cache_rules: TargetCacheRules,
 }
 
 #[derive(Debug, Clone)]
@@ -271,7 +271,7 @@ impl TargetCfResources {
         let route_actions = self.check_worker_routes(api).await?;
 
         println!("Checking cache rulesets.");
-        let ruleset_actions = self.check_rulesets(api).await?;
+        let ruleset_actions = self.check_tunnel_rulesets(api).await?;
 
         println!("Checking worker schedules.");
         let worker_schedules_action = self.check_worker_schedules(cloudflare_client).await?;
@@ -337,11 +337,19 @@ impl TargetCfResources {
                 bindings.push(binding.clone());
             }
 
-            if !self.check_worker_token(cloudflare_client).await? {
-                bindings.push(WorkerBinding::PlainText {
-                    name: "WORKER_TOKEN".to_string(),
-                    text: generate_secret(),
-                });
+            match self.check_worker_token(cloudflare_client).await? {
+                Some(existing_token) => {
+                    bindings.push(WorkerBinding::PlainText {
+                        name: "WORKER_TOKEN".to_string(),
+                        text: existing_token,
+                    });
+                }
+                None => {
+                    bindings.push(WorkerBinding::PlainText {
+                        name: "WORKER_TOKEN".to_string(),
+                        text: generate_secret(),
+                    });
+                }
             }
 
             if account_token_plan.is_some() {
@@ -452,44 +460,47 @@ impl TargetCfResources {
         Ok(plans)
     }
 
-    /// Check if we need to create/update the cache ruleset for each zone.
-    pub async fn check_rulesets(
+    pub async fn check_tunnel_rulesets(
         &self,
         api: &impl CloudflareApi,
     ) -> Result<Vec<RulesetPlan>, DeployError> {
         let mut plans = Vec::new();
-        let ruleset_name = self.zone_resources.cache_rules.name.clone();
-        let ruleset_phase = self.zone_resources.cache_rules.phase.clone();
-        let desired_rules = self.zone_resources.cache_rules.rules.clone();
+        let ruleset_name = self.tunnel_zone_cache_rules.name.clone();
+        let ruleset_phase = self.tunnel_zone_cache_rules.phase.clone();
+        let desired_rules = self.tunnel_zone_cache_rules.rules.clone();
 
-        for zone_id in api.zone_ids() {
-            let existing_ruleset_id = api
-                .get_ruleset(zone_id.clone(), ruleset_name.clone(), ruleset_phase.clone())
+        let tunnel_zone_id = api.zone_ids()[0].clone();
+        let existing_ruleset_id = api
+            .get_ruleset(
+                tunnel_zone_id.clone(),
+                ruleset_name.clone(),
+                ruleset_phase.clone(),
+            )
+            .await?;
+
+        if let Some(ruleset_id) = existing_ruleset_id {
+            // We have a ruleset. Check if the rules are the same.
+            let current_rules = api
+                .get_ruleset_rules(tunnel_zone_id.clone(), ruleset_id.clone())
                 .await?;
-
-            if let Some(ruleset_id) = existing_ruleset_id {
-                // We have a ruleset. Check if the rules are the same.
-                let current_rules = api
-                    .get_ruleset_rules(zone_id.clone(), ruleset_id.clone())
-                    .await?;
-                if !rules_equal(&current_rules, &desired_rules) {
-                    plans.push(RulesetPlan {
-                        zone_id: zone_id.clone(),
-                        ruleset_id: Some(ruleset_id),
-                        create_new: false,
-                        rules: desired_rules.clone(),
-                    });
-                }
-            } else {
-                // We'll need to create a new ruleset
+            if !rules_equal(&current_rules, &desired_rules) {
                 plans.push(RulesetPlan {
-                    zone_id: zone_id.clone(),
-                    ruleset_id: None,
-                    create_new: true,
+                    zone_id: tunnel_zone_id.clone(),
+                    ruleset_id: Some(ruleset_id),
+                    create_new: false,
                     rules: desired_rules.clone(),
                 });
             }
+        } else {
+            // We'll need to create a new ruleset
+            plans.push(RulesetPlan {
+                zone_id: tunnel_zone_id.clone(),
+                ruleset_id: None,
+                create_new: true,
+                rules: desired_rules.clone(),
+            });
         }
+
         Ok(plans)
     }
 
@@ -515,7 +526,7 @@ impl TargetCfResources {
     pub async fn check_worker_token(
         &self,
         client: &cloudflare::framework::async_api::Client,
-    ) -> Result<bool, DeployError> {
+    ) -> Result<Option<String>, DeployError> {
         let req = cloudflare::endpoints::workers::ListBindings {
             account_id: &self.account_id,
             script_name: &self.worker_script_name,
@@ -524,18 +535,20 @@ impl TargetCfResources {
         let bindings = match client.request(&req).await {
             Ok(response) => response.result,
             Err(cloudflare::framework::response::ApiFailure::Error(StatusCode::NOT_FOUND, _)) => {
-                return Ok(false)
+                return Ok(None)
             }
             Err(error) => return Err(DeployError::from(error)),
         };
 
         for binding in bindings {
             if binding.name == "WORKER_TOKEN" {
-                return Ok(true);
+                if let Some(text) = binding.text {
+                    return Ok(Some(text));
+                }
             }
         }
 
-        Ok(false)
+        Ok(None)
     }
 
     pub async fn check_worker_schedules(
@@ -591,7 +604,6 @@ impl TargetCfResources {
         // We may need the worker subdomain for DNS records, so fetch it once:
         let worker_subdomain = api.get_account_worker_subdomain().await?;
 
-        // 1) Reconcile KV
         for kv_plan in &plan.kv_actions {
             match kv_plan {
                 KvPlan::Create { namespace_name } => {
@@ -603,28 +615,13 @@ impl TargetCfResources {
         }
 
         let mut token: Option<String> = None;
-        // 6) Reconcile account token
         if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
             notifier.notify("Creating account token...");
 
             let created_token = api.create_account_token(token_name).await?;
             token = Some(created_token.clone());
-
-            notifier.notify("Account token created successfully");
-            notifier.notify(
-                "-----------------------------------------------------------------------------",
-            );
-            notifier.notify(
-                "-------------------------------- NOTICE -------------------------------------",
-            );
-            notifier.notify(
-                "This is the only time you'll get to see this token, make sure to make a copy.",
-            );
-            notifier.notify(&format!("Access token: {}", created_token));
         }
 
-        // 2) Reconcile Worker Script
-        //    We may need the KV namespace ID we just created, so we fetch it again here.
         if let Some(WorkerScriptPlan::Upload {
             script_name,
             metadata,
@@ -678,13 +675,10 @@ impl TargetCfResources {
             notifier.notify("Worker subdomain updated successfully.");
         }
 
-        // 3) Reconcile DNS records
-        //    We only have a plan for *missing* records, so each DnsRecordPlan must be created.
         for dns_plan in &plan.dns_actions {
             let DnsRecordPlan::Create { zone_id, record } = dns_plan;
             let final_record = {
                 let mut r = record.clone();
-                // Fill in the correct content from the subdomain (if any)
                 let cname_target = if let Some(sub) = &worker_subdomain {
                     format!("{}.{}.workers.dev", self.worker_script_name, sub)
                 } else {
@@ -700,7 +694,6 @@ impl TargetCfResources {
             api.create_dns_record(zone_id.clone(), final_record).await?;
         }
 
-        // 4) Reconcile Worker Routes
         for route_plan in &plan.route_actions {
             let WorkerRoutePlan::Create {
                 zone_id,
@@ -715,7 +708,6 @@ impl TargetCfResources {
                 .await?;
         }
 
-        // 5) Reconcile Cache Rulesets
         for ruleset_plan in &plan.ruleset_actions {
             let RulesetPlan {
                 zone_id,
@@ -724,14 +716,13 @@ impl TargetCfResources {
                 rules,
             } = ruleset_plan;
 
-            // If we have to create a new ruleset
             let final_id = if *create_new {
                 notifier.notify(&format!("Creating new cache ruleset in zone '{}'", zone_id));
                 let new_id = api
                     .create_ruleset(
                         zone_id.clone(),
-                        self.zone_resources.cache_rules.name.clone(),
-                        self.zone_resources.cache_rules.phase.clone(),
+                        self.tunnel_zone_cache_rules.name.clone(),
+                        self.tunnel_zone_cache_rules.phase.clone(),
                     )
                     .await?;
                 notifier.notify(&format!(
@@ -818,15 +809,19 @@ impl TargetCfResources {
         }
 
         // 5) Cache ruleset
-        let cache_name = &self.zone_resources.cache_rules.name;
-        let cache_phase = &self.zone_resources.cache_rules.phase;
-        for zone_id in api.zone_ids() {
-            if let Some(ruleset_id) = api
-                .get_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
-                .await?
-            {
-                plan.remove_rulesets.push((zone_id.clone(), ruleset_id));
-            }
+        let cache_name = &self.tunnel_zone_cache_rules.name;
+        let cache_phase = &self.tunnel_zone_cache_rules.phase;
+        let tunnel_zone_id = api.zone_ids()[0].clone();
+        if let Some(ruleset_id) = api
+            .get_ruleset(
+                tunnel_zone_id.clone(),
+                cache_name.clone(),
+                cache_phase.clone(),
+            )
+            .await?
+        {
+            plan.remove_rulesets
+                .push((tunnel_zone_id.clone(), ruleset_id));
         }
 
         // 6) Account token
@@ -1021,6 +1016,17 @@ pub fn cf_resources(
                 binding: "LINKUP_CERTIFICATE_CACHE".to_string(),
             },
         ],
+        tunnel_zone_cache_rules: TargetCacheRules {
+            name: "default".to_string(),
+            phase: "http_request_cache_settings".to_string(),
+            rules: vec![Rule {
+                action: "set_cache_settings".to_string(),
+                description: "linkup cache rule - do not cache tunnel requests".to_string(),
+                enabled: true,
+                expression: "(starts_with(http.host, \"linkup-tunnel-\"))".to_string(),
+                action_parameters: Some(serde_json::json!({"cache": false})),
+            }],
+        },
         zone_resources: TargectCfZoneResources {
             dns_records: vec![
                 TargetDNSRecord {
@@ -1042,17 +1048,6 @@ pub fn cf_resources(
                     script: linkup_script_name.clone(),
                 },
             ],
-            cache_rules: TargetCacheRules {
-                name: "default".to_string(),
-                phase: "http_request_cache_settings".to_string(),
-                rules: vec![Rule {
-                    action: "set_cache_settings".to_string(),
-                    description: "linkup cache rule - do not cache tunnel requests".to_string(),
-                    enabled: true,
-                    expression: "(starts_with(http.host, \"linkup-tunnel-\"))".to_string(),
-                    action_parameters: Some(serde_json::json!({"cache": false})),
-                }],
-            },
         },
     }
 }
