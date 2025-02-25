@@ -562,7 +562,11 @@ impl TargetCfResources {
         let mut existing_schedules = match client.request(&req).await {
             Ok(response) => response.result.schedules,
             Err(cloudflare::framework::response::ApiFailure::Error(StatusCode::NOT_FOUND, _)) => {
-                return Ok(None)
+                // NOTE(augustoccesar)[2025-02-25]: If it gets here it means that the script does not exist yet,
+                //   so we should also create the schedules.
+                return Ok(Some(WorkerSchedulesPlan {
+                    schedules: self.worker_script_schedules.clone(),
+                }));
             }
             Err(error) => return Err(DeployError::from(error)),
         };
