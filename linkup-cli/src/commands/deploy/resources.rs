@@ -600,7 +600,6 @@ impl TargetCfResources {
         // We may need the worker subdomain for DNS records, so fetch it once:
         let worker_subdomain = api.get_account_worker_subdomain().await?;
 
-        // 1) Reconcile KV
         for kv_plan in &plan.kv_actions {
             match kv_plan {
                 KvPlan::Create { namespace_name } => {
@@ -612,28 +611,13 @@ impl TargetCfResources {
         }
 
         let mut token: Option<String> = None;
-        // 6) Reconcile account token
         if let Some(AccountTokenPlan { token_name }) = &plan.account_token_action {
             notifier.notify("Creating account token...");
 
             let created_token = api.create_account_token(token_name).await?;
             token = Some(created_token.clone());
-
-            notifier.notify("Account token created successfully");
-            notifier.notify(
-                "-----------------------------------------------------------------------------",
-            );
-            notifier.notify(
-                "-------------------------------- NOTICE -------------------------------------",
-            );
-            notifier.notify(
-                "This is the only time you'll get to see this token, make sure to make a copy.",
-            );
-            notifier.notify(&format!("Access token: {}", created_token));
         }
 
-        // 2) Reconcile Worker Script
-        //    We may need the KV namespace ID we just created, so we fetch it again here.
         if let Some(WorkerScriptPlan::Upload {
             script_name,
             metadata,
@@ -687,13 +671,10 @@ impl TargetCfResources {
             notifier.notify("Worker subdomain updated successfully.");
         }
 
-        // 3) Reconcile DNS records
-        //    We only have a plan for *missing* records, so each DnsRecordPlan must be created.
         for dns_plan in &plan.dns_actions {
             let DnsRecordPlan::Create { zone_id, record } = dns_plan;
             let final_record = {
                 let mut r = record.clone();
-                // Fill in the correct content from the subdomain (if any)
                 let cname_target = if let Some(sub) = &worker_subdomain {
                     format!("{}.{}.workers.dev", self.worker_script_name, sub)
                 } else {
@@ -709,7 +690,6 @@ impl TargetCfResources {
             api.create_dns_record(zone_id.clone(), final_record).await?;
         }
 
-        // 4) Reconcile Worker Routes
         for route_plan in &plan.route_actions {
             let WorkerRoutePlan::Create {
                 zone_id,
@@ -724,7 +704,6 @@ impl TargetCfResources {
                 .await?;
         }
 
-        // 5) Reconcile Cache Rulesets
         for ruleset_plan in &plan.ruleset_actions {
             let RulesetPlan {
                 zone_id,
@@ -733,7 +712,6 @@ impl TargetCfResources {
                 rules,
             } = ruleset_plan;
 
-            // If we have to create a new ruleset
             let final_id = if *create_new {
                 notifier.notify(&format!("Creating new cache ruleset in zone '{}'", zone_id));
                 let new_id = api
