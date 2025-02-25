@@ -106,6 +106,7 @@ pub enum WorkerBinding {
     KvNamespace { name: String, namespace_id: String },
     PlainText { name: String, text: String },
     SecretText { name: String, text: String },
+    DurableObjectNamespace { name: String, class_name: String },
 }
 
 #[derive(Debug, Clone)]
@@ -996,6 +997,10 @@ pub fn cf_resources(
             WorkerBinding::PlainText {
                 name: "CLOUDLFLARE_ALL_ZONE_IDS".to_string(),
                 text: all_zone_ids.join(","),
+            },
+            WorkerBinding::DurableObjectNamespace {
+                name: "CERTIFICATE_LOCKS".to_string(),
+                class_name: "CertificateStoreLock".to_string(),
             },
         ],
         worker_script_schedules: vec![cloudflare::endpoints::workers::WorkersSchedule {
