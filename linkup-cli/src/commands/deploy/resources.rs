@@ -24,13 +24,13 @@ pub struct TargetCfResources {
     pub worker_script_schedules: Vec<cloudflare::endpoints::workers::WorkersSchedule>,
     pub kv_namespaces: Vec<KvNamespace>,
     pub zone_resources: TargectCfZoneResources,
+    pub tunnel_zone_cache_rules: TargetCacheRules,
 }
 
 #[derive(Debug, Clone)]
 pub struct TargectCfZoneResources {
     pub dns_records: Vec<TargetDNSRecord>,
     pub routes: Vec<TargetWorkerRoute>,
-    pub cache_rules: TargetCacheRules,
 }
 
 #[derive(Debug, Clone)]
@@ -270,7 +270,7 @@ impl TargetCfResources {
         let route_actions = self.check_worker_routes(api).await?;
 
         println!("Checking cache rulesets.");
-        let ruleset_actions = self.check_rulesets(api).await?;
+        let ruleset_actions = self.check_tunnel_rulesets(api).await?;
 
         println!("Checking worker schedules.");
         let worker_schedules_action = self.check_worker_schedules(cloudflare_client).await?;
@@ -459,44 +459,47 @@ impl TargetCfResources {
         Ok(plans)
     }
 
-    /// Check if we need to create/update the cache ruleset for each zone.
-    pub async fn check_rulesets(
+    pub async fn check_tunnel_rulesets(
         &self,
         api: &impl CloudflareApi,
     ) -> Result<Vec<RulesetPlan>, DeployError> {
         let mut plans = Vec::new();
-        let ruleset_name = self.zone_resources.cache_rules.name.clone();
-        let ruleset_phase = self.zone_resources.cache_rules.phase.clone();
-        let desired_rules = self.zone_resources.cache_rules.rules.clone();
+        let ruleset_name = self.tunnel_zone_cache_rules.name.clone();
+        let ruleset_phase = self.tunnel_zone_cache_rules.phase.clone();
+        let desired_rules = self.tunnel_zone_cache_rules.rules.clone();
 
-        for zone_id in api.zone_ids() {
-            let existing_ruleset_id = api
-                .get_ruleset(zone_id.clone(), ruleset_name.clone(), ruleset_phase.clone())
+        let tunnel_zone_id = api.zone_ids()[0].clone();
+        let existing_ruleset_id = api
+            .get_ruleset(
+                tunnel_zone_id.clone(),
+                ruleset_name.clone(),
+                ruleset_phase.clone(),
+            )
+            .await?;
+
+        if let Some(ruleset_id) = existing_ruleset_id {
+            // We have a ruleset. Check if the rules are the same.
+            let current_rules = api
+                .get_ruleset_rules(tunnel_zone_id.clone(), ruleset_id.clone())
                 .await?;
-
-            if let Some(ruleset_id) = existing_ruleset_id {
-                // We have a ruleset. Check if the rules are the same.
-                let current_rules = api
-                    .get_ruleset_rules(zone_id.clone(), ruleset_id.clone())
-                    .await?;
-                if !rules_equal(&current_rules, &desired_rules) {
-                    plans.push(RulesetPlan {
-                        zone_id: zone_id.clone(),
-                        ruleset_id: Some(ruleset_id),
-                        create_new: false,
-                        rules: desired_rules.clone(),
-                    });
-                }
-            } else {
-                // We'll need to create a new ruleset
+            if !rules_equal(&current_rules, &desired_rules) {
                 plans.push(RulesetPlan {
-                    zone_id: zone_id.clone(),
-                    ruleset_id: None,
-                    create_new: true,
+                    zone_id: tunnel_zone_id.clone(),
+                    ruleset_id: Some(ruleset_id),
+                    create_new: false,
                     rules: desired_rules.clone(),
                 });
             }
+        } else {
+            // We'll need to create a new ruleset
+            plans.push(RulesetPlan {
+                zone_id: tunnel_zone_id.clone(),
+                ruleset_id: None,
+                create_new: true,
+                rules: desired_rules.clone(),
+            });
         }
+
         Ok(plans)
     }
 
@@ -717,8 +720,8 @@ impl TargetCfResources {
                 let new_id = api
                     .create_ruleset(
                         zone_id.clone(),
-                        self.zone_resources.cache_rules.name.clone(),
-                        self.zone_resources.cache_rules.phase.clone(),
+                        self.tunnel_zone_cache_rules.name.clone(),
+                        self.tunnel_zone_cache_rules.phase.clone(),
                     )
                     .await?;
                 notifier.notify(&format!(
@@ -805,15 +808,19 @@ impl TargetCfResources {
         }
 
         // 5) Cache ruleset
-        let cache_name = &self.zone_resources.cache_rules.name;
-        let cache_phase = &self.zone_resources.cache_rules.phase;
-        for zone_id in api.zone_ids() {
-            if let Some(ruleset_id) = api
-                .get_ruleset(zone_id.clone(), cache_name.clone(), cache_phase.clone())
-                .await?
-            {
-                plan.remove_rulesets.push((zone_id.clone(), ruleset_id));
-            }
+        let cache_name = &self.tunnel_zone_cache_rules.name;
+        let cache_phase = &self.tunnel_zone_cache_rules.phase;
+        let tunnel_zone_id = api.zone_ids()[0].clone();
+        if let Some(ruleset_id) = api
+            .get_ruleset(
+                tunnel_zone_id.clone(),
+                cache_name.clone(),
+                cache_phase.clone(),
+            )
+            .await?
+        {
+            plan.remove_rulesets
+                .push((tunnel_zone_id.clone(), ruleset_id));
         }
 
         // 6) Account token
@@ -1004,6 +1011,17 @@ pub fn cf_resources(
                 binding: "LINKUP_CERTIFICATE_CACHE".to_string(),
             },
         ],
+        tunnel_zone_cache_rules: TargetCacheRules {
+            name: "default".to_string(),
+            phase: "http_request_cache_settings".to_string(),
+            rules: vec![Rule {
+                action: "set_cache_settings".to_string(),
+                description: "linkup cache rule - do not cache tunnel requests".to_string(),
+                enabled: true,
+                expression: "(starts_with(http.host, \"linkup-tunnel-\"))".to_string(),
+                action_parameters: Some(serde_json::json!({"cache": false})),
+            }],
+        },
         zone_resources: TargectCfZoneResources {
             dns_records: vec![
                 TargetDNSRecord {
@@ -1025,17 +1043,6 @@ pub fn cf_resources(
                     script: linkup_script_name.clone(),
                 },
             ],
-            cache_rules: TargetCacheRules {
-                name: "default".to_string(),
-                phase: "http_request_cache_settings".to_string(),
-                rules: vec![Rule {
-                    action: "set_cache_settings".to_string(),
-                    description: "linkup cache rule - do not cache tunnel requests".to_string(),
-                    enabled: true,
-                    expression: "(starts_with(http.host, \"linkup-tunnel-\"))".to_string(),
-                    action_parameters: Some(serde_json::json!({"cache": false})),
-                }],
-            },
         },
     }
 }

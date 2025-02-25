@@ -502,6 +502,18 @@ export default {
                 name: "linkup-integration-test-kv".to_string(),
                 binding: "LINKUP_SESSIONS".to_string(),
             }],
+            tunnel_zone_cache_rules: TargetCacheRules {
+                name: "linkup-integration-test-cache-rules".to_string(),
+                phase: "http_request_firewall_custom".to_string(),
+                rules: vec![Rule {
+                    action: "block".to_string(),
+                    description: "test linkup integration rule".to_string(),
+                    enabled: true,
+                    expression: "(starts_with(http.host, \"does-not-exist-host\"))".to_string(),
+                    // action_parameters: Some(serde_json::json!({"cache": false})),
+                    action_parameters: None,
+                }],
+            },
             zone_resources: TargectCfZoneResources {
                 dns_records: vec![TargetDNSRecord {
                     route: "linkup-integration-test".to_string(),
@@ -511,18 +523,6 @@ export default {
                     route: "linkup-integration-test.".to_string(),
                     script: "linkup-integration-test-script".to_string(),
                 }],
-                cache_rules: TargetCacheRules {
-                    name: "linkup-integration-test-cache-rules".to_string(),
-                    phase: "http_request_firewall_custom".to_string(),
-                    rules: vec![Rule {
-                        action: "block".to_string(),
-                        description: "test linkup integration rule".to_string(),
-                        enabled: true,
-                        expression: "(starts_with(http.host, \"does-not-exist-host\"))".to_string(),
-                        // action_parameters: Some(serde_json::json!({"cache": false})),
-                        action_parameters: None,
-                    }],
-                },
             },
         }
     }
@@ -865,8 +865,8 @@ export default {
         let ruleset_id = cloudflare_api
             .get_ruleset(
                 zone_id.clone(),
-                res.zone_resources.cache_rules.name.clone(),
-                res.zone_resources.cache_rules.phase.clone(),
+                res.tunnel_zone_cache_rules.name.clone(),
+                res.tunnel_zone_cache_rules.phase.clone(),
             )
             .await
             .unwrap();
@@ -880,7 +880,7 @@ export default {
             .await
             .unwrap();
         assert!(
-            rules_equal(&current_rules, &res.zone_resources.cache_rules.rules),
+            rules_equal(&current_rules, &res.tunnel_zone_cache_rules.rules),
             "Cache ruleset should match desired rules after deploy"
         );
 
