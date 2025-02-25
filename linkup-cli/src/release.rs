@@ -378,6 +378,16 @@ async fn cached_latest_release() -> Option<CachedLatestRelease> {
     Some(cached_latest_release)
 }
 
+pub fn clear_cache() {
+    let path = linkup_file_path(CACHED_LATEST_RELEASE_FILE);
+
+    if path.exists() {
+        if let Err(error) = fs::remove_file(path) {
+            log::error!("Failed to delete latest release cache file: {}", error);
+        }
+    }
+}
+
 fn now() -> u64 {
     let start = time::SystemTime::now();
 

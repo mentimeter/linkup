@@ -2,9 +2,19 @@ use crate::{current_version, release, CliError};
 use std::{fs, path::PathBuf};
 
 #[derive(clap::Args)]
-pub struct Args {}
+pub struct Args {
+    /// Ignore the cached last version and check remote server again for the latest version.
+    #[arg(long)]
+    skip_cache: bool,
+}
 
-pub async fn update(_args: &Args) -> Result<(), CliError> {
+pub async fn update(args: &Args) -> Result<(), CliError> {
+    if args.skip_cache {
+        log::debug!("Clearing cache to force a new check for the latest version.");
+
+        release::clear_cache();
+    }
+
     match release::available_update(&current_version()).await {
         Some(update) => {
             let new_linkup_path = update.linkup.download_decompressed("linkup").await.unwrap();
