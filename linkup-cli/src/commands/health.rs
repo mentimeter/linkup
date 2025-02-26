@@ -159,7 +159,7 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
     let current_pid = services::get_current_process_pid();
     let mut orphans = Vec::new();
 
-    for (pid, process) in services::load_system_with_processes().processes() {
+    for (pid, process) in services::system().processes() {
         if process
             .cmd()
             .iter()

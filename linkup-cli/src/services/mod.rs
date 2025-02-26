@@ -117,31 +117,24 @@ pub fn get_running_pid(file_path: &Path) -> Option<Pid> {
         Err(_) => return None,
     };
 
-    let system = System::new_with_specifics(
-        RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
-    );
-
-    system.process(pid).map(|_| pid)
+    system().process(pid).map(|_| pid)
 }
 
 pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), PidError> {
     match get_running_pid(pid_file) {
-        Some(pid) => {
-            let system = load_system_with_processes();
-            match system.process(pid) {
-                Some(process) => {
-                    process.kill_with(signal);
+        Some(pid) => match system().process(pid) {
+            Some(process) => {
+                process.kill_with(signal);
 
-                    Ok(())
-                }
-                None => Ok(()),
+                Ok(())
             }
-        }
+            None => Ok(()),
+        },
         None => Ok(()),
     }
 }
 
-pub fn load_system_with_processes() -> System {
+pub fn system() -> System {
     System::new_with_specifics(
         RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
     )
