@@ -51,9 +51,15 @@ impl TryFrom<&str> for Version {
         };
 
         Ok(Self {
-            major: major.parse::<u16>().unwrap(),
-            minor: minor.parse::<u16>().unwrap(),
-            patch: patch.parse::<u16>().unwrap(),
+            major: major
+                .parse::<u16>()
+                .map_err(|_| VersionError::Parsing(value.to_string()))?,
+            minor: minor
+                .parse::<u16>()
+                .map_err(|_| VersionError::Parsing(value.to_string()))?,
+            patch: patch
+                .parse::<u16>()
+                .map_err(|_| VersionError::Parsing(value.to_string()))?,
         })
     }
 }
@@ -80,6 +86,17 @@ mod tests {
         let error = version.err().unwrap();
         assert!(matches!(&error, super::VersionError::Parsing(_)));
         assert_eq!(error.to_string(), "Failed to parse version '1.2'");
+    }
+
+    #[test]
+    fn test_version_from_str_invalid_token() {
+        let version = Version::try_from("1.2.blah");
+
+        assert!(version.is_err());
+
+        let error = version.err().unwrap();
+        assert!(matches!(&error, super::VersionError::Parsing(_)));
+        assert_eq!(error.to_string(), "Failed to parse version '1.2.blah'");
     }
 
     #[test]
