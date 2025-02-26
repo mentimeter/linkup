@@ -20,7 +20,7 @@ pub struct TargetCfResources {
     pub worker_script_name: String,
     pub worker_script_parts: Vec<WorkerScriptPart>,
     pub worker_script_entry: String,
-    pub worker_script_bindings: Vec<WorkerBinding>,
+    pub worker_script_bindings: Vec<cloudflare::endpoints::workers::WorkersBinding>,
     pub worker_script_schedules: Vec<cloudflare::endpoints::workers::WorkersSchedule>,
     pub kv_namespaces: Vec<KvNamespace>,
     pub zone_resources: TargectCfZoneResources,
@@ -70,7 +70,7 @@ pub struct WorkerScriptInfo {}
 #[derive(Debug, Clone)]
 pub struct WorkerMetadata {
     pub main_module: String,
-    pub bindings: Vec<WorkerBinding>,
+    pub bindings: Vec<cloudflare::endpoints::workers::WorkersBinding>,
     pub compatibility_date: String,
     pub tag: String,
 }
@@ -99,13 +99,6 @@ impl fmt::Display for WorkerScriptPart {
             self.name, self.content_type
         )
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum WorkerBinding {
-    KvNamespace { name: String, namespace_id: String },
-    PlainText { name: String, text: String },
-    SecretText { name: String, text: String },
 }
 
 #[derive(Debug, Clone)]
@@ -326,10 +319,12 @@ impl TargetCfResources {
         if needs_upload {
             let mut bindings = Vec::with_capacity(self.kv_namespaces.len());
             for kv_namespace in &self.kv_namespaces {
-                bindings.push(WorkerBinding::KvNamespace {
-                    name: kv_namespace.binding.clone(),
-                    namespace_id: "<to-be-filled-on-deploy>".to_string(),
-                });
+                bindings.push(
+                    cloudflare::endpoints::workers::WorkersBinding::KvNamespace {
+                        name: kv_namespace.binding.clone(),
+                        namespace_id: "<to-be-filled-on-deploy>".to_string(),
+                    },
+                );
             }
 
             for binding in &self.worker_script_bindings {
@@ -338,13 +333,13 @@ impl TargetCfResources {
 
             match self.check_worker_token(cloudflare_client).await? {
                 Some(existing_token) => {
-                    bindings.push(WorkerBinding::PlainText {
+                    bindings.push(cloudflare::endpoints::workers::WorkersBinding::PlainText {
                         name: "WORKER_TOKEN".to_string(),
                         text: existing_token,
                     });
                 }
                 None => {
-                    bindings.push(WorkerBinding::PlainText {
+                    bindings.push(cloudflare::endpoints::workers::WorkersBinding::PlainText {
                         name: "WORKER_TOKEN".to_string(),
                         text: generate_secret(),
                     });
@@ -352,7 +347,7 @@ impl TargetCfResources {
             }
 
             if account_token_plan.is_some() {
-                bindings.push(WorkerBinding::SecretText {
+                bindings.push(cloudflare::endpoints::workers::WorkersBinding::SecretText {
                     name: "CLOUDFLARE_API_TOKEN".to_string(),
                     text: "<to-be-filled-on-deploy>".to_string(),
                 });
@@ -540,8 +535,11 @@ impl TargetCfResources {
         };
 
         for binding in bindings {
-            if binding.name == "WORKER_TOKEN" {
-                if let Some(text) = binding.text {
+            use cloudflare::endpoints::workers::WorkersBinding;
+
+            // NOTE(augustoccesar)[2025-02-26]: We are saving WORKER_TOKEN as plain text, so we don't need other binding types
+            if let WorkersBinding::PlainText { name, text } = binding {
+                if name == "WORKER_TOKEN" {
                     return Ok(Some(text));
                 }
             }
@@ -642,7 +640,11 @@ impl TargetCfResources {
                 })?;
 
                 for binding in final_metadata.bindings.iter_mut() {
-                    if let WorkerBinding::KvNamespace { name, namespace_id } = binding {
+                    if let cloudflare::endpoints::workers::WorkersBinding::KvNamespace {
+                        name,
+                        namespace_id,
+                    } = binding
+                    {
                         if *name == kv_namespace.binding {
                             *namespace_id = kv_ns_id.clone();
                             break;
@@ -653,7 +655,11 @@ impl TargetCfResources {
 
             if let Some(token) = token {
                 for binding in final_metadata.bindings.iter_mut() {
-                    if let WorkerBinding::SecretText { name, text } = binding {
+                    if let cloudflare::endpoints::workers::WorkersBinding::SecretText {
+                        name,
+                        text,
+                    } = binding
+                    {
                         if *name == "CLOUDFLARE_API_TOKEN" {
                             *text = token.clone();
                         }
@@ -986,15 +992,15 @@ pub fn cf_resources(
             },
         ],
         worker_script_bindings: vec![
-            WorkerBinding::PlainText {
+            cloudflare::endpoints::workers::WorkersBinding::PlainText {
                 name: "CLOUDFLARE_ACCOUNT_ID".to_string(),
                 text: account_id,
             },
-            WorkerBinding::PlainText {
+            cloudflare::endpoints::workers::WorkersBinding::PlainText {
                 name: "CLOUDFLARE_TUNNEL_ZONE_ID".to_string(),
                 text: tunnel_zone_id,
             },
-            WorkerBinding::PlainText {
+            cloudflare::endpoints::workers::WorkersBinding::PlainText {
                 name: "CLOUDLFLARE_ALL_ZONE_IDS".to_string(),
                 text: all_zone_ids.join(","),
             },
