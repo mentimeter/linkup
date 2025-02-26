@@ -2,7 +2,7 @@ use std::fs::{self, File};
 use std::path::Path;
 use std::{fmt::Display, sync};
 
-use sysinfo::{ProcessRefreshKind, RefreshKind, System};
+use sysinfo::{get_current_pid, ProcessRefreshKind, RefreshKind, System};
 use thiserror::Error;
 
 mod caddy;
@@ -92,7 +92,7 @@ pub enum PidError {
     BadPidFile(String),
 }
 
-pub fn get_pid(file_path: &Path) -> Result<sysinfo::Pid, PidError> {
+fn get_pid(file_path: &Path) -> Result<Pid, PidError> {
     if let Err(e) = File::open(file_path) {
         return Err(PidError::NoPidFile(e.to_string()));
     }
@@ -103,7 +103,8 @@ pub fn get_pid(file_path: &Path) -> Result<sysinfo::Pid, PidError> {
                 .trim()
                 .parse::<u32>()
                 .map_err(|e| PidError::BadPidFile(e.to_string()))?;
-            Ok(sysinfo::Pid::from_u32(pid_u32))
+
+            Ok(Pid::from_u32(pid_u32))
         }
         Err(e) => Err(PidError::BadPidFile(e.to_string())),
     }
@@ -141,5 +142,5 @@ pub fn system() -> System {
 }
 
 pub fn get_current_process_pid() -> Pid {
-    sysinfo::get_current_pid().unwrap()
+    get_current_pid().unwrap()
 }
