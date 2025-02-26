@@ -1,4 +1,9 @@
+use std::fs::{self, File};
+use std::path::Path;
 use std::{fmt::Display, sync};
+
+use sysinfo::{ProcessRefreshKind, RefreshKind, System};
+use thiserror::Error;
 
 mod caddy;
 mod cloudflare_tunnel;
@@ -6,6 +11,7 @@ mod dnsmasq;
 mod local_server;
 
 pub use local_server::LocalServer;
+pub use sysinfo::{Pid, Signal};
 pub use {caddy::is_installed as is_caddy_installed, caddy::Caddy};
 pub use {
     cloudflare_tunnel::is_installed as is_cloudflared_installed,
@@ -76,4 +82,71 @@ pub trait BackgroundService<E: std::error::Error> {
             })
             .unwrap();
     }
+}
+
+#[derive(Error, Debug)]
+pub enum PidError {
+    #[error("no pid file: {0}")]
+    NoPidFile(String),
+    #[error("bad pid file: {0}")]
+    BadPidFile(String),
+}
+
+pub fn get_pid(file_path: &Path) -> Result<sysinfo::Pid, PidError> {
+    if let Err(e) = File::open(file_path) {
+        return Err(PidError::NoPidFile(e.to_string()));
+    }
+
+    match fs::read_to_string(file_path) {
+        Ok(content) => {
+            let pid_u32 = content
+                .trim()
+                .parse::<u32>()
+                .map_err(|e| PidError::BadPidFile(e.to_string()))?;
+            Ok(sysinfo::Pid::from_u32(pid_u32))
+        }
+        Err(e) => Err(PidError::BadPidFile(e.to_string())),
+    }
+}
+
+// Get the pid from a pidfile, but only return Some in case the pidfile is valid and the written pid on the file
+// is running.
+pub fn get_running_pid(file_path: &Path) -> Option<Pid> {
+    let pid = match get_pid(file_path) {
+        Ok(pid) => pid,
+        Err(_) => return None,
+    };
+
+    let system = System::new_with_specifics(
+        RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
+    );
+
+    system.process(pid).map(|_| pid)
+}
+
+pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), PidError> {
+    match get_running_pid(pid_file) {
+        Some(pid) => {
+            let system = load_system_with_processes();
+            match system.process(pid) {
+                Some(process) => {
+                    process.kill_with(signal);
+
+                    Ok(())
+                }
+                None => Ok(()),
+            }
+        }
+        None => Ok(()),
+    }
+}
+
+pub fn load_system_with_processes() -> System {
+    System::new_with_specifics(
+        RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
+    )
+}
+
+pub fn get_current_process_pid() -> Pid {
+    sysinfo::get_current_pid().unwrap()
 }

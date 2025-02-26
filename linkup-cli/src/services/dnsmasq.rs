@@ -5,18 +5,16 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{
-    commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState, signal,
-};
+use crate::{commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState};
 
-use super::{caddy, BackgroundService};
+use super::{caddy, get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Failed to stop pid: {0}")]
-    StoppingPid(#[from] signal::PidError),
+    StoppingPid(#[from] PidError),
 }
 
 pub struct Dnsmasq {
@@ -81,13 +79,13 @@ pid-file={}\n",
     pub fn stop(&self) -> Result<(), Error> {
         log::debug!("Stopping {}", Self::NAME);
 
-        signal::stop_pid_file(&self.pid_file_path, signal::Signal::SIGTERM)?;
+        stop_pid_file(&self.pid_file_path, Signal::Term)?;
 
         Ok(())
     }
 
-    pub fn running_pid(&self) -> Option<String> {
-        signal::get_running_pid(&self.pid_file_path)
+    pub fn running_pid(&self) -> Option<Pid> {
+        get_running_pid(&self.pid_file_path)
     }
 
     fn should_start(&self, domains: &[String]) -> Result<bool, Error> {

@@ -9,7 +9,6 @@ mod env_files;
 mod local_config;
 mod release;
 mod services;
-mod signal;
 mod worker_client;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
