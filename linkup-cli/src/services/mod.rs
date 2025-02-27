@@ -121,17 +121,11 @@ pub fn get_running_pid(file_path: &Path) -> Option<Pid> {
     system().process(pid).map(|_| pid)
 }
 
-pub fn stop_pid_file(pid_file: &Path, signal: Signal) -> Result<(), PidError> {
-    match get_running_pid(pid_file) {
-        Some(pid) => match system().process(pid) {
-            Some(process) => {
-                process.kill_with(signal);
-
-                Ok(())
-            }
-            None => Ok(()),
-        },
-        None => Ok(()),
+pub fn stop_pid_file(pid_file: &Path, signal: Signal) {
+    if let Some(pid) = get_running_pid(pid_file) {
+        system()
+            .process(pid)
+            .map(|process| process.kill_with(signal));
     }
 }
 

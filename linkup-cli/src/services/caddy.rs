@@ -177,12 +177,10 @@ impl Caddy {
         Ok(())
     }
 
-    pub fn stop(&self) -> Result<(), Error> {
+    pub fn stop(&self) {
         log::debug!("Stopping {}", Self::NAME);
 
-        stop_pid_file(&self.pidfile_path, Signal::Term)?;
-
-        Ok(())
+        stop_pid_file(&self.pidfile_path, Signal::Term);
     }
 
     fn write_caddyfile(

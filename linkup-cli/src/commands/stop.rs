@@ -29,10 +29,10 @@ pub fn stop(_args: &Args, clear_env: bool) -> Result<(), CliError> {
         }
     }
 
-    services::LocalServer::new().stop().unwrap();
-    services::CloudflareTunnel::new().stop().unwrap();
-    services::Caddy::new().stop().unwrap();
-    services::Dnsmasq::new().stop().unwrap();
+    services::LocalServer::new().stop();
+    services::CloudflareTunnel::new().stop();
+    services::Caddy::new().stop();
+    services::Dnsmasq::new().stop();
 
     println!("Stopped linkup");
 
