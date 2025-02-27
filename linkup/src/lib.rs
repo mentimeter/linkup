@@ -3,6 +3,7 @@ mod memory_session_store;
 mod name_gen;
 mod session;
 mod session_allocator;
+mod versioning;
 
 use std::future::Future;
 
@@ -15,6 +16,7 @@ pub use memory_session_store::*;
 pub use name_gen::{random_animal, random_six_char};
 pub use session::*;
 pub use session_allocator::*;
+pub use versioning::*;
 
 use url::Url;
 

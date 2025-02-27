@@ -4,6 +4,8 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use thiserror::Error;
 
+pub use linkup::Version;
+
 mod commands;
 mod env_files;
 mod local_config;
@@ -58,8 +60,8 @@ fn ensure_linkup_dir() -> Result<()> {
     }
 }
 
-fn current_version() -> release::Version {
-    release::Version::try_from(CURRENT_VERSION)
+fn current_version() -> Version {
+    Version::try_from(CURRENT_VERSION)
         .expect("current version on CARGO_PKG_VERSION should be a valid version")
 }
 

@@ -1004,6 +1004,10 @@ pub fn cf_resources(
                 name: "CLOUDLFLARE_ALL_ZONE_IDS".to_string(),
                 text: all_zone_ids.join(","),
             },
+            cloudflare::endpoints::workers::WorkersBinding::DurableObjectNamespace {
+                name: "CERTIFICATE_LOCKS".to_string(),
+                class_name: "CertificateStoreLock".to_string(),
+            },
         ],
         worker_script_schedules: vec![cloudflare::endpoints::workers::WorkersSchedule {
             cron: Some("0 12 * * 2-6".to_string()),
