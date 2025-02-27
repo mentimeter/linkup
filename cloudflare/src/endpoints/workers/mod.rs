@@ -138,7 +138,7 @@ pub enum WorkersBinding {
     },
     SecretText {
         name: String,
-        text: String,
+        text: Option<String>,
     },
     Service {
         name: String,
@@ -358,7 +358,7 @@ mod tests {
             bindings.pop_front().unwrap(),
             WorkersBinding::SecretText {
                 name: "<VARIABLE_NAME>".to_string(),
-                text: "<SECRET_VALUE>".to_string()
+                text: Some("<SECRET_VALUE>".to_string())
             }
         );
         assert_eq!(
