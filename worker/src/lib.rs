@@ -11,7 +11,7 @@ use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
     allow_all_cors, get_additional_headers, get_target_service, CreatePreviewRequest, NameKind,
-    Session, SessionAllocator, UpdateSessionRequest,
+    Session, SessionAllocator, UpdateSessionRequest, Version,
 };
 use serde::{Deserialize, Serialize};
 use tower_service::Service;
@@ -524,7 +524,7 @@ async fn authenticate(
             match headers.get("x-linkup-version") {
                 Some(value) => match Version::try_from(value.to_str().unwrap()) {
                     Ok(client_version) => {
-                        if client_version.is_outdated(&state.min_supported_client_version) {
+                        if client_version < state.min_supported_client_version {
                             return (
                                     StatusCode::UNAUTHORIZED,
                                     "Your Linkup CLI is outdated, please upgrade to the latest version.",
@@ -586,44 +586,4 @@ async fn deprecated_linkup_session_handler() -> impl IntoResponse {
         "This endpoint was deprecated in linkup 2.0, please check that your cli is up to date",
     )
         .into_response()
-}
-
-// TODO(augustoccesar)[2025-02-24]: This Version is a copy of the one that is on CLI. We can probably move this to the shared `linkup` crate.
-#[derive(Debug, Clone)]
-pub struct Version {
-    major: u16,
-    minor: u16,
-    patch: u16,
-}
-
-impl Version {
-    fn is_outdated(&self, other: &Self) -> bool {
-        let same_major = self.major == other.major;
-        let same_minor = self.minor == other.minor;
-        let same_patch = self.patch == other.patch;
-
-        match (same_major, same_minor, same_patch) {
-            (true, true, true) => false,
-            (true, true, false) => self.patch < other.patch,
-            (true, false, _) => self.minor < other.minor,
-            (false, _, _) => self.major < other.major,
-        }
-    }
-}
-
-impl TryFrom<&str> for Version {
-    type Error = String;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let (major, minor, patch) = match value.split('.').collect::<Vec<&str>>()[..] {
-            [major, minor, patch] => (major, minor, patch),
-            _ => return Err("invalid version".to_string()),
-        };
-
-        Ok(Self {
-            major: major.parse::<u16>().unwrap(),
-            minor: minor.parse::<u16>().unwrap(),
-            patch: patch.parse::<u16>().unwrap(),
-        })
-    }
 }

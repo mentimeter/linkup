@@ -1,7 +1,5 @@
 use std::{
-    env,
-    fmt::Display,
-    fs,
+    env, fs,
     path::PathBuf,
     time::{self, Duration},
 };
@@ -12,70 +10,18 @@ use serde::{Deserialize, Serialize};
 use tar::Archive;
 use url::Url;
 
-use crate::linkup_file_path;
+use crate::{linkup_file_path, Version};
 
 const CACHED_LATEST_RELEASE_FILE: &str = "latest_release.json";
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("{0}")]
-    InvalidVersion(String),
     #[error("ReqwestError: {0}")]
     Reqwest(#[from] reqwest::Error),
     #[error("IoError: {0}")]
     Io(#[from] std::io::Error),
     #[error("File missing from downloaded compressed archive")]
     MissingBinary,
-}
-
-#[derive(Debug, Clone)]
-pub struct Version {
-    major: u16,
-    minor: u16,
-    patch: u16,
-}
-
-impl Version {
-    // NOTE: This is a super simple and naïve implementation of this. For our case I think should be enough,
-    //       but we could consider using something like https://docs.rs/semver/latest/semver/ if we want something
-    //       more robust.
-    fn is_outdated(&self, other: &Self) -> bool {
-        let same_major = self.major == other.major;
-        let same_minor = self.minor == other.minor;
-        let same_patch = self.patch == other.patch;
-
-        match (same_major, same_minor, same_patch) {
-            (true, true, true) => false,
-            (true, true, false) => self.patch < other.patch,
-            (true, false, _) => self.minor < other.minor,
-            (false, _, _) => self.major < other.major,
-        }
-    }
-}
-
-impl Display for Version {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)?;
-
-        Ok(())
-    }
-}
-
-impl TryFrom<&str> for Version {
-    type Error = Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let (major, minor, patch) = match value.split('.').collect::<Vec<&str>>()[..] {
-            [major, minor, patch] => (major, minor, patch),
-            _ => return Err(Error::InvalidVersion(value.to_string())),
-        };
-
-        Ok(Self {
-            major: major.parse::<u16>().unwrap(),
-            minor: minor.parse::<u16>().unwrap(),
-            patch: patch.parse::<u16>().unwrap(),
-        })
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -267,7 +213,7 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
         }
     };
 
-    if !current_version.is_outdated(&latest_version) {
+    if current_version >= &latest_version {
         return None;
     }
 
