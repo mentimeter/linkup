@@ -349,7 +349,7 @@ impl TargetCfResources {
             if account_token_plan.is_some() {
                 bindings.push(cloudflare::endpoints::workers::WorkersBinding::SecretText {
                     name: "CLOUDFLARE_API_TOKEN".to_string(),
-                    text: "<to-be-filled-on-deploy>".to_string(),
+                    text: Some("<to-be-filled-on-deploy>".to_string()),
                 });
             }
 
@@ -661,7 +661,7 @@ impl TargetCfResources {
                     } = binding
                     {
                         if *name == "CLOUDFLARE_API_TOKEN" {
-                            *text = token.clone();
+                            *text = Some(token.clone());
                         }
                     }
                 }
