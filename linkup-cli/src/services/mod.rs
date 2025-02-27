@@ -1,4 +1,9 @@
+use std::fs::{self, File};
+use std::path::Path;
 use std::{fmt::Display, sync};
+
+use sysinfo::{get_current_pid, ProcessRefreshKind, RefreshKind, System};
+use thiserror::Error;
 
 mod caddy;
 mod cloudflare_tunnel;
@@ -6,6 +11,7 @@ mod dnsmasq;
 mod local_server;
 
 pub use local_server::LocalServer;
+pub use sysinfo::{Pid, Signal};
 pub use {caddy::is_installed as is_caddy_installed, caddy::Caddy};
 pub use {
     cloudflare_tunnel::is_installed as is_cloudflared_installed,
@@ -76,4 +82,59 @@ pub trait BackgroundService<E: std::error::Error> {
             })
             .unwrap();
     }
+}
+
+#[derive(Error, Debug)]
+pub enum PidError {
+    #[error("no pid file: {0}")]
+    NoPidFile(String),
+    #[error("bad pid file: {0}")]
+    BadPidFile(String),
+}
+
+fn get_pid(file_path: &Path) -> Result<Pid, PidError> {
+    if let Err(e) = File::open(file_path) {
+        return Err(PidError::NoPidFile(e.to_string()));
+    }
+
+    match fs::read_to_string(file_path) {
+        Ok(content) => {
+            let pid_u32 = content
+                .trim()
+                .parse::<u32>()
+                .map_err(|e| PidError::BadPidFile(e.to_string()))?;
+
+            Ok(Pid::from_u32(pid_u32))
+        }
+        Err(e) => Err(PidError::BadPidFile(e.to_string())),
+    }
+}
+
+// Get the pid from a pidfile, but only return Some in case the pidfile is valid and the written pid on the file
+// is running.
+pub fn get_running_pid(file_path: &Path) -> Option<Pid> {
+    let pid = match get_pid(file_path) {
+        Ok(pid) => pid,
+        Err(_) => return None,
+    };
+
+    system().process(pid).map(|_| pid)
+}
+
+pub fn stop_pid_file(pid_file: &Path, signal: Signal) {
+    if let Some(pid) = get_running_pid(pid_file) {
+        system()
+            .process(pid)
+            .map(|process| process.kill_with(signal));
+    }
+}
+
+pub fn system() -> System {
+    System::new_with_specifics(
+        RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
+    )
+}
+
+pub fn get_current_process_pid() -> Pid {
+    get_current_pid().unwrap()
 }

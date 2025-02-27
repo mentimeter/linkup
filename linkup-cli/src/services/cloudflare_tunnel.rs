@@ -18,11 +18,11 @@ use tokio::time::sleep;
 use url::Url;
 
 use crate::{
-    linkup_file_path, local_config::LocalState, signal, worker_client::WorkerClient,
+    linkup_file_path, local_config::LocalState, worker_client::WorkerClient,
     LINKUP_LOCALSERVER_PORT,
 };
 
-use super::BackgroundService;
+use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
 
 #[derive(thiserror::Error, Debug)]
 #[allow(dead_code)]
@@ -32,7 +32,7 @@ pub enum Error {
     #[error("Failed to start: {0}")]
     FailedToStart(String),
     #[error("Failed to stop pid: {0}")]
-    StoppingPid(#[from] signal::PidError),
+    StoppingPid(#[from] PidError),
     #[error("Failed to find tunnel URL")]
     UrlNotFound,
     #[error("Failed to find pidfile")]
@@ -107,16 +107,14 @@ impl CloudflareTunnel {
         Ok(tunnel_url)
     }
 
-    pub fn stop(&self) -> Result<(), Error> {
+    pub fn stop(&self) {
         log::debug!("Stopping {}", Self::NAME);
 
-        signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGINT)?;
-
-        Ok(())
+        stop_pid_file(&self.pidfile_path, Signal::Interrupt);
     }
 
-    pub fn running_pid(&self) -> Option<String> {
-        signal::get_running_pid(&self.pidfile_path)
+    pub fn running_pid(&self) -> Option<Pid> {
+        get_running_pid(&self.pidfile_path)
     }
 
     async fn dns_propagated(&self, tunnel_url: &Url) -> bool {
@@ -209,7 +207,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                 // Pidfile existence check
                 {
                     let mut pid_file_ready_attempt = 0;
-                    let mut pid_file_exists = signal::get_running_pid(&self.pidfile_path).is_some();
+                    let mut pid_file_exists = get_running_pid(&self.pidfile_path).is_some();
                     while !pid_file_exists && pid_file_ready_attempt <= 10 {
                         sleep(Duration::from_secs(1)).await;
                         pid_file_ready_attempt += 1;
@@ -220,7 +218,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                             format!("Waiting for tunnel... retry #{}", pid_file_ready_attempt),
                         );
 
-                        pid_file_exists = signal::get_running_pid(&self.pidfile_path).is_some();
+                        pid_file_exists = get_running_pid(&self.pidfile_path).is_some();
                     }
 
                     if !pid_file_exists {

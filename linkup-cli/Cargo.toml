@@ -17,7 +17,6 @@ hickory-resolver = { version = "0.24.2", features = ["tokio-runtime"] }
 linkup = { path = "../linkup" }
 linkup-local-server = { path = "../local-server" }
 log = "0.4.25"
-nix = { version = "0.29.0", features = ["signal"] }
 rand = "0.8.5"
 regex = "1.11.1"
 reqwest = { version = "0.12.12", default-features = false, features = [
