@@ -4,10 +4,13 @@ use url::Url;
 
 use crate::{
     commands::local_dns, current_version, linkup_bin_dir_path, linkup_dir_path, linkup_file_path,
-    local_config::LocalState, release, signal, Version,
+    local_config::LocalState, release, Version,
 };
 
-use super::{local_server::LINKUP_LOCAL_SERVER_PORT, BackgroundService};
+use super::{
+    get_running_pid, local_server::LINKUP_LOCAL_SERVER_PORT, stop_pid_file, BackgroundService, Pid,
+    PidError, Signal,
+};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -16,7 +19,7 @@ pub enum Error {
     #[error("Failed while handing file: {0}")]
     FileHandling(#[from] std::io::Error),
     #[error("Failed to stop pid: {0}")]
-    StoppingPid(#[from] signal::PidError),
+    StoppingPid(#[from] PidError),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -174,12 +177,10 @@ impl Caddy {
         Ok(())
     }
 
-    pub fn stop(&self) -> Result<(), Error> {
+    pub fn stop(&self) {
         log::debug!("Stopping {}", Self::NAME);
 
-        signal::stop_pid_file(&self.pidfile_path, signal::Signal::SIGTERM)?;
-
-        Ok(())
+        stop_pid_file(&self.pidfile_path, Signal::Term);
     }
 
     fn write_caddyfile(
@@ -234,8 +235,8 @@ impl Caddy {
         Ok(domains.iter().any(|domain| resolvers.contains(domain)))
     }
 
-    pub fn running_pid(&self) -> Option<String> {
-        signal::get_running_pid(&self.pidfile_path)
+    pub fn running_pid(&self) -> Option<Pid> {
+        get_running_pid(&self.pidfile_path)
     }
 }
 

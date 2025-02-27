@@ -72,30 +72,47 @@ impl Session {
 }
 
 #[derive(Debug, Serialize)]
+struct OrphanProcess {
+    cmd: String,
+    pid: u32,
+}
+
+#[derive(Debug, Serialize)]
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
     caddy: BackgroundServiceHealth,
     dnsmasq: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
+    possible_orphan_processes: Vec<OrphanProcess>,
 }
 
 #[derive(Debug, Serialize)]
 enum BackgroundServiceHealth {
     NotInstalled,
     Stopped,
-    Running(String),
+    Running(u32),
 }
 
 impl BackgroudServices {
     fn load() -> Self {
+        let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
+
         let linkup_server = match services::LocalServer::new().running_pid() {
-            Some(pid) => BackgroundServiceHealth::Running(pid),
+            Some(pid) => {
+                managed_pids.push(pid);
+
+                BackgroundServiceHealth::Running(pid.as_u32())
+            }
             None => BackgroundServiceHealth::Stopped,
         };
 
         let dnsmasq = if services::is_dnsmasq_installed() {
             match services::Dnsmasq::new().running_pid() {
-                Some(pid) => BackgroundServiceHealth::Running(pid),
+                Some(pid) => {
+                    managed_pids.push(pid);
+
+                    BackgroundServiceHealth::Running(pid.as_u32())
+                }
                 None => BackgroundServiceHealth::Stopped,
             }
         } else {
@@ -104,7 +121,11 @@ impl BackgroudServices {
 
         let caddy = if services::is_caddy_installed() {
             match services::Caddy::new().running_pid() {
-                Some(pid) => BackgroundServiceHealth::Running(pid),
+                Some(pid) => {
+                    managed_pids.push(pid);
+
+                    BackgroundServiceHealth::Running(pid.as_u32())
+                }
                 None => BackgroundServiceHealth::Stopped,
             }
         } else {
@@ -113,7 +134,11 @@ impl BackgroudServices {
 
         let cloudflared = if services::is_cloudflared_installed() {
             match services::CloudflareTunnel::new().running_pid() {
-                Some(pid) => BackgroundServiceHealth::Running(pid),
+                Some(pid) => {
+                    managed_pids.push(pid);
+
+                    BackgroundServiceHealth::Running(pid.as_u32())
+                }
                 None => BackgroundServiceHealth::Stopped,
             }
         } else {
@@ -125,8 +150,38 @@ impl BackgroudServices {
             caddy,
             dnsmasq,
             cloudflared,
+            possible_orphan_processes: find_potential_orphan_processes(managed_pids),
         }
     }
+}
+
+fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<OrphanProcess> {
+    let current_pid = services::get_current_process_pid();
+    let mut orphans = Vec::new();
+
+    for (pid, process) in services::system().processes() {
+        if process
+            .cmd()
+            .iter()
+            .any(|item| item.to_string_lossy().contains("linkup"))
+            && pid != &current_pid
+            && !managed_pids.contains(pid)
+        {
+            let process_cmd = process
+                .cmd()
+                .iter()
+                .map(|s| s.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            orphans.push(OrphanProcess {
+                cmd: process_cmd,
+                pid: pid.as_u32(),
+            });
+        }
+    }
+
+    orphans
 }
 
 #[derive(Debug, Serialize)]
@@ -273,6 +328,20 @@ impl Display for Health {
             writeln!(f)?;
             for file in &self.local_dns.resolvers {
                 writeln!(f, "    - {}", file)?;
+            }
+        }
+
+        write!(f, "{}", "Possible orphan processes:".bold().italic())?;
+        if self
+            .background_services
+            .possible_orphan_processes
+            .is_empty()
+        {
+            writeln!(f, " {}", "NONE".yellow())?;
+        } else {
+            writeln!(f)?;
+            for orphan_process in &self.background_services.possible_orphan_processes {
+                writeln!(f, "    - ({}): {}", orphan_process.pid, orphan_process.cmd)?;
             }
         }
 

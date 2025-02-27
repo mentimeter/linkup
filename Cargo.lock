@@ -1534,7 +1534,6 @@ dependencies = [
  "log",
  "mockall",
  "mockito",
- "nix",
  "rand",
  "regex",
  "reqwest",
