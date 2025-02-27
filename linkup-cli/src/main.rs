@@ -1,42 +1,24 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf};
+use std::{env, fs, io::ErrorKind, path::PathBuf, process};
 
-use clap::{builder::ValueParser, Parser, Subcommand};
-use clap_complete::Shell;
+use clap::{Parser, Subcommand};
+use colored::Colorize;
 use thiserror::Error;
 
-mod background_booting;
-mod completion;
+pub use linkup::Version;
+
+mod commands;
 mod env_files;
 mod local_config;
-mod local_dns;
-mod paid_tunnel;
-mod preview;
-mod remote_local;
-mod reset;
+mod release;
 mod services;
 mod signal;
-mod start;
-mod status;
-mod stop;
-mod system;
 mod worker_client;
 
-use completion::completion;
-use preview::preview;
-use remote_local::{local, remote};
-use reset::reset;
-use start::start;
-use status::status;
-use stop::stop;
-
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
-const LINKUP_LOCALSERVER_PID_FILE: &str = "localserver-pid";
-const LINKUP_CLOUDFLARED_PID: &str = "cloudflared-pid";
-const LINKUP_LOCALDNS_INSTALL: &str = "localdns-install";
-const LINKUP_CF_TLS_API_ENV_VAR: &str = "LINKUP_CF_API_TOKEN";
 
 pub fn linkup_dir_path() -> PathBuf {
     let storage_dir = match env::var("HOME") {
@@ -47,6 +29,12 @@ pub fn linkup_dir_path() -> PathBuf {
     let mut path = PathBuf::new();
     path.push(storage_dir);
     path.push(LINKUP_DIR);
+    path
+}
+
+pub fn linkup_bin_dir_path() -> PathBuf {
+    let mut path = linkup_dir_path();
+    path.push("bin");
     path
 }
 
@@ -70,6 +58,41 @@ fn ensure_linkup_dir() -> Result<()> {
             ))),
         },
     }
+}
+
+fn current_version() -> Version {
+    Version::try_from(CURRENT_VERSION)
+        .expect("current version on CARGO_PKG_VERSION should be a valid version")
+}
+
+fn is_sudo() -> bool {
+    let sudo_check = process::Command::new("sudo")
+        .arg("-n")
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .arg("true")
+        .status();
+
+    if let Ok(exit_status) = sudo_check {
+        return exit_status.success();
+    }
+
+    false
+}
+
+fn sudo_su() -> Result<()> {
+    let status = process::Command::new("sudo")
+        .arg("su")
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()?;
+
+    if !status.success() {
+        return Err(CliError::StartErr("failed to sudo".to_string()));
+    }
+
+    Ok(())
 }
 
 pub type Result<T> = std::result::Result<T, CliError>;
@@ -102,12 +125,12 @@ pub enum CliError {
     StartDNSMasq(String),
     #[error("could not load config to {0}: {1}")]
     LoadConfig(String, String),
+    #[error("could not start: {0}")]
+    StartErr(String),
     #[error("could not stop: {0}")]
     StopErr(String),
     #[error("could not get status: {0}")]
     StatusErr(String),
-    #[error("your session is in an inconsistent state. Stop your session before trying again.")]
-    InconsistentState,
     #[error("no such service: {0}")]
     NoSuchService(String),
     #[error("failed to install local dns: {0}")]
@@ -128,6 +151,12 @@ pub enum CliError {
     ParseErr(String, String),
     #[error("{0}: {1}")]
     FileErr(String, String),
+    #[error("{0}")]
+    IOError(#[from] std::io::Error),
+    #[error("{0}")]
+    WorkerClientErr(#[from] worker_client::Error),
+    #[error("{0}")]
+    DeployErr(#[from] commands::deploy::DeployError),
 }
 
 #[derive(Error, Debug)]
@@ -158,109 +187,87 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
-enum LocalDNSSubcommand {
-    Install,
-    Uninstall,
-}
-
-#[derive(Subcommand)]
 enum Commands {
+    #[clap(about = "Output the health of the CLI service")]
+    Health(commands::HealthArgs),
+
     #[clap(about = "Start a new linkup session")]
-    Start {
-        #[clap(
-            short,
-            long,
-            help = "Start linkup in partial mode without a tunnel. Not all requests will succeed."
-        )]
-        no_tunnel: bool,
-    },
+    Start(commands::StartArgs),
 
     #[clap(about = "Stop a running linkup session")]
-    Stop,
+    Stop(commands::StopArgs),
 
     #[clap(about = "Reset a linkup session")]
-    Reset,
+    Reset(commands::ResetArgs),
 
     #[clap(about = "Route session traffic to a local service")]
-    Local {
-        service_names: Vec<String>,
-        #[arg(
-            short,
-            long,
-            help = "Route all the services to local. Cannot be used with SERVICE_NAMES.",
-            conflicts_with = "service_names"
-        )]
-        all: bool,
-    },
+    Local(commands::LocalArgs),
 
     #[clap(about = "Route session traffic to a remote service")]
-    Remote {
-        service_names: Vec<String>,
-        #[arg(
-            short,
-            long,
-            help = "Route all the services to remote. Cannot be used with SERVICE_NAMES.",
-            conflicts_with = "service_names"
-        )]
-        all: bool,
-    },
+    Remote(commands::RemoteArgs),
 
     #[clap(about = "View linkup component and service status")]
-    Status {
-        // Output status in JSON format
-        #[arg(long)]
-        json: bool,
-        #[arg(short, long)]
-        all: bool,
-    },
+    Status(commands::StatusArgs),
 
     #[clap(about = "Speed up your local environment by routing traffic locally when possible")]
-    LocalDNS {
-        #[clap(subcommand)]
-        subcommand: LocalDNSSubcommand,
-    },
+    LocalDNS(commands::LocalDnsArgs),
 
     #[clap(about = "Generate completions for your shell")]
-    Completion {
-        #[arg(long, value_enum)]
-        shell: Option<Shell>,
-    },
+    Completion(commands::CompletionArgs),
 
     #[clap(about = "Create a \"permanent\" Linkup preview")]
-    Preview {
-        #[arg(
-            help = "<service>=<url> pairs to preview.",
-            value_parser = ValueParser::new(preview::parse_services_tuple),
-            required = true,
-            num_args = 1..,
-        )]
-        services: Vec<(String, String)>,
+    Preview(commands::PreviewArgs),
 
-        #[arg(long, help = "Print the request body instead of sending it.")]
-        print_request: bool,
-    },
+    #[clap(about = "Update linkup to the latest released version.")]
+    Update(commands::UpdateArgs),
+
+    #[clap(about = "Uninstall linkup and cleanup configurations.")]
+    Uninstall(commands::UninstallArgs),
+
+    #[clap(about = "Deploy services to Cloudflare")]
+    Deploy(commands::DeployArgs),
+
+    #[clap(about = "Destroy/remove linkup installation from Cloudflare")]
+    Destroy(commands::DestroyArgs),
+
+    // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
+    // It is called on `start` to start the local-server.
+    #[clap(hide = true)]
+    Server(commands::ServerArgs),
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
+    env_logger::init();
+
     let cli = Cli::parse();
 
     ensure_linkup_dir()?;
 
+    if !matches!(cli.command, Commands::Update(_))
+        && commands::update::new_version_available().await
+    {
+        println!(
+            "{}",
+            "⚠️ New version of linkup is available! Run `linkup update` to update it.".yellow()
+        );
+    }
+
     match &cli.command {
-        Commands::Start { no_tunnel } => start(&cli.config, *no_tunnel),
-        Commands::Stop => stop(),
-        Commands::Reset => reset(),
-        Commands::Local { service_names, all } => local(service_names, *all),
-        Commands::Remote { service_names, all } => remote(service_names, *all),
-        Commands::Status { json, all } => status(*json, *all),
-        Commands::LocalDNS { subcommand } => match subcommand {
-            LocalDNSSubcommand::Install => local_dns::install(&cli.config),
-            LocalDNSSubcommand::Uninstall => local_dns::uninstall(&cli.config),
-        },
-        Commands::Completion { shell } => completion(shell),
-        Commands::Preview {
-            services,
-            print_request,
-        } => preview(&cli.config, services, *print_request),
+        Commands::Health(args) => commands::health(args),
+        Commands::Start(args) => commands::start(args, true, &cli.config).await,
+        Commands::Stop(args) => commands::stop(args, true),
+        Commands::Reset(args) => commands::reset(args).await,
+        Commands::Local(args) => commands::local(args).await,
+        Commands::Remote(args) => commands::remote(args).await,
+        Commands::Status(args) => commands::status(args),
+        Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
+        Commands::Completion(args) => commands::completion(args),
+        Commands::Preview(args) => commands::preview(args, &cli.config).await,
+        Commands::Server(args) => commands::server(args).await,
+        Commands::Uninstall(args) => commands::uninstall(args),
+        Commands::Update(args) => commands::update(args).await,
+        Commands::Deploy(args) => commands::deploy(args).await.map_err(CliError::from),
+        Commands::Destroy(args) => commands::destroy(args).await.map_err(CliError::from),
     }
 }

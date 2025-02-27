@@ -21,7 +21,7 @@ async fn can_request_underlying_server(
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
     let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
-    let session_resp = post(format!("{}/linkup", url), session_req).await;
+    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
     assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
     assert_eq!(session_resp.text().await.unwrap(), "potatosession");
 
@@ -44,7 +44,7 @@ async fn does_not_follow_redirects(
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
     let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
-    let session_resp = post(format!("{}/linkup", url), session_req).await;
+    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
     assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
     assert_eq!(session_resp.text().await.unwrap(), "potatosession");
 
@@ -70,7 +70,7 @@ async fn maintains_multiple_set_cookie_headers(
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
     let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
-    let session_resp = post(format!("{}/linkup", url), session_req).await;
+    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
     assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
     assert_eq!(session_resp.text().await.unwrap(), "potatosession");
 

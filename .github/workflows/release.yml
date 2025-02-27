@@ -36,9 +36,11 @@ jobs:
             target: aarch64-apple-darwin
             cross: false
     outputs:
-      mac_x86_sha: ${{ steps.x86_sha.outputs.mac_x86_sha }}
-      release_version: ${{ steps.x86_sha.outputs.release_version }}
-      mac_arm_sha: ${{ steps.arm_sha.outputs.mac_arm_sha }}
+      release_version: ${{ steps.get_version.outputs.release_version }}
+      mac_x86_sha: ${{ steps.mac_x86_sha.outputs.mac_x86_sha }}
+      mac_arm_sha: ${{ steps.mac_arm_sha.outputs.mac_arm_sha }}
+      linux_x86_sha: ${{ steps.linux_x86_sha.outputs.linux_x86_sha }}
+      linux_arm_sha: ${{ steps.linux_arm_sha.outputs.linux_arm_sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -59,6 +61,10 @@ jobs:
           rustup target add ${{ matrix.target }}
           rustup show
 
+      - name: Build Worker
+        working-directory: worker
+        run: cargo install -q worker-build && worker-build --release
+
       - name: Build
         run: cargo build --release --manifest-path linkup-cli/Cargo.toml  --target ${{ matrix.target }}
 
@@ -67,6 +73,7 @@ jobs:
         run: |
           VERSION=$(grep '^version = ' linkup-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "release_version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Package Artifacts
         run: |
@@ -105,20 +112,34 @@ jobs:
                   shasum -a 256 $ASSET_NAME > $CHECKSUM_PATH
                   ;;
           esac
+
       - name: Set SHA Output Mac x86
-        id: x86_sha
+        id: mac_x86_sha
         if: matrix.target == 'x86_64-apple-darwin'
         run: |
           echo "$(cat ${{ env.CHECKSUM_PATH }})"
-          echo ${{ env.RELEASE_VERSION }}
           echo "mac_x86_sha=$(cat ${{ env.CHECKSUM_PATH }})" >> $GITHUB_OUTPUT
-          echo "release_version=${{ env.RELEASE_VERSION }}" >> $GITHUB_OUTPUT
+
       - name: Set SHA Outputs Mac ARM
-        id: arm_sha
+        id: mac_arm_sha
         if: matrix.target == 'aarch64-apple-darwin'
         run: |
           echo "$(cat ${{ env.CHECKSUM_PATH }})"
           echo "mac_arm_sha=$(cat ${{ env.CHECKSUM_PATH }})" >> $GITHUB_OUTPUT
+
+      - name: Set SHA Output Linux x86
+        id: linux_x86_sha
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          echo "$(cat ${{ env.CHECKSUM_PATH }})"
+          echo "linux_x86_sha=$(cat ${{ env.CHECKSUM_PATH }})" >> $GITHUB_OUTPUT
+
+      - name: Set SHA Outputs Linux ARM
+        id: linux_arm_sha
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          echo "$(cat ${{ env.CHECKSUM_PATH }})"
+          echo "linux_arm_sha=$(cat ${{ env.CHECKSUM_PATH }})" >> $GITHUB_OUTPUT
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -139,18 +160,30 @@ jobs:
 
       - name: Update Homebrew Formula
         run: |
-          ARM_SHA=$(echo "${{ needs.build.outputs.mac_arm_sha }}" | awk '{print $1}')
-          X86_SHA=$(echo "${{ needs.build.outputs.mac_x86_sha }}" | awk '{print $1}')
           RELEASE_VERSION="${{ needs.build.outputs.release_version }}"
           FORMULA_PATH="homebrew-mentimeter/linkup.rb"
 
+          if [ -z "$RELEASE_VERSION" ]; then
+            printf '%s\n' 'RELEASE_VERSION variable is empty'
+            exit 1
+          fi
+
+          MAC_ARM_SHA=$(echo "${{ needs.build.outputs.mac_arm_sha }}" | awk '{print $1}')
+          MAC_X86_SHA=$(echo "${{ needs.build.outputs.mac_x86_sha }}" | awk '{print $1}')
+          LINUX_ARM_SHA=$(echo "${{ needs.build.outputs.linux_arm_sha }}" | awk '{print $1}')
+          LINUX_X86_SHA=$(echo "${{ needs.build.outputs.linux_x86_sha }}" | awk '{print $1}')
+
           # Update the SHA values
-          sed -i "s|ARM_SHA = \".*\"|ARM_SHA = \"$ARM_SHA\"|" "$FORMULA_PATH"
-          sed -i "s|X86_SHA = \".*\"|X86_SHA = \"$X86_SHA\"|" "$FORMULA_PATH"
+          sed -i "s|MAC_ARM_SHA = \".*\"|MAC_ARM_SHA = \"$MAC_ARM_SHA\"|" "$FORMULA_PATH"
+          sed -i "s|MAC_X86_SHA = \".*\"|MAC_X86_SHA = \"$MAC_X86_SHA\"|" "$FORMULA_PATH"
+          sed -i "s|LINUX_ARM_SHA = \".*\"|LINUX_ARM_SHA = \"$LINUX_ARM_SHA\"|" "$FORMULA_PATH"
+          sed -i "s|LINUX_X86_SHA = \".*\"|LINUX_X86_SHA = \"$LINUX_X86_SHA\"|" "$FORMULA_PATH"
 
           # Update the URLs with the new release version
           sed -i "s|https://github.com/mentimeter/linkup/releases/download/[0-9.]*/linkup-[0-9.]*-aarch64-apple-darwin.tar.gz|https://github.com/mentimeter/linkup/releases/download/$RELEASE_VERSION/linkup-$RELEASE_VERSION-aarch64-apple-darwin.tar.gz|" "$FORMULA_PATH"
           sed -i "s|https://github.com/mentimeter/linkup/releases/download/[0-9.]*/linkup-[0-9.]*-x86_64-apple-darwin.tar.gz|https://github.com/mentimeter/linkup/releases/download/$RELEASE_VERSION/linkup-$RELEASE_VERSION-x86_64-apple-darwin.tar.gz|" "$FORMULA_PATH"
+          sed -i "s|https://github.com/mentimeter/linkup/releases/download/[0-9.]*/linkup-[0-9.]*-aarch64-unknown-linux-gnu.tar.gz|https://github.com/mentimeter/linkup/releases/download/$RELEASE_VERSION/linkup-$RELEASE_VERSION-aarch64-unknown-linux-gnu.tar.gz|" "$FORMULA_PATH"
+          sed -i "s|https://github.com/mentimeter/linkup/releases/download/[0-9.]*/linkup-[0-9.]*-x86_64-unknown-linux-gnu.tar.gz|https://github.com/mentimeter/linkup/releases/download/$RELEASE_VERSION/linkup-$RELEASE_VERSION-x86_64-unknown-linux-gnu.tar.gz|" "$FORMULA_PATH"
 
           cd homebrew-mentimeter
 

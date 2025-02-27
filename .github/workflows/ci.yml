@@ -12,6 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # Create empty worker build artifacts
+      - run: mkdir -p worker/build/worker
+      - run: touch worker/build/worker/shim.mjs
+      - run: touch worker/build/worker/index.wasm
       - run: cargo check --all
       - run: rustup component add clippy
       - run: cargo clippy

@@ -8,9 +8,16 @@ use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{CreatePreviewRequest, StorableDomain, StorableRewrite, StorableService};
+use linkup::{
+    CreatePreviewRequest, StorableDomain, StorableRewrite, StorableService, StorableSession,
+    UpdateSessionRequest,
+};
 
-use crate::{linkup_file_path, CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE};
+use crate::{
+    linkup_file_path, services,
+    worker_client::{self, WorkerClient},
+    CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
+};
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct LocalState {
@@ -67,8 +74,8 @@ impl LocalState {
         match &self.linkup.tunnel {
             Some(url) => url.clone(),
             None => {
-                let mut remote = self.linkup.remote.clone();
-                remote.set_path("/linkup-no-tunnel");
+                let mut remote = self.linkup.worker_url.clone();
+                remote.set_path("/linkup/no-tunnel");
                 remote
             }
         }
@@ -86,8 +93,9 @@ impl LocalState {
 pub struct LinkupState {
     pub session_name: String,
     pub session_token: String,
+    pub worker_url: Url,
+    pub worker_token: String,
     pub config_path: String,
-    pub remote: Url,
     pub tunnel: Option<Url>,
     pub is_paid: Option<bool>,
     pub cache_routes: Option<Vec<String>>,
@@ -171,7 +179,8 @@ impl YamlLocalConfig {
 
 #[derive(Deserialize, Clone)]
 pub struct LinkupConfig {
-    pub remote: Url,
+    pub worker_url: Url,
+    pub worker_token: String,
     cache_routes: Option<Vec<String>>,
 }
 
@@ -182,6 +191,12 @@ pub struct YamlLocalService {
     local: Url,
     directory: Option<String>,
     rewrites: Option<Vec<StorableRewrite>>,
+}
+
+#[derive(Debug)]
+pub struct ServerConfig {
+    pub local: StorableSession,
+    pub remote: StorableSession,
 }
 
 pub fn config_to_state(
@@ -205,8 +220,9 @@ pub fn config_to_state(
         is_paid: Some(is_paid),
         session_name: String::new(),
         session_token: random_token,
+        worker_token: yaml_config.linkup.worker_token,
         config_path,
-        remote: yaml_config.linkup.remote,
+        worker_url: yaml_config.linkup.worker_url,
         tunnel,
         cache_routes: yaml_config.linkup.cache_routes,
     };
@@ -279,6 +295,115 @@ pub fn get_config(config_path: &str) -> Result<YamlLocalConfig, CliError> {
     Ok(yaml_config)
 }
 
+// This method gets the local state and uploads it to both the local linkup server and
+// the remote linkup server (worker).
+pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::Error> {
+    let local_url = services::LocalServer::url();
+
+    let server_config = ServerConfig::from(state);
+    let session_name = &state.linkup.session_name;
+
+    let server_session_name = upload_config_to_server(
+        &state.linkup.worker_url,
+        &state.linkup.worker_token,
+        session_name,
+        server_config.remote,
+    )
+    .await?;
+
+    let local_session_name = upload_config_to_server(
+        &local_url,
+        &state.linkup.worker_token,
+        &server_session_name,
+        server_config.local,
+    )
+    .await?;
+
+    if server_session_name != local_session_name {
+        log::error!(
+            "Local session has name: {} and remote has name: {}",
+            &local_session_name,
+            &server_session_name
+        );
+
+        return Err(worker_client::Error::InconsistentState);
+    }
+
+    Ok(server_session_name)
+}
+
+async fn upload_config_to_server(
+    linkup_url: &Url,
+    worker_token: &str,
+    desired_name: &str,
+    config: StorableSession,
+) -> Result<String, worker_client::Error> {
+    let session_update_req = UpdateSessionRequest {
+        session_token: config.session_token,
+        desired_name: desired_name.to_string(),
+        services: config.services,
+        domains: config.domains,
+        cache_routes: config.cache_routes,
+    };
+
+    let session_name = WorkerClient::new(linkup_url, worker_token)
+        .linkup(&session_update_req)
+        .await?;
+
+    Ok(session_name)
+}
+
+impl From<&LocalState> for ServerConfig {
+    fn from(state: &LocalState) -> Self {
+        let local_server_services = state
+            .services
+            .iter()
+            .map(|service| StorableService {
+                name: service.name.clone(),
+                location: if service.current == ServiceTarget::Remote {
+                    service.remote.clone()
+                } else {
+                    service.local.clone()
+                },
+                rewrites: Some(service.rewrites.clone()),
+            })
+            .collect::<Vec<StorableService>>();
+
+        let remote_server_services = state
+            .services
+            .iter()
+            .map(|service| StorableService {
+                name: service.name.clone(),
+                location: if service.current == ServiceTarget::Remote {
+                    service.remote.clone()
+                } else {
+                    state.get_tunnel_url()
+                },
+                rewrites: Some(service.rewrites.clone()),
+            })
+            .collect::<Vec<StorableService>>();
+
+        let local_storable_session = StorableSession {
+            session_token: state.linkup.session_token.clone(),
+            services: local_server_services,
+            domains: state.domains.clone(),
+            cache_routes: state.linkup.cache_routes.clone(),
+        };
+
+        let remote_storable_session = StorableSession {
+            session_token: state.linkup.session_token.clone(),
+            services: remote_server_services,
+            domains: state.domains.clone(),
+            cache_routes: state.linkup.cache_routes.clone(),
+        };
+
+        ServerConfig {
+            local: local_storable_session,
+            remote: remote_storable_session,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,7 +411,8 @@ mod tests {
 
     const CONF_STR: &str = r#"
 linkup:
-  remote: https://remote-linkup.example.com
+  worker_url: https://remote-linkup.example.com
+  worker_token: test_token_123
 services:
   - name: frontend
     remote: http://remote-service1.example.com
@@ -322,8 +448,12 @@ domains:
         assert_eq!(local_state.linkup.config_path, "./path/to/config.yaml");
 
         assert_eq!(
-            local_state.linkup.remote,
+            local_state.linkup.worker_url,
             Url::parse("https://remote-linkup.example.com").unwrap()
+        );
+        assert_eq!(
+            local_state.linkup.worker_token,
+            String::from("test_token_123"),
         );
 
         assert_eq!(local_state.services.len(), 2);

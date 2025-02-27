@@ -7,12 +7,25 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-axum = { version = "0.7.5", features = ["json"], default-features = false }
+axum = { version = "0.8.1", features = [
+    "json",
+    "query",
+], default-features = false }
+base64 = "0.22.1"
 console_error_panic_hook = { version = "0.1.7" }
+cloudflare = { path = "../cloudflare" }
 futures = "0.3.31"
 getrandom = { version = "0.2.15", features = ["js"] }
-http = "1.1.0"
+http = "1.2.0"
 linkup = { path = "../linkup" }
-regex = "1.11.0"
+regex = "1.11.1"
+serde = "1"
+serde_json = "1.0.138"
 tower-service = "0.3.3"
-worker = { version = "0.4.2", features = ["http", "axum"] }
+worker = { version = "0.5.0", features = ["http", "axum"] }
+reqwest = "0.12.12"
+
+# These are required to use worker-rs DurableObjects
+async-trait = "0.1.86"
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4.50"

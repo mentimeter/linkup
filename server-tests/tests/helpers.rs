@@ -40,6 +40,9 @@ pub async fn post(url: String, body: String) -> reqwest::Response {
     client
         .post(url)
         .header("Content-Type", "application/json")
+        .header("Authorization", "Bearer token123")
+        // TODO(augustoccesar)[2025-02-24]: Proper test version header
+        .header("x-linkup-version", "99.99.99")
         .body(body)
         .send()
         .await

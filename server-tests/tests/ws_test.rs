@@ -22,7 +22,7 @@ async fn can_request_underlying_websocket_server(
     let ws_url = setup_websocket_server().await;
 
     let session_req = create_session_request("ws-session".to_string(), Some(ws_url));
-    let session_resp = post(format!("{}/linkup", url), session_req).await;
+    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
     assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
     assert_eq!(session_resp.text().await.unwrap(), "ws-session");
 
@@ -50,9 +50,7 @@ async fn can_request_underlying_websocket_server(
     // Send a message
     let msg = "Hello, WebSocket!";
     ws_stream
-        .send(tokio_tungstenite::tungstenite::Message::Text(
-            msg.to_string(),
-        ))
+        .send(tokio_tungstenite::tungstenite::Message::Text(msg.into()))
         .await
         .expect("Failed to send message");
 
