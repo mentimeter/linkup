@@ -137,8 +137,7 @@ mod tests {
         cf_destroy::destroy_from_cloudflare,
         resources::{
             rules_equal, DNSRecord, KvNamespace, Rule, TargectCfZoneResources, TargetCacheRules,
-            TargetDNSRecord, TargetWorkerRoute, WorkerBinding, WorkerMetadata, WorkerScriptInfo,
-            WorkerScriptPart,
+            TargetDNSRecord, TargetWorkerRoute, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart,
         },
     };
 
@@ -493,10 +492,12 @@ export default {
                 data: LOCAL_SCRIPT_CONTENT.as_bytes().to_vec(),
                 content_type: "application/javascript+module".to_string(),
             }],
-            worker_script_bindings: vec![WorkerBinding::PlainText {
-                name: "INTEGRATION_TEST_ARG".to_string(),
-                text: "plain_text".to_string(),
-            }],
+            worker_script_bindings: vec![
+                cloudflare::endpoints::workers::WorkersBinding::PlainText {
+                    name: "INTEGRATION_TEST_ARG".to_string(),
+                    text: "plain_text".to_string(),
+                },
+            ],
             worker_script_schedules: vec![cloudflare::endpoints::workers::WorkersSchedule {
                 cron: Some("0 12 * * 2-6".to_string()),
                 ..Default::default()
