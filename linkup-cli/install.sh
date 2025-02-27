@@ -8,7 +8,8 @@ fi
 # region: Dependencies
 # TODO: Maybe we want this script to be able to install the dependencies as well?
 if ! command -v -- "cloudflared" >/dev/null 2>&1; then
-    printf '%s\n' "WARN: 'cloudflared' is not installed. Some features will not work as expected. Please install it.\nFor more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" 1>&2
+    printf '%s\n' "WARN: 'cloudflared' is not installed. Please install it before installing Linkup.\nFor more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" 1>&2
+    exit 1
 fi
 
 if ! command -v -- "dnsmasq" >/dev/null 2>&1; then
