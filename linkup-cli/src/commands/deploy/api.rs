@@ -553,6 +553,13 @@ impl CloudflareApi for AccountCloudflareApi {
                         "text": text,
                     })
                 }
+                WorkerBinding::DurableObjectNamespace { name, class_name } => {
+                    json!({
+                        "type": "durable_object_namespace",
+                        "name": name,
+                        "class_name": class_name,
+                    })
+                }
             })
             .collect();
 

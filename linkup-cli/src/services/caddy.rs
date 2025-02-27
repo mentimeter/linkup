@@ -4,7 +4,7 @@ use url::Url;
 
 use crate::{
     commands::local_dns, current_version, linkup_bin_dir_path, linkup_dir_path, linkup_file_path,
-    local_config::LocalState, release,
+    local_config::LocalState, release, Version,
 };
 
 use super::{
@@ -29,9 +29,9 @@ pub enum InstallError {
     #[error("Failed to fetch release information: {0}")]
     FetchError(#[from] reqwest::Error),
     #[error("Release not found for version {0}")]
-    ReleaseNotFound(release::Version),
+    ReleaseNotFound(Version),
     #[error("Caddy asset not found on release for version {0}")]
-    AssetNotFound(release::Version),
+    AssetNotFound(Version),
     #[error("Failed to download Caddy asset: {0}")]
     AssetDownload(String),
 }
