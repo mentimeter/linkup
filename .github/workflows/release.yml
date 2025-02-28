@@ -131,7 +131,7 @@ jobs:
           ls -lah artifact.tar.gz
 
       - name: Upload Tarball Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.display_os }}-${{ matrix.arch }}
           path: artifact.tar.gz
