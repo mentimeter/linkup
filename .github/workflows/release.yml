@@ -116,23 +116,19 @@ jobs:
 
       - name: Package Release Tarball
         run: |
-          TARGET_OS=${{ matrix.display_os }}
-          RELEASE_VERSION=${{ needs.check_version.outputs.version }}
           mkdir release-package
 
           cp target/${{ matrix.rust_target }}/release/linkup release-package/
           cp caddy release-package/
 
-          TARBALL_NAME="release-${RELEASE_VERSION}-${TARGET_OS}-${{ matrix.arch }}.tar.gz"
+          TARBALL_NAME="release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}.tar.gz"
           tar -czvf $TARBALL_NAME -C release-package .
 
           echo "Created tarball: $TARBALL_NAME"
 
       - name: Move Tarball for Upload
         run: |
-          TARGET_OS = ${{ matrix.display_os }}
-          RELEASE_VERSION=${{ needs.check_version.outputs.version }}
-          TARBALL_NAME="release-${RELEASE_VERSION}-${TARGET_OS}-${{ matrix.arch }}.tar.gz"
+          TARBALL_NAME="release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}.tar.gz"
 
           mv $TARBALL_NAME artifact.tar.gz
           ls -lah artifact.tar.gz
