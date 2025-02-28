@@ -78,16 +78,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Install Linker (if needed)
+        if: ${{ matrix.linker != '' }}
+        run: |
+          cargo install cross
+          sudo apt update
+          sudo apt install -y ${{ matrix.linker }}
+          cat .cargo/config.github >> .cargo/config
+
       - name: Setup Rust
         run: |
           rustup install stable
           rustup target add ${{ matrix.rust_target }}
-
-      - name: Install Linker (if needed)
-        if: ${{ matrix.linker != '' }}
-        run: |
-          sudo apt update
-          sudo apt install -y ${{ matrix.linker }}
+          rustup show
 
       - name: Build Worker
         working-directory: worker
