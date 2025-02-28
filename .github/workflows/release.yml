@@ -24,20 +24,23 @@ jobs:
       - name: Check Version
         id: check
         run: |
-          new_version=$(grep '^version = ' linkup-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
-          old_version=$(git show HEAD^:linkup-cli/Cargo.toml | grep '^version = ' | sed -E 's/version = "(.*)"/\1/')
-          echo "New version: $new_version"
-          echo "Old version: $old_version"
+          # new_version=$(grep '^version = ' linkup-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          # old_version=$(git show HEAD^:linkup-cli/Cargo.toml | grep '^version = ' | sed -E 's/version = "(.*)"/\1/')
+          # echo "New version: $new_version"
+          # echo "Old version: $old_version"
 
-          if [ "$new_version" = "$old_version" ]; then
-            echo "No version change detected."
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "Version change detected."
-            echo "version_changed=true" >> $GITHUB_OUTPUT
-          fi
+          # if [ "$new_version" = "$old_version" ]; then
+          #   echo "No version change detected."
+          #   echo "version_changed=false" >> $GITHUB_OUTPUT
+          # else
+          #   echo "Version change detected."
+          #   echo "version_changed=true" >> $GITHUB_OUTPUT
+          # fi
 
-          echo "new_version=$new_version" >> $GITHUB_OUTPUT
+          # echo "new_version=$new_version" >> $GITHUB_OUTPUT
+
+          echo "version_changed=true" >> $GITHUB_OUTPUT
+          echo "version=2.1.2" >> $GITHUB_OUTPUT
 
   build:
     name: Build Artifacts
