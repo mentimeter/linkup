@@ -148,10 +148,13 @@ jobs:
       - name: Mock Release
         run: |
           echo "Creating release for version ${{ needs.check_version.outputs.version }}"
-          echo "Release artifacts:"
-          for file in $(find artifacts -type f -name "*.tar.gz"); do
-            echo "  - $file"
-          done
+          ls -lah
+
+          # echo "Creating release for version ${{ needs.check_version.outputs.version }}"
+          # echo "Release artifacts:"
+          # for file in $(find artifacts -type f -name "*.tar.gz"); do
+          #   echo "  - $file"
+          # done
 
       # - name: Checkout Repository
       #   uses: actions/checkout@v4
