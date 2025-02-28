@@ -50,24 +50,24 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            display_os: linux
-            rust_target: x86_64-unknown-linux-gnu
-            linker: ""
-            arch: x86
-            goarch: amd64
-          - os: ubuntu-latest
-            display_os: linux
-            rust_target: aarch64-unknown-linux-gnu
-            linker: gcc-aarch64-linux-gnu
-            arch: aarch64
-            goarch: arm6
-          - os: macos-latest
-            display_os: darwin
-            rust_target: x86_64-apple-darwin
-            linker: ""
-            arch: x86
-            goarch: amd64
+          # - os: ubuntu-latest
+          #   display_os: linux
+          #   rust_target: x86_64-unknown-linux-gnu
+          #   linker: ""
+          #   arch: x86
+          #   goarch: amd64
+          # - os: ubuntu-latest
+          #   display_os: linux
+          #   rust_target: aarch64-unknown-linux-gnu
+          #   linker: gcc-aarch64-linux-gnu
+          #   arch: aarch64
+          #   goarch: arm6
+          # - os: macos-latest
+          #   display_os: darwin
+          #   rust_target: x86_64-apple-darwin
+          #   linker: ""
+          #   arch: x86
+          #   goarch: amd64
           - os: macos-latest
             display_os: darwin
             rust_target: aarch64-apple-darwin
