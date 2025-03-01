@@ -1,4 +1,6 @@
-use crate::{current_version, release, CliError};
+use crate::{
+    current_version, linkup_bin_dir_path, linkup_exe_path, release, CliError, InstallationMethod,
+};
 use std::{fs, path::PathBuf};
 
 #[derive(clap::Args)]
@@ -19,7 +21,7 @@ pub async fn update(args: &Args) -> Result<(), CliError> {
         Some(update) => {
             let new_linkup_path = update.linkup.download_decompressed("linkup").await.unwrap();
 
-            let current_linkup_path = get_exe_path().expect("failed to get the current exe path");
+            let current_linkup_path = linkup_exe_path();
             let bkp_linkup_path = current_linkup_path.with_extension("bkp");
 
             fs::rename(&current_linkup_path, &bkp_linkup_path)
@@ -53,14 +55,15 @@ pub async fn new_version_available() -> bool {
         .is_some()
 }
 
-// Get the current exe path. Using canonicalize ensure that we follow the symlink in case it is one.
-// This is important in case the version is one installed with Homebrew.
-fn get_exe_path() -> Result<PathBuf, std::io::Error> {
-    fs::canonicalize(std::env::current_exe()?)
+pub fn update_command() -> String {
+    match InstallationMethod::current() {
+        InstallationMethod::Brew => "brew upgrade linkup".to_string(),
+        InstallationMethod::Manual | InstallationMethod::Cargo => "linkup update".to_string(),
+    }
 }
 
 fn get_caddy_path() -> PathBuf {
-    let mut path = crate::linkup_bin_dir_path();
+    let mut path = linkup_bin_dir_path();
     path.push("caddy");
 
     path
