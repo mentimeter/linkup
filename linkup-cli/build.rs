@@ -9,7 +9,7 @@ fn main() {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR to be set");
 
     let install_status = Command::new("cargo")
-        .args(&["install", "-q", "worker-build"])
+        .args(["install", "-q", "worker-build"])
         .current_dir("../worker")
         .status()
         .expect("failed to execute worker-build install process");
@@ -19,7 +19,7 @@ fn main() {
     }
 
     let build_status = Command::new("worker-build")
-        .args(&["--release"])
+        .args(["--release"])
         .current_dir("../worker")
         .status()
         .expect("failed to execute worker-build process");
@@ -35,6 +35,6 @@ fn main() {
 
     fs::create_dir_all(&out_dir).expect("failed to create output directories");
 
-    fs::copy(&shim_src, &shim_dest).expect("failed to copy shim.mjs");
-    fs::copy(&wasm_src, &wasm_dest).expect("failed to copy index.wasm");
+    fs::copy(shim_src, &shim_dest).expect("failed to copy shim.mjs");
+    fs::copy(wasm_src, &wasm_dest).expect("failed to copy index.wasm");
 }
