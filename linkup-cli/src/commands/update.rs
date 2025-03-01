@@ -1,4 +1,6 @@
-use crate::{current_version, linkup_exe_path, release, CliError};
+use crate::{
+    current_version, linkup_bin_dir_path, linkup_exe_path, release, CliError, InstallationMethod,
+};
 use std::{fs, path::PathBuf};
 
 #[derive(clap::Args)]
@@ -54,16 +56,14 @@ pub async fn new_version_available() -> bool {
 }
 
 pub fn update_command() -> String {
-    match crate::InstallationMethod::current() {
-        crate::InstallationMethod::Brew => "brew upgrade linkup".to_string(),
-        crate::InstallationMethod::Manual | crate::InstallationMethod::Cargo => {
-            "linkup update".to_string()
-        }
+    match InstallationMethod::current() {
+        InstallationMethod::Brew => "brew upgrade linkup".to_string(),
+        InstallationMethod::Manual | InstallationMethod::Cargo => "linkup update".to_string(),
     }
 }
 
 fn get_caddy_path() -> PathBuf {
-    let mut path = crate::linkup_bin_dir_path();
+    let mut path = linkup_bin_dir_path();
     path.push("caddy");
 
     path
