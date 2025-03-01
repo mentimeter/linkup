@@ -35,7 +35,7 @@ impl InstallationMethod {
             }
         }
 
-        return Self::Manual;
+        Self::Manual
     }
 }
 
