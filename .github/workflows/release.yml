@@ -187,12 +187,14 @@ jobs:
       - name: "[TEST] All files in artifacts"
         run: ls -lah artifacts
 
-      # - name: Create GitHub Release
-      #   id: create_release
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     tag_name: ${{ needs.check_version.outputs.version }}
-      #     files: |
-      #       artifacts/*
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.check_version.outputs.version }}-TEST
+          draft: true
+          make_latest: false
+          files: |
+            artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
