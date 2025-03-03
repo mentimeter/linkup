@@ -20,8 +20,6 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error("IoError: {0}")]
     Io(#[from] std::io::Error),
-    #[error("File missing from downloaded compressed archive")]
-    MissingBinary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,48 +29,52 @@ pub struct Asset {
     download_url: String,
 }
 
+#[derive(Debug)]
+pub struct DownloadedAsset {
+    pub path: PathBuf,
+}
+
+impl DownloadedAsset {
+    pub fn linkup_path(&self) -> Option<PathBuf> {
+        let linkup_path = self.path.join("linkup");
+        if linkup_path.exists() {
+            return Some(linkup_path);
+        }
+
+        None
+    }
+
+    pub fn caddy_path(&self) -> Option<PathBuf> {
+        let caddy_path = self.path.join("caddy");
+        if caddy_path.exists() {
+            return Some(caddy_path);
+        }
+
+        None
+    }
+}
+
 impl Asset {
-    pub async fn download(&self) -> Result<PathBuf, Error> {
+    pub async fn download_decompressed(&self) -> Result<DownloadedAsset, Error> {
         let response = reqwest::get(&self.download_url).await?;
 
-        let file_path = env::temp_dir().join(&self.name);
-        let mut file = fs::File::create(&file_path)?;
+        let asset_path = env::temp_dir().join(&self.name);
+        let mut file = fs::File::create(&asset_path)?;
 
         let mut content = std::io::Cursor::new(response.bytes().await?);
         std::io::copy(&mut content, &mut file)?;
 
-        Ok(file_path)
-    }
+        let compressed_release = fs::File::open(&asset_path)?;
+        let decompressed_dir_path = env::temp_dir().join(self.name.replace(".tar.gz", ""));
 
-    pub async fn download_decompressed(&self, lookup_name: &str) -> Result<PathBuf, Error> {
-        let file_path = self.download().await?;
-        let file = fs::File::open(&file_path)?;
-
-        let decoder = GzDecoder::new(file);
+        let decoder = GzDecoder::new(compressed_release);
         let mut archive = Archive::new(decoder);
 
-        let new_exe_path =
-            archive
-                .entries()?
-                .filter_map(|e| e.ok())
-                .find_map(|mut entry| -> Option<PathBuf> {
-                    let entry_path = entry.path().unwrap();
+        archive.unpack(&decompressed_dir_path)?;
 
-                    if entry_path.to_str().unwrap().contains(lookup_name) {
-                        let path = env::temp_dir().join(lookup_name);
-
-                        entry.unpack(&path).unwrap();
-
-                        Some(path)
-                    } else {
-                        None
-                    }
-                });
-
-        match new_exe_path {
-            Some(new_exe_path) => Ok(new_exe_path),
-            None => Err(Error::MissingBinary),
-        }
+        Ok(DownloadedAsset {
+            path: decompressed_dir_path,
+        })
     }
 }
 
@@ -84,68 +86,22 @@ pub struct Release {
 }
 
 impl Release {
-    /// Examples of Linkup asset files:
-    /// - linkup-1.7.1-x86_64-apple-darwin.tar.gz
-    /// - linkup-1.7.1-aarch64-apple-darwin.tar.gz
-    /// - linkup-1.7.1-x86_64-unknown-linux-gnu.tar.gz
-    /// - linkup-1.7.1-aarch64-unknown-linux-gnu.tar.gz
-    pub fn linkup_asset(&self, os: &str, arch: &str) -> Option<Asset> {
-        let lookup_os = match os {
-            "macos" => "apple-darwin",
-            "linux" => "unknown-linux",
-            _ => return None,
-        };
-
-        let asset = self
-            .assets
-            .iter()
-            .find(|asset| asset.name.contains(lookup_os) && asset.name.contains(arch))
-            .cloned();
-
-        if asset.is_none() {
-            log::debug!(
-                "Linkup release for OS '{}' and ARCH '{}' not found on version {}",
-                lookup_os,
-                arch,
-                &self.version
-            );
-        }
-
-        asset
-    }
-
-    /// Examples of Caddy asset files:
-    /// - caddy-darwin-amd64.tar.gz
-    /// - caddy-darwin-arm64.tar.gz
-    /// - caddy-linux-amd64.tar.gz
-    /// - caddy-linux-arm64.tar.gz
-    pub fn caddy_asset(&self, os: &str, arch: &str) -> Option<Asset> {
+    /// Examples assets files:
+    /// release-2.1.2-darwin-aarch64.tar.gz
+    /// release-2.1.2-darwin-x86_64.tar.gz
+    /// release-2.1.2-linux-aarch64.tar.gz
+    /// release-2.1.2-linux-x86_64.tar.gz
+    pub fn matching_asset(&self, os: &str, arch: &str) -> Option<Asset> {
         let lookup_os = match os {
             "macos" => "darwin",
-            "linux" => "linux",
-            lookup_os => lookup_os,
-        };
-
-        let lookup_arch = match arch {
-            "x86_64" => "amd64",
-            "aarch64" => "arm64",
-            lookup_arch => lookup_arch,
+            other => other,
         };
 
         let asset = self
             .assets
             .iter()
-            .find(|asset| asset.name == format!("caddy-{}-{}.tar.gz", lookup_os, lookup_arch))
+            .find(|asset| asset.name.ends_with(&format!("{lookup_os}-{arch}.tar.gz")))
             .cloned();
-
-        if asset.is_none() {
-            log::debug!(
-                "Caddy release for OS '{}' and ARCH '{}' not found on version {}",
-                lookup_os,
-                lookup_arch,
-                &self.version
-            );
-        }
 
         asset
     }
@@ -157,12 +113,7 @@ struct CachedLatestRelease {
     release: Release,
 }
 
-pub struct Update {
-    pub linkup: Asset,
-    pub caddy: Asset,
-}
-
-pub async fn available_update(current_version: &Version) -> Option<Update> {
+pub async fn available_update(current_version: &Version) -> Option<Asset> {
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
 
@@ -217,14 +168,7 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
         return None;
     }
 
-    let caddy = latest_release
-        .caddy_asset(os, arch)
-        .expect("Caddy asset to be present on a release");
-    let linkup = latest_release
-        .linkup_asset(os, arch)
-        .expect("Linkup asset to be present on a release");
-
-    Some(Update { linkup, caddy })
+    latest_release.matching_asset(os, arch)
 }
 
 async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
@@ -252,9 +196,7 @@ async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
     client.execute(req).await?.json().await
 }
 
-pub async fn fetch_release(version: &Version) -> Result<Option<Release>, reqwest::Error> {
-    let tag = version.to_string();
-
+pub async fn fetch_release(tag: &str) -> Result<Option<Release>, reqwest::Error> {
     let url: Url = format!(
         "https://api.github.com/repos/mentimeter/linkup/releases/tags/{}",
         &tag
@@ -279,7 +221,27 @@ pub async fn fetch_release(version: &Version) -> Result<Option<Release>, reqwest
         .build()
         .unwrap();
 
-    client.execute(req).await?.json().await
+    let res = client.execute(req).await?;
+    if !res.status().is_success() {
+        let status = res.status();
+
+        match res.text().await {
+            Ok(body) => {
+                log::error!(
+                    "Failed to fetch release: HTTP Status {}; Body: {}",
+                    status,
+                    body
+                );
+            }
+            Err(_) => {
+                log::error!("Failed to fetch release: HTTP Status {}", status);
+            }
+        }
+
+        return Ok(None);
+    }
+
+    res.json().await
 }
 
 async fn cached_latest_release() -> Option<CachedLatestRelease> {
