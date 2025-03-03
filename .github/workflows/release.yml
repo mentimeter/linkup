@@ -184,7 +184,7 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: All files in artifacts
+      - name: "[TEST] All files in artifacts"
         run: ls -lah artifacts
 
       # - name: Create GitHub Release
