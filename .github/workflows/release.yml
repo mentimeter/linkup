@@ -127,14 +127,42 @@ jobs:
           touch release-package/linkup
           touch release-package/caddy
 
+      - name: Package Release Tarball
+        run: |
+          mkdir release-package
+
+          cp target/${{ matrix.rust_target }}/release/linkup release-package/
+          cp caddy release-package/
+
+          TARBALL_NAME="release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}.tar.gz"
+          tar -czvf $TARBALL_NAME -C release-package .
+
+          echo "Created tarball: $TARBALL_NAME"
+
+      # - name: Move Tarball for Upload
+      #   run: |
+      #     TARGET_OS = ${{ matrix.display_os }}
+      #     RELEASE_VERSION=${{ needs.check_version.outputs.version }}
+      #     TARBALL_NAME="release-${RELEASE_VERSION}-${TARGET_OS}-${{ matrix.arch }}.tar.gz"
+
+      #     mv $TARBALL_NAME artifact.tar.gz
+      #     ls -lah artifact.tar.gz
+
       - name: Upload Tarball Artifact
-        id: artifact-upload-step
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}
+          name: ${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}
           path: |
-            release-package/linkup
-            release-package/caddy
+            release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}.tar.gz
+
+      # - name: Upload Tarball Artifact
+      #   id: artifact-upload-step
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}
+      #     path: |
+      #       release-package/linkup
+      #       release-package/caddy
 
       - name: Output Artifact information
         run: |
@@ -160,6 +188,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
 
       - name: All files in artifacts
         run: ls -lah artifacts
