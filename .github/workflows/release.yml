@@ -43,10 +43,14 @@ jobs:
           echo "version=2.1.2" >> $GITHUB_OUTPUT
 
   build:
-    name: Build Artifacts
+    name: Build Release Artifact
     needs: check_version
     if: ${{ needs.check_version.outputs.version_changed == 'true' }}
     runs-on: ${{ matrix.os }}
+    outputs:
+      artifact_id: ${{ steps.artifact-upload-step.outputs.artifact-id }}
+      artifact_url: ${{ steps.artifact-upload-step.outputs.artifact-url }}
+      artifact_digest: ${{ steps.artifact-upload-step.outputs.artifact-digest }}
     strategy:
       matrix:
         include:
@@ -143,12 +147,19 @@ jobs:
           cp caddy release-package/
 
       - name: Upload Tarball Artifact
+        id: artifact-upload-step
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}
           path: |
             release-package/linkup
             release-package/caddy
+
+      - name: Output Artifact information
+        run: |
+          echo 'Artifact ID is ${{ steps.artifact-upload-step.outputs.artifact-id }}'
+          echo 'Artifact URL is ${{ steps.artifact-upload-step.outputs.artifact-url }}'
+          echo 'Artifact Digest is ${{ steps.artifact-upload-step.outputs.artifact-digest }}'
 
   release:
     name: Create Release
@@ -159,13 +170,10 @@ jobs:
       - name: Mock Release
         run: |
           echo "Creating release for version ${{ needs.check_version.outputs.version }}"
-          ls -lah
-
-          # echo "Creating release for version ${{ needs.check_version.outputs.version }}"
-          # echo "Release artifacts:"
-          # for file in $(find artifacts -type f -name "*.tar.gz"); do
-          #   echo "  - $file"
-          # done
+          echo "Release artifact:"
+          echo "  - ID:     ${{ needs.build.outputs.artifact_id }}"
+          echo "  - URL:    ${{ needs.build.outputs.artifact_url }}"
+          echo "  - Digest: ${{ needs.build.outputs.artifact_digest }}"
 
       # - name: Checkout Repository
       #   uses: actions/checkout@v4
