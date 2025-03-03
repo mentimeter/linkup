@@ -8,9 +8,12 @@ fn main() {
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR to be set");
 
+    let worker_target_dir = Path::new(&out_dir).join("worker-target");
+
     let install_status = Command::new("cargo")
         .args(["install", "-q", "worker-build"])
         .current_dir("../worker")
+        .env("CARGO_TARGET_DIR", &worker_target_dir)
         .status()
         .expect("failed to execute worker-build install process");
 
@@ -21,6 +24,7 @@ fn main() {
     let build_status = Command::new("worker-build")
         .args(["--release"])
         .current_dir("../worker")
+        .env("CARGO_TARGET_DIR", &worker_target_dir)
         .status()
         .expect("failed to execute worker-build process");
 
