@@ -92,10 +92,6 @@ jobs:
           rustup target add ${{ matrix.rust_target }}
           rustup show
 
-      - name: Build Worker
-        working-directory: worker
-        run: cargo install -q worker-build && worker-build --release
-
       - name: Build Linkup Binary
         run: |
           cargo build --release --manifest-path linkup-cli/Cargo.toml --target ${{ matrix.rust_target }}
