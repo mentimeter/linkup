@@ -19,6 +19,31 @@ const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
 
+pub enum InstallationMethod {
+    Brew,
+    Cargo,
+    Manual,
+}
+
+impl InstallationMethod {
+    fn current() -> Self {
+        for component in linkup_exe_path().components() {
+            if component.as_os_str() == "Cellar" {
+                return Self::Brew;
+            } else if component.as_os_str() == ".cargo" {
+                return Self::Cargo;
+            }
+        }
+
+        Self::Manual
+    }
+}
+
+pub fn linkup_exe_path() -> PathBuf {
+    fs::canonicalize(std::env::current_exe().expect("current exe to be accessible"))
+        .expect("exe path to be valid")
+}
+
 pub fn linkup_dir_path() -> PathBuf {
     let storage_dir = match env::var("HOME") {
         Ok(val) => val,
@@ -246,10 +271,13 @@ async fn main() -> Result<()> {
     if !matches!(cli.command, Commands::Update(_))
         && commands::update::new_version_available().await
     {
-        println!(
-            "{}",
-            "⚠️ New version of linkup is available! Run `linkup update` to update it.".yellow()
-        );
+        let message = format!(
+            "⚠️ New version of linkup is available! Run `{}` to update it.",
+            commands::update::update_command()
+        )
+        .yellow();
+
+        println!("{}", message);
     }
 
     match &cli.command {
