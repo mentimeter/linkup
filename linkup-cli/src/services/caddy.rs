@@ -75,28 +75,46 @@ impl Caddy {
         }
 
         let version = current_version();
-        match release::fetch_release(&version).await? {
+        match release::fetch_release(&version.to_string()).await? {
             Some(release) => {
                 let os = env::consts::OS;
                 let arch = env::consts::ARCH;
 
-                match release.caddy_asset(os, arch) {
-                    Some(asset) => match asset.download_decompressed("caddy").await {
-                        Ok(downloaded_caddy_path) => {
-                            log::debug!(
-                                "Moving downloaded Caddy file from {:?} to {:?}",
-                                &downloaded_caddy_path,
-                                &caddy_path
-                            );
+                match release.matching_asset(os, arch) {
+                    Some(asset) => match asset.download_decompressed().await {
+                        Ok(downloaded_asset) => match downloaded_asset.caddy_path() {
+                            Some(downloaded_caddy_path) => {
+                                log::debug!(
+                                    "Moving downloaded Caddy file from {:?} to {:?}",
+                                    &downloaded_caddy_path,
+                                    &caddy_path
+                                );
 
-                            fs::copy(&downloaded_caddy_path, &caddy_path)?;
-                            fs::remove_file(&downloaded_caddy_path)?;
+                                fs::copy(&downloaded_caddy_path, &caddy_path)?;
+                                fs::remove_file(&downloaded_caddy_path)?;
+                            }
+                            None => {
+                                log::warn!(
+                                    "Failed to find Caddy binary on release for version {}",
+                                    &version
+                                );
+
+                                return Err(InstallError::AssetNotFound(version.clone()));
+                            }
+                        },
+                        Err(error) => {
+                            log::warn!("Failed to download asset: {}", error);
+
+                            return Err(InstallError::AssetDownload(
+                                "Failed to download asset".to_string(),
+                            ));
                         }
-                        Err(error) => return Err(InstallError::AssetDownload(error.to_string())),
                     },
                     None => {
-                        log::warn!(
-                            "Failed to find Caddy asset on release for version {}",
+                        log::debug!(
+                            "Linkup release for OS '{}' and ARCH '{}' not found on version {}",
+                            os,
+                            arch,
                             &version
                         );
 
