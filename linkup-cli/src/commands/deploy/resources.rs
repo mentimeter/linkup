@@ -7,11 +7,8 @@ use sha2::{Digest, Sha256};
 
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
 
-// To build the worker script, run in the worker directory:
-// cargo install -q worker-build && worker-build --release
-const LINKUP_WORKER_SHIM: &[u8] = include_bytes!("../../../../worker/build/worker/shim.mjs");
-const LINKUP_WORKER_INDEX_WASM: &[u8] =
-    include_bytes!("../../../../worker/build/worker/index.wasm");
+const LINKUP_WORKER_SHIM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/shim.mjs"));
+const LINKUP_WORKER_INDEX_WASM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.wasm"));
 
 #[derive(Debug, Clone)]
 pub struct TargetCfResources {
@@ -349,7 +346,7 @@ impl TargetCfResources {
             if account_token_plan.is_some() {
                 bindings.push(cloudflare::endpoints::workers::WorkersBinding::SecretText {
                     name: "CLOUDFLARE_API_TOKEN".to_string(),
-                    text: "<to-be-filled-on-deploy>".to_string(),
+                    text: Some("<to-be-filled-on-deploy>".to_string()),
                 });
             }
 
@@ -661,7 +658,7 @@ impl TargetCfResources {
                     } = binding
                     {
                         if *name == "CLOUDFLARE_API_TOKEN" {
-                            *text = token.clone();
+                            *text = Some(token.clone());
                         }
                     }
                 }
