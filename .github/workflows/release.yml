@@ -110,30 +110,45 @@ jobs:
           export GOARCH=${{ matrix.goarch }}
           xcaddy build --output caddy --with github.com/mentimeter/caddy-dns-linkup --with github.com/mentimeter/caddy-storage-linkup
 
-      - name: Package Release Tarball
+      # - name: Package Release Tarball
+      #   run: |
+      #     mkdir release-package
+
+      #     cp target/${{ matrix.rust_target }}/release/linkup release-package/
+      #     cp caddy release-package/
+
+      #     TARBALL_NAME="release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}.tar.gz"
+      #     tar -czvf $TARBALL_NAME -C release-package .
+
+      #     echo "Created tarball: $TARBALL_NAME"
+
+      # - name: Move Tarball for Upload
+      #   run: |
+      #     TARBALL_NAME="release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}.tar.gz"
+
+      #     mv $TARBALL_NAME artifact.tar.gz
+      #     ls -lah artifact.tar.gz
+      #
+      # - name: Upload Tarball Artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: release-${{ matrix.display_os }}-${{ matrix.arch }}
+      #     path: artifact.tar.gz
+
+      - name: Move binaries to upload
         run: |
           mkdir release-package
 
           cp target/${{ matrix.rust_target }}/release/linkup release-package/
           cp caddy release-package/
 
-          TARBALL_NAME="release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}.tar.gz"
-          tar -czvf $TARBALL_NAME -C release-package .
-
-          echo "Created tarball: $TARBALL_NAME"
-
-      - name: Move Tarball for Upload
-        run: |
-          TARBALL_NAME="release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}.tar.gz"
-
-          mv $TARBALL_NAME artifact.tar.gz
-          ls -lah artifact.tar.gz
-
       - name: Upload Tarball Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.display_os }}-${{ matrix.arch }}
-          path: artifact.tar.gz
+          name: release-${{ needs.check_version.outputs.version }}-${{ matrix.display_os }}-${{ matrix.arch }}
+          path: |
+            release-package/linkup
+            release-package/caddy
 
   release:
     name: Create Release
