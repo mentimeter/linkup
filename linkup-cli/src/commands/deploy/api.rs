@@ -545,6 +545,14 @@ impl CloudflareApi for AccountCloudflareApi {
             "main_module": metadata.main_module,
             "compatibility_date": metadata.compatibility_date,
             "bindings": bindings_json,
+            "migrations":
+                {
+                    "steps": [
+                        {
+                            "new_classes": ["CertificateStoreLock"],
+                        }
+                    ]
+                },
             "observability": json!({
                 "enabled": true,
             })
