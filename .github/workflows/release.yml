@@ -61,7 +61,7 @@ jobs:
           #   display_os: linux
           #   rust_target: x86_64-unknown-linux-gnu
           #   linker: ""
-          #   arch: x86
+          #   arch: x86_64
           #   goarch: amd64
           # - os: ubuntu-latest
           #   display_os: linux
@@ -73,7 +73,7 @@ jobs:
             display_os: darwin
             rust_target: x86_64-apple-darwin
             linker: ""
-            arch: x86
+            arch: x86_64
             goarch: amd64
           - os: macos-latest
             display_os: darwin
