@@ -167,40 +167,28 @@ jobs:
     if: ${{ needs.check_version.outputs.version_changed == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Mock Release
-        run: |
-          echo "Creating release for version ${{ needs.check_version.outputs.version }}"
-          echo "Release artifact:"
-          echo "  - ID:     ${{ needs.build.outputs.artifact_id }}"
-          echo "  - URL:    ${{ needs.build.outputs.artifact_url }}"
-          echo "  - Digest: ${{ needs.build.outputs.artifact_digest }}"
+      # - name: Mock Release
+      #   run: |
+      #     echo "Creating release for version ${{ needs.check_version.outputs.version }}"
+      #     echo "Release artifact:"
+      #     echo "  - ID:     ${{ needs.build.outputs.artifact_id }}"
+      #     echo "  - URL:    ${{ needs.build.outputs.artifact_url }}"
+      #     echo "  - Digest: ${{ needs.build.outputs.artifact_digest }}"
 
-      # - name: Checkout Repository
-      #   uses: actions/checkout@v4
+      - name: Download Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
 
-      # - name: Download Artifacts
-      #   uses: actions/download-artifact@v3
-      #   with:
-      #     path: artifacts
+      - name: All files in artifacts
+        run: ls -lah artifacts
 
       # - name: Create GitHub Release
       #   id: create_release
       #   uses: softprops/action-gh-release@v1
       #   with:
       #     tag_name: ${{ needs.check_version.outputs.version }}
+      #     files: |
+      #       artifacts/*
       #   env:
       #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # - name: Upload Tarballs to GitHub Release
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #     UPLOAD_URL: ${{ steps.create_release.outputs.upload_url }}
-      #   run: |
-      #     for file in $(find artifacts -type f -name "*.tar.gz"); do
-      #       echo "Uploading $file"
-      #       curl -s -X POST \
-      #         -H "Authorization: token ${GITHUB_TOKEN}" \
-      #         -H "Content-Type: application/gzip" \
-      #         --data-binary @"$file" \
-      #         "${UPLOAD_URL}&name=$(basename $file)"
-      #     done
