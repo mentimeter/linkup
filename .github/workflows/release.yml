@@ -2,11 +2,11 @@ name: Build and Release
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - "linkup-cli/Cargo.toml"
+  push:
+    branches:
+      - main
+    paths:
+      - "linkup-cli/Cargo.toml"
 
 jobs:
   check_version:
@@ -21,29 +21,23 @@ jobs:
         with:
           fetch-depth: 2
 
-      # - name: Check Version
-      #   id: check
-      #   run: |
-      #     new_version=$(grep '^version = ' linkup-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
-      #     old_version=$(git show HEAD^:linkup-cli/Cargo.toml | grep '^version = ' | sed -E 's/version = "(.*)"/\1/')
-      #     echo "New version: $new_version"
-      #     echo "Old version: $old_version"
-
-      #     if [ "$new_version" = "$old_version" ]; then
-      #       echo "No version change detected."
-      #       echo "version_changed=false" >> $GITHUB_OUTPUT
-      #     else
-      #       echo "Version change detected."
-      #       echo "version_changed=true" >> $GITHUB_OUTPUT
-      #     fi
-
-      #     echo "new_version=$new_version" >> $GITHUB_OUTPUT
-
-      - name: "[TEST] Check Version"
+      - name: Check Version
         id: check
         run: |
-          echo "version_changed=true" >> $GITHUB_OUTPUT
-          echo "version=2.1.2" >> $GITHUB_OUTPUT
+          new_version=$(grep '^version = ' linkup-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          old_version=$(git show HEAD^:linkup-cli/Cargo.toml | grep '^version = ' | sed -E 's/version = "(.*)"/\1/')
+          echo "New version: $new_version"
+          echo "Old version: $old_version"
+
+          if [ "$new_version" = "$old_version" ]; then
+            echo "No version change detected."
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Version change detected."
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          fi
+
+          echo "new_version=$new_version" >> $GITHUB_OUTPUT
 
   build:
     name: Build Release Artifact
@@ -57,18 +51,18 @@ jobs:
     strategy:
       matrix:
         include:
-          # - os: ubuntu-latest
-          #   display_os: linux
-          #   rust_target: x86_64-unknown-linux-gnu
-          #   linker: ""
-          #   arch: x86_64
-          #   goarch: amd64
-          # - os: ubuntu-latest
-          #   display_os: linux
-          #   rust_target: aarch64-unknown-linux-gnu
-          #   linker: gcc-aarch64-linux-gnu
-          #   arch: aarch64
-          #   goarch: arm6
+          - os: ubuntu-latest
+            display_os: linux
+            rust_target: x86_64-unknown-linux-gnu
+            linker: ""
+            arch: x86_64
+            goarch: amd64
+          - os: ubuntu-latest
+            display_os: linux
+            rust_target: aarch64-unknown-linux-gnu
+            linker: gcc-aarch64-linux-gnu
+            arch: aarch64
+            goarch: arm6
           - os: macos-latest
             display_os: darwin
             rust_target: x86_64-apple-darwin
@@ -82,53 +76,47 @@ jobs:
             arch: aarch64
             goarch: arm64
     steps:
-      # - name: Checkout Repository
-      #   uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      # - name: Install Linker (if needed)
-      #   if: ${{ matrix.linker != '' }}
-      #   run: |
-      #     cargo install cross
-      #     sudo apt update
-      #     sudo apt install -y ${{ matrix.linker }}
-      #     cat .cargo/config.github >> .cargo/config
+      - name: Install Linker (if needed)
+        if: ${{ matrix.linker != '' }}
+        run: |
+          cargo install cross
+          sudo apt update
+          sudo apt install -y ${{ matrix.linker }}
+          cat .cargo/config.github >> .cargo/config
 
-      # - name: Setup Rust
-      #   run: |
-      #     rustup install stable
-      #     rustup target add ${{ matrix.rust_target }}
-      #     rustup show
+      - name: Setup Rust
+        run: |
+          rustup install stable
+          rustup target add ${{ matrix.rust_target }}
+          rustup show
 
-      # - name: Build Linkup Binary
-      #   run: |
-      #     cargo build --release --manifest-path linkup-cli/Cargo.toml --target ${{ matrix.rust_target }}
+      - name: Build Linkup Binary
+        run: |
+          cargo build --release --manifest-path linkup-cli/Cargo.toml --target ${{ matrix.rust_target }}
 
-      # - name: Setup Go
-      #   uses: actions/setup-go@v4
-      #   with:
-      #     go-version: "1.23"
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.23"
 
-      # - name: Install xcaddy
-      #   run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+      - name: Install xcaddy
+        run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
 
-      # - name: Build Caddy Binary
-      #   run: |
-      #     export GOOS=${{ matrix.display_os }}
-      #     export GOARCH=${{ matrix.goarch }}
-      #     xcaddy build --output caddy --with github.com/mentimeter/caddy-dns-linkup --with github.com/mentimeter/caddy-storage-linkup
+      - name: Build Caddy Binary
+        run: |
+          export GOOS=${{ matrix.display_os }}
+          export GOARCH=${{ matrix.goarch }}
+          xcaddy build --output caddy --with github.com/mentimeter/caddy-dns-linkup --with github.com/mentimeter/caddy-storage-linkup
 
-      # - name: Move binaries to upload
-      #   run: |
-      #     mkdir release-package
-
-      #     cp target/${{ matrix.rust_target }}/release/linkup release-package/
-      #     cp caddy release-package/
-
-      - name: "[TEST] Create mock files"
+      - name: Move binaries to upload
         run: |
           mkdir release-package
-          touch release-package/linkup
-          touch release-package/caddy
+
+          cp target/${{ matrix.rust_target }}/release/linkup release-package/
+          cp caddy release-package/
 
       - name: Package Release Tarball
         id: package-release
@@ -184,16 +172,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: "[TEST] All files in artifacts"
+      - name: "All files in artifacts"
         run: ls -lah artifacts
 
       - name: Create GitHub Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.check_version.outputs.version }}-TEST
-          draft: true
-          make_latest: false
+          tag_name: ${{ needs.check_version.outputs.version }}
           files: |
             artifacts/*
         env:
