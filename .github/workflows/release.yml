@@ -117,7 +117,7 @@ jobs:
           mkdir release-package
 
           cp target/${{ matrix.rust_target }}/release/linkup release-package/
-          cp caddy release-package/
+          cp linkup-caddy release-package/
 
       - name: Package Release Tarball
         id: package-release
