@@ -1,7 +1,5 @@
-use crate::{
-    current_version, linkup_bin_dir_path, linkup_exe_path, release, CliError, InstallationMethod,
-};
-use std::{fs, path::PathBuf};
+use crate::{current_version, linkup_exe_path, release, services, CliError, InstallationMethod};
+use std::fs;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -33,7 +31,7 @@ pub async fn update(args: &Args) -> Result<(), CliError> {
 
             let new_caddy_path = downloaded_update.caddy_path().unwrap();
 
-            let current_caddy_path = get_caddy_path();
+            let current_caddy_path = services::caddy_path();
             let bkp_caddy_path = current_caddy_path.with_extension("bkp");
 
             fs::rename(&current_caddy_path, &bkp_caddy_path)
@@ -62,11 +60,4 @@ pub fn update_command() -> String {
         InstallationMethod::Brew => "brew upgrade linkup".to_string(),
         InstallationMethod::Manual | InstallationMethod::Cargo => "linkup update".to_string(),
     }
-}
-
-fn get_caddy_path() -> PathBuf {
-    let mut path = linkup_bin_dir_path();
-    path.push("linkup-caddy");
-
-    path
 }

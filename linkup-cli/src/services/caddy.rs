@@ -60,16 +60,12 @@ impl Caddy {
     }
 
     pub async fn install() -> Result<(), InstallError> {
-        let bin_dir_path = linkup_bin_dir_path();
-        fs::create_dir_all(&bin_dir_path)?;
-
-        let mut caddy_path = bin_dir_path.clone();
-        caddy_path.push("linkup-caddy");
+        let caddy_path = get_path();
 
         if fs::exists(&caddy_path)? {
             log::debug!(
                 "Caddy executable already exists on {}",
-                &bin_dir_path.display()
+                &caddy_path.display()
             );
             return Ok(());
         }
@@ -133,8 +129,7 @@ impl Caddy {
     }
 
     pub async fn uninstall() -> Result<(), UninstallError> {
-        let mut path = linkup_bin_dir_path();
-        path.push("linkup-caddy");
+        let path = get_path();
 
         if !fs::exists(&path)? {
             log::debug!("Caddy executable does not exist on {}", &path.display());
@@ -159,9 +154,10 @@ impl Caddy {
 
         let stdout_file = fs::File::create(&self.stdout_file_path)?;
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
+        let path = get_path();
 
         #[cfg(target_os = "macos")]
-        let status = Command::new("./bin/linkup-caddy")
+        let status = Command::new(&path)
             .current_dir(linkup_dir_path())
             .arg("start")
             .arg("--pidfile")
@@ -178,7 +174,7 @@ impl Caddy {
 
             Command::new("sudo")
                 .current_dir(linkup_dir_path())
-                .arg("./bin/linkup-caddy")
+                .arg(&path)
                 .arg("start")
                 .arg("--pidfile")
                 .arg(&self.pidfile_path)
@@ -324,9 +320,13 @@ impl BackgroundService<Error> for Caddy {
     }
 }
 
-pub fn is_installed() -> bool {
-    let mut caddy_path = linkup_bin_dir_path();
-    caddy_path.push("linkup-caddy");
+pub fn get_path() -> PathBuf {
+    let mut path = linkup_bin_dir_path();
+    path.push("linkup-caddy");
 
-    caddy_path.exists()
+    path
+}
+
+pub fn is_installed() -> bool {
+    get_path().exists()
 }
