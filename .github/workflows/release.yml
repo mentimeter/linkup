@@ -181,6 +181,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: 2.1.2-TEST
+          make_latest: false
           files: |
             artifacts/*
         env:
