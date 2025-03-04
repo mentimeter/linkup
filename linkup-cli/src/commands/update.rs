@@ -66,7 +66,7 @@ pub fn update_command() -> String {
 
 fn get_caddy_path() -> PathBuf {
     let mut path = linkup_bin_dir_path();
-    path.push("caddy");
+    path.push("linkup-caddy");
 
     path
 }

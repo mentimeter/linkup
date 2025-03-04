@@ -64,7 +64,7 @@ impl Caddy {
         fs::create_dir_all(&bin_dir_path)?;
 
         let mut caddy_path = bin_dir_path.clone();
-        caddy_path.push("caddy");
+        caddy_path.push("linkup-caddy");
 
         if fs::exists(&caddy_path)? {
             log::debug!(
@@ -134,7 +134,7 @@ impl Caddy {
 
     pub async fn uninstall() -> Result<(), UninstallError> {
         let mut path = linkup_bin_dir_path();
-        path.push("caddy");
+        path.push("linkup-caddy");
 
         if !fs::exists(&path)? {
             log::debug!("Caddy executable does not exist on {}", &path.display());
@@ -161,7 +161,7 @@ impl Caddy {
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
 
         #[cfg(target_os = "macos")]
-        let status = Command::new("./bin/caddy")
+        let status = Command::new("./bin/linkup-caddy")
             .current_dir(linkup_dir_path())
             .arg("start")
             .arg("--pidfile")
@@ -178,7 +178,7 @@ impl Caddy {
 
             Command::new("sudo")
                 .current_dir(linkup_dir_path())
-                .arg("./bin/caddy")
+                .arg("./bin/linkup-caddy")
                 .arg("start")
                 .arg("--pidfile")
                 .arg(&self.pidfile_path)
@@ -326,7 +326,7 @@ impl BackgroundService<Error> for Caddy {
 
 pub fn is_installed() -> bool {
     let mut caddy_path = linkup_bin_dir_path();
-    caddy_path.push("caddy");
+    caddy_path.push("linkup-caddy");
 
     caddy_path.exists()
 }
