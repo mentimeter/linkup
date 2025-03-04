@@ -73,7 +73,7 @@ jobs:
             display_os: linux
             rust_target: aarch64-unknown-linux-gnu
             arch: aarch64
-            goarch: arm6
+            goarch: arm64
           - runner: depot-macos-14
             display_os: darwin
             rust_target: x86_64-apple-darwin
