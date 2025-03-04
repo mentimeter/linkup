@@ -110,7 +110,7 @@ jobs:
         run: |
           export GOOS=${{ matrix.display_os }}
           export GOARCH=${{ matrix.goarch }}
-          xcaddy build --output caddy --with github.com/mentimeter/caddy-dns-linkup --with github.com/mentimeter/caddy-storage-linkup
+          xcaddy build --output linkup-caddy --with github.com/mentimeter/caddy-dns-linkup --with github.com/mentimeter/caddy-storage-linkup
 
       - name: Move binaries to upload
         run: |
