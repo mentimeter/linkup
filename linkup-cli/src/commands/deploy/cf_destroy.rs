@@ -40,6 +40,17 @@ pub async fn destroy(args: &DestroyArgs) -> Result<(), DeployError> {
         zone_ids_strings.clone(),
         Box::new(auth),
     );
+
+    let cloudflare_client = cloudflare::framework::async_api::Client::new(
+        cloudflare::framework::auth::Credentials::UserAuthKey {
+            email: args.email.clone(),
+            key: args.api_key.clone(),
+        },
+        cloudflare::framework::HttpApiClientConfig::default(),
+        cloudflare::framework::Environment::Production,
+    )
+    .expect("Cloudflare API Client to have been created");
+
     let notifier = ConsoleNotifier::new();
 
     let mut zone_names = Vec::with_capacity(zone_ids_strings.len());
@@ -55,7 +66,7 @@ pub async fn destroy(args: &DestroyArgs) -> Result<(), DeployError> {
         &args.zone_ids,
     );
 
-    destroy_from_cloudflare(&resources, &cloudflare_api, &notifier).await?;
+    destroy_from_cloudflare(&resources, &cloudflare_api, &cloudflare_client, &notifier).await?;
 
     Ok(())
 }
@@ -63,6 +74,7 @@ pub async fn destroy(args: &DestroyArgs) -> Result<(), DeployError> {
 pub async fn destroy_from_cloudflare(
     resources: &TargetCfResources,
     api: &impl CloudflareApi,
+    cloudflare_client: &cloudflare::framework::async_api::Client,
     notifier: &impl DeployNotifier,
 ) -> Result<(), DeployError> {
     // 1) Check which resources actually exist and need removal
@@ -85,7 +97,9 @@ pub async fn destroy_from_cloudflare(
     }
 
     // 4) Execute the plan
-    resources.execute_destroy_plan(api, &plan, notifier).await?;
+    resources
+        .execute_destroy_plan(api, &cloudflare_client, &plan, notifier)
+        .await?;
 
     notifier.notify("Destroy completed successfully.");
 

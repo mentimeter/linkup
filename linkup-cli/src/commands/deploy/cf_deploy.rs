@@ -899,7 +899,8 @@ export default {
         );
 
         // Destroy resources
-        let destroy_result = destroy_from_cloudflare(&res, &cloudflare_api, &notifier).await;
+        let destroy_result =
+            destroy_from_cloudflare(&res, &cloudflare_api, &cloudflare_client, &notifier).await;
         assert!(
             destroy_result.is_ok(),
             "Destroy failed: {:?}",
