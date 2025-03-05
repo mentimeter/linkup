@@ -7,19 +7,21 @@ use std::{
     time::Duration,
 };
 
+use hickory_resolver::proto::rr::rdata::https;
+use linkup::MemoryStringStore;
 use reqwest::StatusCode;
 use tokio::time::sleep;
 use url::Url;
 
 use crate::{
-    linkup_file_path,
+    certificates, linkup_file_path,
     local_config::{upload_state, LocalState},
     worker_client,
 };
 
 use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
 
-pub const LINKUP_LOCAL_SERVER_PORT: u16 = 9066;
+pub const LINKUP_LOCAL_SERVER_PORT: u16 = 80;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -181,14 +183,9 @@ impl BackgroundService<Error> for LocalServer {
             }
         }
 
-        match self.update_state(state).await {
-            Ok(_) => {
-                self.notify_update(&status_sender, super::RunStatus::Started);
-            }
-            Err(e) => {
-                self.notify_update(&status_sender, super::RunStatus::Error);
-                return Err(e);
-            }
+        if let Err(e) = self.update_state(state).await {
+            self.notify_update(&status_sender, super::RunStatus::Error);
+            return Err(e);
         }
 
         Ok(())

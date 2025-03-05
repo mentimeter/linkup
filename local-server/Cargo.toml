@@ -9,8 +9,9 @@ path = "src/lib.rs"
 
 [dependencies]
 axum = { version = "0.8.1", features = ["http2", "json"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 http = "1.2.0"
-hyper = "1.5.2"
+hyper = { version = "1.5.2", features = ["server"] }
 hyper-rustls = "0.27.5"
 hyper-util = { version = "0.1.10", features = ["client-legacy"] }
 futures = "0.3.31"

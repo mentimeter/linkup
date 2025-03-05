@@ -1,4 +1,4 @@
-use crate::{current_version, linkup_exe_path, release, services, CliError, InstallationMethod};
+use crate::{current_version, linkup_exe_path, release, CliError, InstallationMethod};
 use std::fs;
 
 #[derive(clap::Args)]
@@ -27,16 +27,6 @@ pub async fn update(args: &Args) -> Result<(), CliError> {
             fs::rename(&current_linkup_path, &bkp_linkup_path)
                 .expect("failed to move the current exe into a backup");
             fs::rename(&new_linkup_path, &current_linkup_path)
-                .expect("failed to move the new exe as the current exe");
-
-            let new_caddy_path = downloaded_update.caddy_path().unwrap();
-
-            let current_caddy_path = services::caddy_path();
-            let bkp_caddy_path = current_caddy_path.with_extension("bkp");
-
-            fs::rename(&current_caddy_path, &bkp_caddy_path)
-                .expect("failed to move the current exe into a backup");
-            fs::rename(&new_caddy_path, &current_caddy_path)
                 .expect("failed to move the new exe as the current exe");
 
             println!("Finished update!");

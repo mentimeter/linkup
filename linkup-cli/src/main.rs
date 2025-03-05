@@ -6,6 +6,7 @@ use thiserror::Error;
 
 pub use linkup::Version;
 
+mod certificates;
 mod commands;
 mod env_files;
 mod local_config;
@@ -15,7 +16,7 @@ mod worker_client;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
-const LINKUP_LOCALSERVER_PORT: u16 = 9066;
+const LINKUP_LOCALSERVER_PORT: u16 = 80;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
 
@@ -59,6 +60,12 @@ pub fn linkup_dir_path() -> PathBuf {
 pub fn linkup_bin_dir_path() -> PathBuf {
     let mut path = linkup_dir_path();
     path.push("bin");
+    path
+}
+
+pub fn linkup_certs_dir_path() -> PathBuf {
+    let mut path = linkup_dir_path();
+    path.push("certs");
     path
 }
 
@@ -143,8 +150,6 @@ pub enum CliError {
     StartLocalTunnel(String),
     #[error("linkup component did not start in time: {0}")]
     StartLinkupTimeout(String),
-    #[error("could not start Caddy: {0}")]
-    StartCaddy(String),
     #[error("could not start DNSMasq: {0}")]
     StartDNSMasq(String),
     #[error("could not load config to {0}: {1}")]

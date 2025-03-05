@@ -1,6 +1,9 @@
 use std::fs;
 
-use crate::CliError;
+use linkup::MemoryStringStore;
+use tokio::select;
+
+use crate::{linkup_certs_dir_path, CliError};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -12,11 +15,30 @@ pub async fn server(args: &Args) -> Result<(), CliError> {
     let pid = std::process::id();
     fs::write(&args.pidfile, pid.to_string())?;
 
-    let res = linkup_local_server::start_server().await;
+    let config_store = MemoryStringStore::default();
 
-    if let Err(pid_file_err) = fs::remove_file(&args.pidfile) {
-        eprintln!("Failed to remove pidfile: {}", pid_file_err);
+    let http_config_store = config_store.clone();
+    let handler_http = tokio::spawn(async move {
+        linkup_local_server::start_server_http(http_config_store)
+            .await
+            .unwrap();
+    });
+
+    let https_config_store = config_store.clone();
+    let handler_https = tokio::spawn(async move {
+        // TODO: Build SNI from the domains present on the config
+        let cert_path = linkup_certs_dir_path().join("wildcard_.mentimeter.dev.cert.pem");
+        let key_path = linkup_certs_dir_path().join("wildcard_.mentimeter.dev.key.pem");
+
+        linkup_local_server::start_server_https(https_config_store, &cert_path, &key_path)
+            .await
+            .unwrap();
+    });
+
+    select! {
+        _ = handler_http => (),
+        _ = handler_https => (),
     }
 
-    res.map_err(|e| e.into())
+    Ok(())
 }

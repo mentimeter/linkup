@@ -6,9 +6,9 @@ use std::{
 use clap::Subcommand;
 
 use crate::{
-    commands, is_sudo,
+    certificates, commands, is_sudo, linkup_certs_dir_path,
     local_config::{config_path, get_config},
-    services, sudo_su, CliError, Result,
+    sudo_su, CliError, Result,
 };
 
 #[derive(clap::Args)]
@@ -48,11 +48,12 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     ensure_resolver_dir()?;
     install_resolvers(&input_config.top_level_domains())?;
 
-    println!("Installing Caddy...");
-
-    services::Caddy::install()
-        .await
-        .map_err(|e| CliError::LocalDNSInstall(e.to_string()))?;
+    ensure_certs_dir()?;
+    certificates::upsert_ca_cert();
+    certificates::add_ca_to_keychain().await;
+    for domain in input_config.top_level_domains() {
+        certificates::create_domain_cert(&format!("*.{}", domain));
+    }
 
     Ok(())
 }
@@ -71,10 +72,6 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
 
     uninstall_resolvers(&input_config.top_level_domains())?;
 
-    services::Caddy::uninstall()
-        .await
-        .map_err(|e| CliError::LocalDNSUninstall(e.to_string()))?;
-
     Ok(())
 }
 
@@ -90,6 +87,15 @@ fn ensure_resolver_dir() -> Result<()> {
                 err
             ))
         })?;
+
+    Ok(())
+}
+
+fn ensure_certs_dir() -> Result<()> {
+    let path = linkup_certs_dir_path();
+    if !path.exists() {
+        fs::create_dir_all(path)?;
+    }
 
     Ok(())
 }

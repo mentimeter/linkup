@@ -1,3 +1,5 @@
+use std::{net::SocketAddr, path::PathBuf};
+
 use axum::{
     body::Body,
     extract::{DefaultBodyLimit, Json, Request},
@@ -6,6 +8,7 @@ use axum::{
     routing::{any, get, post},
     Extension, Router,
 };
+use axum_server::tls_rustls::RustlsConfig;
 use http::{header::HeaderMap, Uri};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
@@ -23,7 +26,7 @@ use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
-const LINKUP_LOCALSERVER_PORT: u16 = 9066;
+const LINKUP_LOCALSERVER_PORT: u16 = 80;
 
 #[derive(Debug)]
 struct ApiError {
@@ -50,8 +53,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-pub fn linkup_router() -> Router {
-    let config_store = MemoryStringStore::default();
+pub fn linkup_router(config_store: MemoryStringStore) -> Router {
     let client = https_client();
 
     Router::new()
@@ -71,12 +73,35 @@ pub fn linkup_router() -> Router {
         )
 }
 
-pub async fn start_server() -> std::io::Result<()> {
-    let app = linkup_router();
+pub async fn start_server_https(
+    config_store: MemoryStringStore,
+    cert_path: &PathBuf,
+    key_path: &PathBuf,
+) -> std::io::Result<()> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", LINKUP_LOCALSERVER_PORT))
+    let config = RustlsConfig::from_pem_file(cert_path, key_path)
         .await
         .unwrap();
+
+    let app = linkup_router(config_store);
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 443));
+    axum_server::bind_rustls(addr, config)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+
+    Ok(())
+}
+
+pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {
+    let app = linkup_router(config_store);
+
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:80"))
+        .await
+        .unwrap();
+
     println!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
@@ -87,7 +112,7 @@ pub async fn start_server() -> std::io::Result<()> {
 
 #[tokio::main]
 pub async fn local_linkup_main() -> std::io::Result<()> {
-    start_server().await
+    start_server_http(MemoryStringStore::default()).await
 }
 
 async fn linkup_request_handler(

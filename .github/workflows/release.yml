@@ -55,22 +55,18 @@ jobs:
             display_os: linux
             rust_target: x86_64-unknown-linux-gnu
             arch: x86_64
-            goarch: amd64
           - runner: depot-ubuntu-22.04-arm-8
             display_os: linux
             rust_target: aarch64-unknown-linux-gnu
             arch: aarch64
-            goarch: arm64
           - runner: depot-macos-14
             display_os: darwin
             rust_target: x86_64-apple-darwin
             arch: x86_64
-            goarch: amd64
           - runner: depot-macos-14
             display_os: darwin
             rust_target: aarch64-apple-darwin
             arch: aarch64
-            goarch: arm64
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -85,26 +81,11 @@ jobs:
         run: |
           cargo build --release --manifest-path linkup-cli/Cargo.toml --target ${{ matrix.rust_target }}
 
-      - name: Setup Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: "1.23"
-
-      - name: Install xcaddy
-        run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
-
-      - name: Build Caddy Binary
-        run: |
-          export GOOS=${{ matrix.display_os }}
-          export GOARCH=${{ matrix.goarch }}
-          xcaddy build --output linkup-caddy --with github.com/mentimeter/caddy-dns-linkup --with github.com/mentimeter/caddy-storage-linkup
-
       - name: Move binaries to upload
         run: |
           mkdir release-package
 
           cp target/${{ matrix.rust_target }}/release/linkup release-package/
-          cp linkup-caddy release-package/
 
       - name: Package Release Tarball
         id: package-release

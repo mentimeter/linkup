@@ -49,27 +49,7 @@ pub async fn start(
 
     let local_server = services::LocalServer::new();
     let cloudflare_tunnel = services::CloudflareTunnel::new();
-    let caddy = services::Caddy::new();
     let dnsmasq = services::Dnsmasq::new();
-
-    #[cfg(target_os = "linux")]
-    {
-        use crate::{is_sudo, sudo_su};
-        match (caddy.should_start(&state.domain_strings()), is_sudo()) {
-            // Should start Caddy and is not sudo
-            (Ok(true), false) => {
-                println!(
-                    "On linux binding port 443 and 80 requires sudo. And this is necessary to start caddy."
-                );
-
-                sudo_su()?;
-            }
-            // Should not start Caddy or should start Caddy but is already sudo
-            (Ok(false), _) | (Ok(true), true) => (),
-            // Can't check if should start Caddy
-            (Err(error), _) => log::error!("Failed to check if should start Caddy: {}", error),
-        }
-    }
 
     let mut display_thread: Option<JoinHandle<()>> = None;
     let display_channel = sync::mpsc::channel::<bool>();
@@ -82,7 +62,6 @@ pub async fn start(
             &[
                 services::LocalServer::NAME,
                 services::CloudflareTunnel::NAME,
-                services::Caddy::NAME,
                 services::Dnsmasq::NAME,
             ],
             status_update_channel.1,
@@ -105,16 +84,6 @@ pub async fn start(
 
     if exit_error.is_none() {
         match cloudflare_tunnel
-            .run_with_progress(&mut state, status_update_channel.0.clone())
-            .await
-        {
-            Ok(_) => (),
-            Err(err) => exit_error = Some(Box::new(err)),
-        }
-    }
-
-    if exit_error.is_none() {
-        match caddy
             .run_with_progress(&mut state, status_update_channel.0.clone())
             .await
         {

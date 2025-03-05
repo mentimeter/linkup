@@ -21,6 +21,9 @@ linkup = { path = "../linkup" }
 linkup-local-server = { path = "../local-server" }
 log = "0.4.25"
 rand = "0.8.5"
+rcgen = { version = "0.13", features = ["x509-parser"] }
+rustls = { version = "0.23.21", default-features = false, features = ["ring"] }
+rustls-pemfile = "2.2.0"
 regex = "1.11.1"
 reqwest = { version = "0.12.12", default-features = false, features = [
     "json",

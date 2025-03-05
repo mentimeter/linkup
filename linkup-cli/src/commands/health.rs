@@ -80,7 +80,6 @@ struct OrphanProcess {
 #[derive(Debug, Serialize)]
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
-    caddy: BackgroundServiceHealth,
     dnsmasq: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
@@ -119,19 +118,6 @@ impl BackgroudServices {
             BackgroundServiceHealth::NotInstalled
         };
 
-        let caddy = if services::is_caddy_installed() {
-            match services::Caddy::new().running_pid() {
-                Some(pid) => {
-                    managed_pids.push(pid);
-
-                    BackgroundServiceHealth::Running(pid.as_u32())
-                }
-                None => BackgroundServiceHealth::Stopped,
-            }
-        } else {
-            BackgroundServiceHealth::NotInstalled
-        };
-
         let cloudflared = if services::is_cloudflared_installed() {
             match services::CloudflareTunnel::new().running_pid() {
                 Some(pid) => {
@@ -147,7 +133,6 @@ impl BackgroudServices {
 
         Self {
             linkup_server,
-            caddy,
             dnsmasq,
             cloudflared,
             possible_orphan_processes: find_potential_orphan_processes(managed_pids),
@@ -280,12 +265,6 @@ impl Display for Health {
         writeln!(f, "{}", "Background sevices:".bold().italic())?;
         write!(f, "  - Linkup Server  ")?;
         match &self.background_services.linkup_server {
-            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
-            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
-            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-        }
-        write!(f, "  - Caddy          ")?;
-        match &self.background_services.caddy {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,

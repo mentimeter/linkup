@@ -43,15 +43,6 @@ impl DownloadedAsset {
 
         None
     }
-
-    pub fn caddy_path(&self) -> Option<PathBuf> {
-        let caddy_path = self.path.join("linkup-caddy");
-        if caddy_path.exists() {
-            return Some(caddy_path);
-        }
-
-        None
-    }
 }
 
 impl Asset {
