@@ -13,6 +13,7 @@ const LINKUP_WORKER_INDEX_WASM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), 
 #[derive(Debug, Clone)]
 pub struct TargetCfResources {
     pub account_id: String,
+    pub tunnel_zone_id: String,
     pub account_token_name: String,
     pub worker_script_name: String,
     pub worker_script_parts: Vec<WorkerScriptPart>,
@@ -957,6 +958,52 @@ impl TargetCfResources {
             }
         }
 
+        // Cleanup all tunnels DNS records
+        let list_tunnel_dns_req = cloudflare::endpoints::dns::ListDnsRecords {
+            zone_identifier: &self.tunnel_zone_id,
+            params: cloudflare::endpoints::dns::ListDnsRecordsParams {
+                name: Some(cloudflare::endpoints::dns::ListDnsRecordsParamsName {
+                    startswith: Some("linkup-tunnel-".to_string()),
+                    ..Default::default()
+                }),
+                page: Some(1),
+                per_page: Some(1000),
+                ..Default::default()
+            },
+        };
+
+        match cloudflare_client.request(&list_tunnel_dns_req).await {
+            Ok(res) => {
+                let dns_records = res.result;
+                notifier.notify(&format!(
+                    "Found {} DNS records to delete",
+                    dns_records.len()
+                ));
+
+                let dns_records_to_delete: Vec<String> =
+                    dns_records.iter().map(|record| record.id.clone()).collect();
+
+                let batch_delete_dns_req = cloudflare::endpoints::dns::BatchDnsRecords {
+                    zone_identifier: &self.tunnel_zone_id,
+                    params: cloudflare::endpoints::dns::BatchDnsRecordsParams {
+                        deletes: Some(dns_records_to_delete),
+                    },
+                };
+
+                match cloudflare_client.request(&batch_delete_dns_req).await {
+                    Ok(_) => {
+                        notifier.notify("DNS records deleted");
+                    }
+                    Err(error) => {
+                        notifier.notify(&format!("Failed to delete DNS records: {}", error));
+                    }
+                }
+            }
+            Err(error) => {
+                notifier.notify(&format!("Failed to list tunnels DNS records: {}", error));
+            }
+        }
+
         Ok(())
     }
 
@@ -1026,6 +1073,7 @@ pub fn cf_resources(
 
     TargetCfResources {
         account_id: account_id.clone(),
+        tunnel_zone_id: tunnel_zone_id.clone(),
         account_token_name,
         worker_script_name: linkup_script_name.clone(),
         worker_script_entry: "shim.mjs".to_string(),

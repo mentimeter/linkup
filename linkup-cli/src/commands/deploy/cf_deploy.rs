@@ -484,6 +484,7 @@ export default {
     fn test_resources() -> TargetCfResources {
         TargetCfResources {
             account_id: "acc_id_123".to_string(),
+            tunnel_zone_id: "zone_id_123".to_string(),
             account_token_name: "account_token_name_example".to_string(),
             worker_script_name: "linkup-integration-test-script".to_string(),
             worker_script_entry: "index.js".to_string(),

@@ -98,7 +98,7 @@ pub async fn destroy_from_cloudflare(
 
     // 4) Execute the plan
     resources
-        .execute_destroy_plan(api, &cloudflare_client, &plan, notifier)
+        .execute_destroy_plan(api, cloudflare_client, &plan, notifier)
         .await?;
 
     notifier.notify("Destroy completed successfully.");
