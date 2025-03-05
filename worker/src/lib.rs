@@ -2,8 +2,8 @@ use axum::{
     extract::{Json, Query, Request, State},
     http::StatusCode,
     middleware::{from_fn_with_state, Next},
-    response::IntoResponse,
-    routing::{any, get, post},
+    response::{self, IntoResponse},
+    routing::{any, delete, get, post},
     Router,
 };
 use http::{HeaderMap, Uri};
@@ -96,6 +96,10 @@ pub fn linkup_router(state: LinkupState) -> Router {
         .route("/linkup/local-session", post(linkup_session_handler))
         .route("/linkup/preview-session", post(linkup_preview_handler))
         .route("/linkup/tunnel", get(get_tunnel_handler))
+        .route(
+            "/linkup/tunnels/remove-all",
+            delete(delete_tunnels_destroy_all_handler),
+        )
         .route("/linkup/check", get(always_ok))
         .route("/linkup/no-tunnel", get(no_tunnel))
         .route("/linkup", any(deprecated_linkup_session_handler))
@@ -182,6 +186,70 @@ async fn get_tunnel_handler(
             Json(tunnel_data)
         }
     }
+}
+
+#[derive(Serialize, Default)]
+struct DeleteTunnelsResponse {
+    successful: usize,
+    failed: usize,
+}
+
+#[worker::send]
+async fn delete_tunnels_destroy_all_handler(State(state): State<LinkupState>) -> impl IntoResponse {
+    let client = crate::cloudflare_client(state.cloudflare.api_token.as_str());
+
+    let req = cloudflare::endpoints::cfd_tunnel::list_tunnels::ListTunnels {
+        account_identifier: &state.cloudflare.account_id,
+        params: cloudflare::endpoints::cfd_tunnel::list_tunnels::Params {
+            is_deleted: Some(false),
+            include_prefix: Some("linkup-tunnel-".to_string()),
+            pagination_params: Some(
+                // TODO(augustoccesar)[2025-03-05]: Implement pagination
+                cloudflare::endpoints::cfd_tunnel::list_tunnels::PaginationParams {
+                    page: 1,
+                    per_page: 1000,
+                },
+            ),
+            ..Default::default()
+        },
+    };
+
+    let mut response = DeleteTunnelsResponse::default();
+    match client.request(&req).await {
+        Ok(res) => {
+            for tunnel in res.result {
+                let delete_req = cloudflare::endpoints::cfd_tunnel::delete_tunnel::DeleteTunnel {
+                    account_identifier: &state.cloudflare.account_id,
+                    tunnel_id: &tunnel.id.to_string(),
+                    params: cloudflare::endpoints::cfd_tunnel::delete_tunnel::Params {
+                        cascade: true,
+                    },
+                };
+
+                match client.request(&delete_req).await {
+                    Ok(_) => {
+                        console_log!("Tunnel '{}' ({}) deleted", &tunnel.name, &tunnel.id);
+                        response.successful += 1;
+                    }
+                    Err(_) => {
+                        console_error!("Failed to delete tunnel '{}'", &tunnel.name);
+                        response.failed += 1;
+                    }
+                }
+            }
+        }
+        Err(error) => {
+            console_error!("Failed to list tunnels: {}", error);
+
+            return HttpError::new(
+                "Failed to list tunnels".to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response();
+        }
+    }
+
+    Json(response).into_response()
 }
 
 #[worker::send]
