@@ -103,3 +103,23 @@ Generally then, the best way to think about the question "will linkup be able to
 
 - Does the request come straight from the browser? Then it will have a `Referer` header that includes the linkup session name.
 - Have I instrumented the underlying service to propogate the opentelemetry tracing headers? If so, `tracestate` will include the linkup session name.
+
+## Linkup Components
+
+In order to be in a position where LinkUp can actually route these requests based on the identifying information, Linkup needs to run a few components in different places.
+
+### Linkup Cloudflare Worker
+
+The Linkup Cloudflare worker is configured to intercept all requests that reach your Cloudflare zone. A Cloudflare zone is approximately equivalent to a domain, so if you have the domain example.com, it will intercept all requests that are made to *.example.com. This means is that linkup can function as a man-in-the-middle proxy between all requests that your application makes, and can reroute requests to the correct service based on its headers.
+
+### Cloudflare Tunnel & The Local Server
+
+In order to be able to direct traffic to servers that might be running on `localhost` on your machine, the linkup CLI can run a Cloudflare tunnel paired with a local proxying server in order to receive requests that were made from a remote component and deliver them to a server that is running on your local machine.
+
+### Local DNS
+
+In its default mode, Linkup has a fairly strong dependency on the network. For frontend engineers who are running development servers, they may have pages that require 50-100 mb of JavaScript to load.
+
+In order to speed up cases where the network might be a bottleneck, Linkup provides a local DNS mode that is optionally installable on developers' machines. Local DNS will resolve your application's domains directly to servers running on your local machine. This means that all requests that could have been handled directly by your local machine will not go over the public internet. Linkup also has the ability to manage certificates associated with these local domains to make the experience as seamless as possible.
+
+Currently, linkup local DNS uses [dnsmasq](https://www.dnsmasq.org/) to provide local DNS resolution. And [caddy](https://caddyserver.com/) to provide tls certificates.
