@@ -7,14 +7,12 @@ use std::{
     time::Duration,
 };
 
-use hickory_resolver::proto::rr::rdata::https;
-use linkup::MemoryStringStore;
 use reqwest::StatusCode;
 use tokio::time::sleep;
 use url::Url;
 
 use crate::{
-    certificates, linkup_file_path,
+    linkup_file_path,
     local_config::{upload_state, LocalState},
     worker_client,
 };

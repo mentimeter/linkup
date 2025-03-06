@@ -2,6 +2,7 @@ pub mod completion;
 pub mod deploy;
 pub mod health;
 pub mod local;
+#[cfg(feature = "localdns")]
 pub mod local_dns;
 pub mod preview;
 pub mod remote;
@@ -18,6 +19,7 @@ pub use {deploy::deploy, deploy::DeployArgs};
 pub use {deploy::destroy, deploy::DestroyArgs};
 pub use {health::health, health::Args as HealthArgs};
 pub use {local::local, local::Args as LocalArgs};
+#[cfg(feature = "localdns")]
 pub use {local_dns::local_dns, local_dns::Args as LocalDnsArgs};
 pub use {preview::preview, preview::Args as PreviewArgs};
 pub use {remote::remote, remote::Args as RemoteArgs};

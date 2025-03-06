@@ -49,6 +49,7 @@ pub async fn start(
 
     let local_server = services::LocalServer::new();
     let cloudflare_tunnel = services::CloudflareTunnel::new();
+    #[cfg(feature = "localdns")]
     let dnsmasq = services::Dnsmasq::new();
 
     let mut display_thread: Option<JoinHandle<()>> = None;
@@ -62,6 +63,7 @@ pub async fn start(
             &[
                 services::LocalServer::NAME,
                 services::CloudflareTunnel::NAME,
+                #[cfg(feature = "localdns")]
                 services::Dnsmasq::NAME,
             ],
             status_update_channel.1,
@@ -92,6 +94,7 @@ pub async fn start(
         }
     }
 
+    #[cfg(feature = "localdns")]
     if exit_error.is_none() {
         match dnsmasq
             .run_with_progress(&mut state, status_update_channel.0.clone())
