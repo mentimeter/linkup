@@ -26,8 +26,6 @@ use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
-const LINKUP_LOCALSERVER_PORT: u16 = 80;
-
 #[derive(Debug)]
 struct ApiError {
     message: String,
@@ -123,7 +121,7 @@ async fn linkup_request_handler(
     let sessions = SessionAllocator::new(&store);
 
     let headers: linkup::HeaderMap = req.headers().into();
-    let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
+    let url = req.uri().to_string();
     let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
         Ok(session) => session,
         Err(_) => {
@@ -365,6 +363,7 @@ fn https_client() -> HttpsClient {
         .with_tls_config(tls)
         .https_or_http()
         .enable_http1()
+        .enable_http2()
         .build();
 
     Client::builder(TokioExecutor::new()).build(https)
