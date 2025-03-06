@@ -1,16 +1,17 @@
-use std::{fs, io::BufReader, path::PathBuf, process};
+use std::{env, fs, path::PathBuf, process};
 
 use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, KeyPair};
-use rustls_pemfile::certs;
 
-use crate::{linkup_certs_dir_path, linkup_dir_path};
+use crate::linkup_certs_dir_path;
+
+const LINKUP_CA_COMMON_NAME: &str = "Linkup Local CA";
 
 pub fn ca_cert_pem_path() -> PathBuf {
-    linkup_certs_dir_path().join("mentimeter_ca.cert.pem")
+    linkup_certs_dir_path().join("linkup_ca.cert.pem")
 }
 
 pub fn ca_key_pem_path() -> PathBuf {
-    linkup_certs_dir_path().join("mentimeter_ca.key.pem")
+    linkup_certs_dir_path().join("linkup_ca.key.pem")
 }
 
 pub fn get_cert_pair(domain: &str) -> Option<(Certificate, KeyPair)> {
@@ -61,7 +62,7 @@ pub fn create_domain_cert(domain: &str) -> (Certificate, KeyPair) {
 
 /// Return if a new certificate/keypair was generated
 pub fn upsert_ca_cert() -> (Certificate, KeyPair) {
-    if let Some(cert_pair) = get_cert_pair("mentimeter_ca") {
+    if let Some(cert_pair) = get_cert_pair("linkup_ca") {
         return cert_pair;
     }
 
@@ -74,7 +75,7 @@ pub fn upsert_ca_cert() -> (Certificate, KeyPair) {
 
     params
         .distinguished_name
-        .push(rcgen::DnType::CommonName, "Mentimeter Local CA");
+        .push(rcgen::DnType::CommonName, LINKUP_CA_COMMON_NAME);
 
     let key_pair = KeyPair::generate().unwrap();
     let cert = params.self_signed(&key_pair).unwrap();
@@ -85,7 +86,7 @@ pub fn upsert_ca_cert() -> (Certificate, KeyPair) {
     (cert, key_pair)
 }
 
-pub async fn add_ca_to_keychain() {
+pub fn add_ca_to_keychain() {
     process::Command::new("sudo")
         .arg("security")
         .arg("add-trusted-cert")
@@ -99,4 +100,74 @@ pub async fn add_ca_to_keychain() {
         .stderr(process::Stdio::piped())
         .spawn()
         .expect("Failed to add CA to keychain");
+}
+
+pub fn install_nss() {
+    if is_nss_installed() {
+        println!("NSS already installed, skipping installation");
+        return;
+    }
+
+    let mut cmd = process::Command::new("brew")
+        .arg("install")
+        .arg("nss")
+        .spawn()
+        .expect("Failed to install NSS");
+
+    cmd.wait().expect("Failed to wait for NSS install");
+}
+
+pub fn add_ca_to_nss() {
+    if !is_nss_installed() {
+        println!("NSS not found, skipping CA installation");
+        return;
+    }
+
+    let home = env::var("HOME").expect("Failed to get HOME env var");
+    let firefox_profiles =
+        fs::read_dir(PathBuf::from(home).join("Library/Application Support/Firefox/Profiles"))
+            .expect("Failed to read Firefox profiles directory")
+            .filter_map(|entry| {
+                let entry = entry.expect("Failed to read Firefox profile dir entry entry");
+                let path = entry.path();
+                if path.is_dir() {
+                    if path.join("cert9.db").exists() {
+                        return Some(format!("{}{}", "sql:", path.to_str().unwrap()));
+                    } else if path.join("cert8.db").exists() {
+                        return Some(format!("{}{}", "dmb:", path.to_str().unwrap()));
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<String>>();
+
+    for profile in firefox_profiles {
+        process::Command::new("certutil")
+            .arg("-A")
+            .arg("-d")
+            .arg(profile)
+            .arg("-t")
+            .arg("C,,")
+            .arg("-n")
+            .arg(LINKUP_CA_COMMON_NAME)
+            .arg("-i")
+            .arg(ca_cert_pem_path())
+            .spawn()
+            .expect("Failed to add CA to NSS");
+    }
+}
+
+fn is_nss_installed() -> bool {
+    let res = process::Command::new("which")
+        .args(["certutil"])
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .stdin(process::Stdio::null())
+        .status()
+        .unwrap();
+
+    res.success()
 }

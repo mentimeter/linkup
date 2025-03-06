@@ -50,7 +50,9 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
 
     ensure_certs_dir()?;
     certificates::upsert_ca_cert();
-    certificates::add_ca_to_keychain().await;
+    certificates::add_ca_to_keychain();
+    certificates::install_nss();
+    certificates::add_ca_to_nss();
     for domain in input_config.top_level_domains() {
         certificates::create_domain_cert(&format!("*.{}", domain));
     }
