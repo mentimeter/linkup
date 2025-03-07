@@ -60,43 +60,57 @@ impl Caddy {
     }
 
     pub async fn install() -> Result<(), InstallError> {
-        let bin_dir_path = linkup_bin_dir_path();
-        fs::create_dir_all(&bin_dir_path)?;
-
-        let mut caddy_path = bin_dir_path.clone();
-        caddy_path.push("caddy");
+        let caddy_path = get_path();
 
         if fs::exists(&caddy_path)? {
             log::debug!(
                 "Caddy executable already exists on {}",
-                &bin_dir_path.display()
+                &caddy_path.display()
             );
             return Ok(());
         }
 
         let version = current_version();
-        match release::fetch_release(&version).await? {
+        match release::fetch_release(&version.to_string()).await? {
             Some(release) => {
                 let os = env::consts::OS;
                 let arch = env::consts::ARCH;
 
-                match release.caddy_asset(os, arch) {
-                    Some(asset) => match asset.download_decompressed("caddy").await {
-                        Ok(downloaded_caddy_path) => {
-                            log::debug!(
-                                "Moving downloaded Caddy file from {:?} to {:?}",
-                                &downloaded_caddy_path,
-                                &caddy_path
-                            );
+                match release.matching_asset(os, arch) {
+                    Some(asset) => match asset.download_decompressed().await {
+                        Ok(downloaded_asset) => match downloaded_asset.caddy_path() {
+                            Some(downloaded_caddy_path) => {
+                                log::debug!(
+                                    "Moving downloaded Caddy file from {:?} to {:?}",
+                                    &downloaded_caddy_path,
+                                    &caddy_path
+                                );
 
-                            fs::copy(&downloaded_caddy_path, &caddy_path)?;
-                            fs::remove_file(&downloaded_caddy_path)?;
+                                fs::copy(&downloaded_caddy_path, &caddy_path)?;
+                                fs::remove_file(&downloaded_caddy_path)?;
+                            }
+                            None => {
+                                log::warn!(
+                                    "Failed to find Caddy binary on release for version {}",
+                                    &version
+                                );
+
+                                return Err(InstallError::AssetNotFound(version.clone()));
+                            }
+                        },
+                        Err(error) => {
+                            log::warn!("Failed to download asset: {}", error);
+
+                            return Err(InstallError::AssetDownload(
+                                "Failed to download asset".to_string(),
+                            ));
                         }
-                        Err(error) => return Err(InstallError::AssetDownload(error.to_string())),
                     },
                     None => {
-                        log::warn!(
-                            "Failed to find Caddy asset on release for version {}",
+                        log::debug!(
+                            "Linkup release for OS '{}' and ARCH '{}' not found on version {}",
+                            os,
+                            arch,
                             &version
                         );
 
@@ -115,8 +129,7 @@ impl Caddy {
     }
 
     pub async fn uninstall() -> Result<(), UninstallError> {
-        let mut path = linkup_bin_dir_path();
-        path.push("caddy");
+        let path = get_path();
 
         if !fs::exists(&path)? {
             log::debug!("Caddy executable does not exist on {}", &path.display());
@@ -141,9 +154,10 @@ impl Caddy {
 
         let stdout_file = fs::File::create(&self.stdout_file_path)?;
         let stderr_file = fs::File::create(&self.stderr_file_path)?;
+        let path = get_path();
 
         #[cfg(target_os = "macos")]
-        let status = Command::new("./bin/caddy")
+        let status = Command::new(&path)
             .current_dir(linkup_dir_path())
             .arg("start")
             .arg("--pidfile")
@@ -160,7 +174,7 @@ impl Caddy {
 
             Command::new("sudo")
                 .current_dir(linkup_dir_path())
-                .arg("./bin/caddy")
+                .arg(&path)
                 .arg("start")
                 .arg("--pidfile")
                 .arg(&self.pidfile_path)
@@ -306,9 +320,13 @@ impl BackgroundService<Error> for Caddy {
     }
 }
 
-pub fn is_installed() -> bool {
-    let mut caddy_path = linkup_bin_dir_path();
-    caddy_path.push("caddy");
+pub fn get_path() -> PathBuf {
+    let mut path = linkup_bin_dir_path();
+    path.push("linkup-caddy");
 
-    caddy_path.exists()
+    path
+}
+
+pub fn is_installed() -> bool {
+    get_path().exists()
 }

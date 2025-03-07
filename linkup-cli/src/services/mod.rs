@@ -12,7 +12,7 @@ mod local_server;
 
 pub use local_server::LocalServer;
 pub use sysinfo::{Pid, Signal};
-pub use {caddy::is_installed as is_caddy_installed, caddy::Caddy};
+pub use {caddy::get_path as caddy_path, caddy::is_installed as is_caddy_installed, caddy::Caddy};
 pub use {
     cloudflare_tunnel::is_installed as is_cloudflared_installed,
     cloudflare_tunnel::CloudflareTunnel,
