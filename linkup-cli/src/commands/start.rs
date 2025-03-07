@@ -14,8 +14,10 @@ use crossterm::{cursor, ExecutableCommand};
 use crate::{
     commands::status::{format_state_domains, SessionStatus},
     env_files::write_to_env_file,
+    is_sudo,
     local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
+    sudo_su,
 };
 use crate::{local_config::LocalState, CliError};
 
@@ -75,6 +77,10 @@ pub async fn start(
     // we store any error that might happen on one of the steps and only return it after we have
     // send the message to the display thread to stop and we join it.
     let mut exit_error: Option<Box<dyn std::error::Error>> = None;
+
+    if !is_sudo() {
+        sudo_su()?;
+    }
 
     match local_server
         .run_with_progress(&mut state, status_update_channel.0.clone())

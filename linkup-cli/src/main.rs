@@ -6,8 +6,6 @@ use thiserror::Error;
 
 pub use linkup::Version;
 
-#[cfg(feature = "localdns")]
-mod certificates;
 mod commands;
 mod env_files;
 mod local_config;
@@ -299,7 +297,7 @@ async fn main() -> Result<()> {
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
-        Commands::Server(args) => commands::server(args).await,
+        Commands::Server(args) => commands::server(args, &linkup_certs_dir_path()).await,
         Commands::Uninstall(args) => commands::uninstall(args),
         Commands::Update(args) => commands::update(args).await,
         Commands::Deploy(args) => commands::deploy(args).await.map_err(CliError::from),

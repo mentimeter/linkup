@@ -1,9 +1,9 @@
-use std::fs;
-
 use linkup::MemoryStringStore;
+use std::fs;
+use std::path::PathBuf;
 use tokio::select;
 
-use crate::{linkup_certs_dir_path, CliError};
+use crate::CliError;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -11,7 +11,7 @@ pub struct Args {
     pidfile: String,
 }
 
-pub async fn server(args: &Args) -> Result<(), CliError> {
+pub async fn server(args: &Args, certs_dir: &PathBuf) -> Result<(), CliError> {
     let pid = std::process::id();
     fs::write(&args.pidfile, pid.to_string())?;
 
@@ -25,12 +25,9 @@ pub async fn server(args: &Args) -> Result<(), CliError> {
     });
 
     let https_config_store = config_store.clone();
+    let https_certs_dir = certs_dir.clone();
     let handler_https = tokio::spawn(async move {
-        // TODO: Build SNI from the domains present on the config
-        let cert_path = linkup_certs_dir_path().join("wildcard_.mentimeter.dev.cert.pem");
-        let key_path = linkup_certs_dir_path().join("wildcard_.mentimeter.dev.key.pem");
-
-        linkup_local_server::start_server_https(https_config_store, &cert_path, &key_path)
+        linkup_local_server::start_server_https(https_config_store, &https_certs_dir)
             .await
             .unwrap();
     });

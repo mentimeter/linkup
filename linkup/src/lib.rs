@@ -166,7 +166,8 @@ pub fn get_target_service(
     config: &Session,
     session_name: &str,
 ) -> Option<TargetService> {
-    let mut target = Url::parse(url).unwrap();
+    let mut target = Url::parse(url).expect(format!("Target URL '{}' to be valid", url).as_str());
+
     // Ensure always the default port, even when the local server is hit first
     target
         .set_port(None)

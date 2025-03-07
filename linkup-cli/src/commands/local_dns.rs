@@ -6,7 +6,7 @@ use std::{
 use clap::Subcommand;
 
 use crate::{
-    certificates, commands, is_sudo, linkup_certs_dir_path,
+    commands, is_sudo, linkup_certs_dir_path,
     local_config::{config_path, get_config},
     sudo_su, CliError, Result,
 };
@@ -49,12 +49,19 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     install_resolvers(&input_config.top_level_domains())?;
 
     ensure_certs_dir()?;
-    certificates::upsert_ca_cert();
-    certificates::add_ca_to_keychain();
-    certificates::install_nss();
-    certificates::add_ca_to_nss();
-    for domain in input_config.top_level_domains() {
-        certificates::create_domain_cert(&format!("*.{}", domain));
+    let certs_dir = linkup_certs_dir_path();
+    linkup_local_server::certificates::upsert_ca_cert(&certs_dir);
+    linkup_local_server::certificates::add_ca_to_keychain(&certs_dir);
+    linkup_local_server::certificates::install_nss();
+    linkup_local_server::certificates::add_ca_to_nss(&certs_dir);
+
+    for domain in input_config
+        .domains
+        .iter()
+        .map(|storable_domain| storable_domain.domain.clone())
+        .collect::<Vec<String>>()
+    {
+        linkup_local_server::certificates::create_domain_cert(&certs_dir, &format!("*.{}", domain));
     }
 
     Ok(())

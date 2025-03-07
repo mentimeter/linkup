@@ -187,6 +187,7 @@ async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
     client.execute(req).await?.json().await
 }
 
+#[allow(dead_code)]
 pub async fn fetch_release(tag: &str) -> Result<Option<Release>, reqwest::Error> {
     let url: Url = format!(
         "https://api.github.com/repos/mentimeter/linkup/releases/tags/{}",

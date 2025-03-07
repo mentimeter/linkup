@@ -1,5 +1,3 @@
-use std::{net::SocketAddr, path::PathBuf};
-
 use axum::{
     body::Body,
     extract::{DefaultBodyLimit, Json, Request},
@@ -15,14 +13,18 @@ use hyper_util::{
     client::legacy::{connect::HttpConnector, Client},
     rt::{TokioExecutor, TokioIo},
 };
-
 use linkup::{
     allow_all_cors, get_additional_headers, get_target_service, MemoryStringStore, NameKind,
     Session, SessionAllocator, TargetService, UpdateSessionRequest,
 };
+use rustls::ServerConfig;
+use std::sync::Arc;
+use std::{net::SocketAddr, path::PathBuf};
 use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
+
+pub mod certificates;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
@@ -73,19 +75,21 @@ pub fn linkup_router(config_store: MemoryStringStore) -> Router {
 
 pub async fn start_server_https(
     config_store: MemoryStringStore,
-    cert_path: &PathBuf,
-    key_path: &PathBuf,
+    certs_dir: &PathBuf,
 ) -> std::io::Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let config = RustlsConfig::from_pem_file(cert_path, key_path)
-        .await
-        .unwrap();
+    let sni = certificates::load_certificates_from_dir(certs_dir);
+    let mut server_config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_cert_resolver(Arc::new(sni));
+    server_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
     let app = linkup_router(config_store);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 443));
-    axum_server::bind_rustls(addr, config)
+    println!("listening on {}", &addr);
+    axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
         .serve(app.into_make_service())
         .await
         .unwrap();
@@ -96,9 +100,7 @@ pub async fn start_server_https(
 pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {
     let app = linkup_router(config_store);
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:80"))
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:80").await.unwrap();
 
     println!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app)
@@ -122,6 +124,7 @@ async fn linkup_request_handler(
 
     let headers: linkup::HeaderMap = req.headers().into();
     let url = req.uri().to_string();
+
     let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
         Ok(session) => session,
         Err(_) => {
