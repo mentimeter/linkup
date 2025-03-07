@@ -11,7 +11,8 @@ Here is an example:
 
 ```yaml
 linkup:
-  remote: https://where.linkup.is.deployed.com
+  worker_url: https://where.linkup.is.deployed.com
+  worker_token: worker_token_from_linkup_deploy
   # By default, linkup will ensure _nothing_ is cached for dev environments
   # to update on save, you can override this behaviour for specific paths
   # by adding them to the cache_routes list

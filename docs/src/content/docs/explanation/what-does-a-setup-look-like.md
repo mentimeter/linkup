@@ -5,9 +5,19 @@ sidebar:
   order: 2
 ---
 
-We established in the last chapter that Linkup helps you to connect *shared unchanged services* with services that *have changes*.
+We established in the last chapter that Linkup helps you to connect _shared unchanged services_ with services that _have changes_.
 
 We will now explain what a setup might look like that deploys both of these kinds of services and uses a linkup deployment to connect them together.
+
+### Configure your code base
+
+Three things may need to be configured in your codebase for linkup to work well:
+
+1. Linkup needs a configuration file that describes the layout of your services and their routing requirements.
+2. The services in your linkup environment need to be configured with a set of environment variables that match your linkup configuration. Always use the "general" domain names of your linkup environment, like `api.example.com`, never `smart-snake.api.example.com` and your setup will work well.
+3. You may need to instrument your backend services to [propogate opentelemetry state](https://opentelemetry.io/docs/concepts/context-propagation/).
+
+More information on configuration [here](/linkup/guides/configure).
 
 ### Deploying the unchanged services
 
