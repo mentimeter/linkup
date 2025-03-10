@@ -73,13 +73,20 @@ pub fn linkup_router(config_store: MemoryStringStore) -> Router {
         )
 }
 
-pub async fn start_server_https(
-    config_store: MemoryStringStore,
-    certs_dir: &Path,
-) -> std::io::Result<()> {
+pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Path) {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let sni = certificates::WildcardSniResolver::load_dir(certs_dir);
+    let sni = match certificates::WildcardSniResolver::load_dir(certs_dir) {
+        Ok(sni) => sni,
+        Err(error) => {
+            eprintln!(
+                "Failed to load certificates from {:?} into SNI: {}",
+                certs_dir, error
+            );
+            return;
+        }
+    };
+
     let mut server_config = ServerConfig::builder()
         .with_no_client_auth()
         .with_cert_resolver(Arc::new(sni));
@@ -92,9 +99,7 @@ pub async fn start_server_https(
     axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
         .serve(app.into_make_service())
         .await
-        .unwrap();
-
-    Ok(())
+        .expect("failed to start HTTPS server");
 }
 
 pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {

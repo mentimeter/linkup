@@ -1,10 +1,22 @@
-use crate::certificates::load_cert_and_key;
+use crate::certificates::build_certified_key;
 use rustls::server::{ClientHello, ResolvesServerCert};
 use rustls::sign::CertifiedKey;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
+
+#[derive(Debug, thiserror::Error)]
+pub enum WildcardSniResolverError {
+    #[error("Failed to read certs directory: {0}")]
+    ReadDir(#[from] std::io::Error),
+
+    #[error("Failed to get file name")]
+    FileName,
+
+    #[error("Error building certified key: {0}")]
+    LoadCert(#[from] crate::certificates::BuildCertifiedKeyError),
+}
 
 #[derive(Debug)]
 pub struct WildcardSniResolver {
@@ -18,45 +30,36 @@ impl WildcardSniResolver {
         }
     }
 
-    pub fn load_dir(certs_dir: &Path) -> Self {
+    pub fn load_dir(certs_dir: &Path) -> Result<Self, WildcardSniResolverError> {
         let resolver = WildcardSniResolver::new();
 
-        let entries = fs::read_dir(certs_dir).expect("Failed to read certs directory");
+        let entries = fs::read_dir(certs_dir)?;
 
         for entry in entries.flatten() {
             let path = entry.path();
+            if let Some(file_name) = path.file_name() {
+                let file_name = file_name.to_string_lossy();
 
-            if path
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .contains(".cert.pem")
-                && !path.starts_with("linkup_ca")
-            {
-                let path_str = path.to_string_lossy();
-                let domain_name = path
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .replace(".cert.pem", "")
-                    .replace("wildcard_", "*");
-                let key_path = PathBuf::from(path_str.replace(".cert.pem", ".key.pem"));
+                if file_name.contains(".cert.pem") && !path.starts_with("linkup_ca") {
+                    let domain_name = file_name.replace(".cert.pem", "").replace("wildcard_", "*");
+                    let key_path =
+                        PathBuf::from(path.to_string_lossy().replace(".cert.pem", ".key.pem"));
 
-                if key_path.exists() {
-                    match load_cert_and_key(&path, &key_path) {
-                        Ok(certified_key) => {
-                            println!("Loaded certificate for {}", domain_name);
-                            resolver.add_cert(&domain_name, certified_key);
-                        }
-                        Err(e) => {
-                            eprintln!("Error loading cert/key for {domain_name}: {e}");
+                    if key_path.exists() {
+                        match build_certified_key(&path, &key_path) {
+                            Ok(certified_key) => {
+                                resolver.add_cert(&domain_name, certified_key);
+                            }
+                            Err(e) => {
+                                eprintln!("Error loading cert/key for {domain_name}: {e}");
+                            }
                         }
                     }
                 }
             }
         }
 
-        resolver
+        Ok(resolver)
     }
 
     fn add_cert(&self, domain: &str, cert: CertifiedKey) {

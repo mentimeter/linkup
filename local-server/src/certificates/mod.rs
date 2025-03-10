@@ -5,7 +5,9 @@ use rustls::crypto::ring::sign;
 use rustls::pki_types::CertificateDer;
 use rustls::sign::CertifiedKey;
 use std::{
-    env, fs,
+    env,
+    fs::{self, File},
+    io::BufReader,
     path::{Path, PathBuf},
     process,
 };
@@ -22,26 +24,37 @@ pub fn ca_key_pem_path(certs_dir: &Path) -> PathBuf {
     certs_dir.join("linkup_ca.key.pem")
 }
 
-fn load_cert_and_key(
+#[derive(Debug, thiserror::Error)]
+pub enum BuildCertifiedKeyError {
+    #[error("Failed to read file: {0}")]
+    FileRead(#[from] std::io::Error),
+    #[error("File does not contain valid certificate")]
+    InvalidCertFile,
+    #[error("File does not contain valid private key")]
+    InvalidKeyFile,
+}
+
+fn build_certified_key(
     cert_path: &Path,
     key_path: &Path,
-) -> Result<CertifiedKey, Box<dyn std::error::Error>> {
-    let cert_pem = fs::read(cert_path)?;
-    let key_pem = fs::read(key_path)?;
+) -> Result<CertifiedKey, BuildCertifiedKeyError> {
+    let mut cert_pem = BufReader::new(File::open(cert_path)?);
+    let mut key_pem = BufReader::new(File::open(key_path)?);
 
-    let certs = rustls_pemfile::certs(&mut &cert_pem[..])
+    let certs = rustls_pemfile::certs(&mut cert_pem)
         .filter_map(|cert| cert.ok())
         .collect::<Vec<CertificateDer<'static>>>();
 
     if certs.is_empty() {
-        return Err("No valid certificates found".into());
+        return Err(BuildCertifiedKeyError::InvalidCertFile);
     }
 
-    let key_der =
-        rustls_pemfile::private_key(&mut &key_pem[..])?.ok_or("No valid private key found")?;
+    let key_der = rustls_pemfile::private_key(&mut key_pem)
+        .map_err(|_| BuildCertifiedKeyError::InvalidKeyFile)?
+        .ok_or(BuildCertifiedKeyError::InvalidCertFile)?;
 
     let signing_key =
-        sign::any_supported_type(&key_der).map_err(|_| "Failed to parse signing key")?;
+        sign::any_supported_type(&key_der).map_err(|_| BuildCertifiedKeyError::InvalidKeyFile)?;
 
     Ok(CertifiedKey {
         cert: certs,
@@ -139,39 +152,47 @@ pub fn add_ca_to_nss(certs_dir: &Path) {
     }
 
     let home = env::var("HOME").expect("Failed to get HOME env var");
-    let firefox_profiles =
-        fs::read_dir(PathBuf::from(home).join("Library/Application Support/Firefox/Profiles"))
-            .expect("Failed to read Firefox profiles directory")
-            .filter_map(|entry| {
-                let entry = entry.expect("Failed to read Firefox profile dir entry entry");
-                let path = entry.path();
-                if path.is_dir() {
-                    if path.join("cert9.db").exists() {
-                        Some(format!("{}{}", "sql:", path.to_str().unwrap()))
-                    } else if path.join("cert8.db").exists() {
-                        Some(format!("{}{}", "dmb:", path.to_str().unwrap()))
+    match fs::read_dir(PathBuf::from(home).join("Library/Application Support/Firefox/Profiles")) {
+        Ok(dir) => {
+            let profiles_dbs = dir
+                .filter_map(|entry| {
+                    let entry = entry.expect("Failed to read Firefox profile dir entry entry");
+                    let path = entry.path();
+                    if path.is_dir() {
+                        if path.join("cert9.db").exists() {
+                            Some(format!("{}{}", "sql:", path.to_str().unwrap()))
+                        } else if path.join("cert8.db").exists() {
+                            Some(format!("{}{}", "dmb:", path.to_str().unwrap()))
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<String>>();
+                })
+                .collect::<Vec<String>>();
 
-    for profile in firefox_profiles {
-        process::Command::new("certutil")
-            .arg("-A")
-            .arg("-d")
-            .arg(profile)
-            .arg("-t")
-            .arg("C,,")
-            .arg("-n")
-            .arg(LINKUP_CA_COMMON_NAME)
-            .arg("-i")
-            .arg(ca_cert_pem_path(certs_dir))
-            .status()
-            .expect("Failed to add CA to NSS");
+            for profile in profiles_dbs {
+                let result = process::Command::new("certutil")
+                    .arg("-A")
+                    .arg("-d")
+                    .arg(&profile)
+                    .arg("-t")
+                    .arg("C,,")
+                    .arg("-n")
+                    .arg(LINKUP_CA_COMMON_NAME)
+                    .arg("-i")
+                    .arg(ca_cert_pem_path(certs_dir))
+                    .status();
+
+                if let Err(e) = result {
+                    eprintln!("certutil failed to run for profile {}: {}", profile, e);
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("Failed to load Firefox profiles: {}", error);
+        }
     }
 }
 
@@ -181,8 +202,13 @@ fn is_nss_installed() -> bool {
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
         .stdin(process::Stdio::null())
-        .status()
-        .unwrap();
+        .status();
 
-    res.success()
+    match res {
+        Ok(status) => status.success(),
+        Err(e) => {
+            eprintln!("Failed to check if certutil is installed: {}", e);
+            false
+        }
+    }
 }

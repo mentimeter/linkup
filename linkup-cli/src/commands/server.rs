@@ -27,9 +27,7 @@ pub async fn server(args: &Args, certs_dir: &Path) -> Result<(), CliError> {
     let https_config_store = config_store.clone();
     let https_certs_dir = PathBuf::from(certs_dir);
     let handler_https = tokio::spawn(async move {
-        linkup_local_server::start_server_https(https_config_store, &https_certs_dir)
-            .await
-            .unwrap();
+        linkup_local_server::start_server_https(https_config_store, &https_certs_dir).await;
     });
 
     select! {
