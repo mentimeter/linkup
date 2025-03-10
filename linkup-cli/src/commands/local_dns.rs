@@ -50,8 +50,7 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
 
     ensure_certs_dir()?;
     let certs_dir = linkup_certs_dir_path();
-    linkup_local_server::certificates::upsert_ca_cert(&certs_dir);
-    linkup_local_server::certificates::add_ca_to_keychain(&certs_dir);
+    linkup_local_server::certificates::install_ca_certificate(&certs_dir);
     linkup_local_server::certificates::install_nss();
     linkup_local_server::certificates::add_ca_to_nss(&certs_dir);
 
@@ -62,6 +61,7 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
         .collect::<Vec<String>>()
     {
         linkup_local_server::certificates::create_domain_cert(&certs_dir, &format!("*.{}", domain));
+        println!("Created certificate for {}", domain);
     }
 
     Ok(())

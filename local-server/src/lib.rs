@@ -18,8 +18,8 @@ use linkup::{
     Session, SessionAllocator, TargetService, UpdateSessionRequest,
 };
 use rustls::ServerConfig;
-use std::sync::Arc;
-use std::{net::SocketAddr, path::PathBuf};
+use std::net::SocketAddr;
+use std::{path::Path, sync::Arc};
 use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
@@ -75,11 +75,11 @@ pub fn linkup_router(config_store: MemoryStringStore) -> Router {
 
 pub async fn start_server_https(
     config_store: MemoryStringStore,
-    certs_dir: &PathBuf,
+    certs_dir: &Path,
 ) -> std::io::Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let sni = certificates::load_certificates_from_dir(certs_dir);
+    let sni = certificates::WildcardSniResolver::load_dir(certs_dir);
     let mut server_config = ServerConfig::builder()
         .with_no_client_auth()
         .with_cert_resolver(Arc::new(sni));

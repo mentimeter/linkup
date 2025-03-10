@@ -159,6 +159,7 @@ pub struct TargetService {
 }
 
 // TODO(ostenbom): Accept a http::Uri instead of a string. Change TargetService to use Uri instead of String.
+// TODO(augustoccesar)[2025-03-10]: Handle error and return a result instead of panicking.
 // Returns a (name, url) pair for the destination service, if the request could be served by the config
 pub fn get_target_service(
     url: &str,
@@ -166,7 +167,7 @@ pub fn get_target_service(
     config: &Session,
     session_name: &str,
 ) -> Option<TargetService> {
-    let mut target = Url::parse(url).expect(format!("Target URL '{}' to be valid", url).as_str());
+    let mut target = Url::parse(url).unwrap_or_else(|_| panic!("Target URL '{}' to be valid", url));
 
     // Ensure always the default port, even when the local server is hit first
     target

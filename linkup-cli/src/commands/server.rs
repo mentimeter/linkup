@@ -1,6 +1,6 @@
 use linkup::MemoryStringStore;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::select;
 
 use crate::CliError;
@@ -11,7 +11,7 @@ pub struct Args {
     pidfile: String,
 }
 
-pub async fn server(args: &Args, certs_dir: &PathBuf) -> Result<(), CliError> {
+pub async fn server(args: &Args, certs_dir: &Path) -> Result<(), CliError> {
     let pid = std::process::id();
     fs::write(&args.pidfile, pid.to_string())?;
 
@@ -25,7 +25,7 @@ pub async fn server(args: &Args, certs_dir: &PathBuf) -> Result<(), CliError> {
     });
 
     let https_config_store = config_store.clone();
-    let https_certs_dir = certs_dir.clone();
+    let https_certs_dir = PathBuf::from(certs_dir);
     let handler_https = tokio::spawn(async move {
         linkup_local_server::start_server_https(https_config_store, &https_certs_dir)
             .await
