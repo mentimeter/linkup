@@ -47,3 +47,7 @@ flate2 = "1.0.35"
 [dev-dependencies]
 mockall = "0.13.1"
 mockito = "1.6.1"
+
+[features]
+default = []
+localdns = []
