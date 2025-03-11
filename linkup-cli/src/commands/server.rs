@@ -1,7 +1,7 @@
 use crate::CliError;
 use linkup::MemoryStringStore;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tokio::select;
 
 #[derive(clap::Args)]
@@ -10,6 +10,7 @@ pub struct Args {
     pidfile: String,
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
 pub async fn server(args: &Args, certs_dir: &Path) -> Result<(), CliError> {
     let pid = std::process::id();
     fs::write(&args.pidfile, pid.to_string())?;
@@ -23,8 +24,10 @@ pub async fn server(args: &Args, certs_dir: &Path) -> Result<(), CliError> {
             .unwrap();
     });
 
-    #[cfg(feature = "localdns")]
+    #[cfg(target_os = "macos")]
     let handler_https = {
+        use std::path::PathBuf;
+
         let https_config_store = config_store.clone();
         let https_certs_dir = PathBuf::from(certs_dir);
 
@@ -33,7 +36,7 @@ pub async fn server(args: &Args, certs_dir: &Path) -> Result<(), CliError> {
         }))
     };
 
-    #[cfg(not(feature = "localdns"))]
+    #[cfg(not(target_os = "macos"))]
     let handler_https: Option<tokio::task::JoinHandle<()>> = None;
 
     match handler_https {

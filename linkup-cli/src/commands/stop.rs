@@ -39,7 +39,7 @@ pub fn stop(_args: &Args, clear_env: bool) -> Result<(), CliError> {
 
     services::LocalServer::new().stop();
     services::CloudflareTunnel::new().stop();
-    #[cfg(feature = "localdns")]
+    #[cfg(target_os = "macos")]
     services::Dnsmasq::new().stop();
 
     println!("Stopped linkup");

@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use crate::{linkup_dir_path, local_config::LocalState, services, CliError};
 
-#[cfg(feature = "localdns")]
+#[cfg(target_os = "macos")]
 use super::local_dns;
 
 #[derive(clap::Args)]
@@ -81,7 +81,7 @@ struct OrphanProcess {
 #[derive(Debug, Serialize)]
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
-    #[cfg(feature = "localdns")]
+    #[cfg(target_os = "macos")]
     dnsmasq: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
@@ -107,7 +107,7 @@ impl BackgroudServices {
             None => BackgroundServiceHealth::Stopped,
         };
 
-        #[cfg(feature = "localdns")]
+        #[cfg(target_os = "macos")]
         let dnsmasq = if services::is_dnsmasq_installed() {
             match services::Dnsmasq::new().running_pid() {
                 Some(pid) => {
@@ -136,7 +136,7 @@ impl BackgroudServices {
 
         Self {
             linkup_server,
-            #[cfg(feature = "localdns")]
+            #[cfg(target_os = "macos")]
             dnsmasq,
             cloudflared,
             possible_orphan_processes: find_potential_orphan_processes(managed_pids),
@@ -197,13 +197,13 @@ impl Linkup {
     }
 }
 
-#[cfg(feature = "localdns")]
+#[cfg(target_os = "macos")]
 #[derive(Debug, Serialize)]
 struct LocalDNS {
     resolvers: Vec<String>,
 }
 
-#[cfg(feature = "localdns")]
+#[cfg(target_os = "macos")]
 impl LocalDNS {
     fn load() -> Result<Self, CliError> {
         Ok(Self {
@@ -218,7 +218,7 @@ struct Health {
     session: Option<Session>,
     background_services: BackgroudServices,
     linkup: Linkup,
-    #[cfg(feature = "localdns")]
+    #[cfg(target_os = "macos")]
     local_dns: LocalDNS,
 }
 
@@ -238,7 +238,7 @@ impl Health {
             session,
             background_services: BackgroudServices::load(),
             linkup: Linkup::load()?,
-            #[cfg(feature = "localdns")]
+            #[cfg(target_os = "macos")]
             local_dns: LocalDNS::load()?,
         })
     }
@@ -278,7 +278,7 @@ impl Display for Health {
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
         }
 
-        #[cfg(feature = "localdns")]
+        #[cfg(target_os = "macos")]
         {
             write!(f, "  - dnsmasq        ")?;
             match &self.background_services.dnsmasq {
@@ -317,7 +317,7 @@ impl Display for Health {
             }
         }
 
-        #[cfg(feature = "localdns")]
+        #[cfg(target_os = "macos")]
         {
             write!(f, "{}", "Local DNS resolvers:".bold().italic())?;
             if self.local_dns.resolvers.is_empty() {

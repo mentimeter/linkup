@@ -4,16 +4,6 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-
-    if target_os == "macos" {
-        println!("cargo:rustc-cfg=feature=\"localdns\"");
-    }
-
-    if target_os == "linux" && env::var("CARGO_FEATURE_LOCALDNS").is_ok() {
-        panic!("The `localdns` feature is not supported on Linux");
-    }
-
     println!("cargo::rerun-if-changed=../worker/src");
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR to be set");

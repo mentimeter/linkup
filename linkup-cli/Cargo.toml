@@ -50,4 +50,3 @@ mockito = "1.6.1"
 
 [features]
 default = []
-localdns = []

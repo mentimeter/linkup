@@ -44,7 +44,7 @@ pub async fn start(
 
     let local_server = services::LocalServer::new();
     let cloudflare_tunnel = services::CloudflareTunnel::new();
-    #[cfg(feature = "localdns")]
+    #[cfg(target_os = "macos")]
     let dnsmasq = services::Dnsmasq::new();
 
     let mut display_thread: Option<JoinHandle<()>> = None;
@@ -58,7 +58,7 @@ pub async fn start(
             &[
                 services::LocalServer::NAME,
                 services::CloudflareTunnel::NAME,
-                #[cfg(feature = "localdns")]
+                #[cfg(target_os = "macos")]
                 services::Dnsmasq::NAME,
             ],
             status_update_channel.1,
@@ -97,7 +97,7 @@ pub async fn start(
         }
     }
 
-    #[cfg(feature = "localdns")]
+    #[cfg(target_os = "macos")]
     if exit_error.is_none() {
         match dnsmasq
             .run_with_progress(&mut state, status_update_channel.0.clone())

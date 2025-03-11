@@ -6,7 +6,7 @@ use sysinfo::{get_current_pid, ProcessRefreshKind, RefreshKind, System};
 use thiserror::Error;
 
 mod cloudflare_tunnel;
-#[cfg(feature = "localdns")]
+#[cfg(target_os = "macos")]
 mod dnsmasq;
 mod local_server;
 
@@ -16,7 +16,7 @@ pub use {
     cloudflare_tunnel::is_installed as is_cloudflared_installed,
     cloudflare_tunnel::CloudflareTunnel,
 };
-#[cfg(feature = "localdns")]
+#[cfg(target_os = "macos")]
 pub use {dnsmasq::is_installed as is_dnsmasq_installed, dnsmasq::Dnsmasq};
 
 use crate::local_config::LocalState;
