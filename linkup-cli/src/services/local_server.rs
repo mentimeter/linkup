@@ -19,8 +19,6 @@ use crate::{
 
 use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
 
-pub const LINKUP_LOCAL_SERVER_PORT: u16 = 9066;
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Failed while handing file: {0}")]
@@ -48,9 +46,9 @@ impl LocalServer {
         }
     }
 
+    /// For internal communication to local-server, we only use the port 80 (HTTP).
     pub fn url() -> Url {
-        Url::parse(&format!("http://localhost:{}", LINKUP_LOCAL_SERVER_PORT))
-            .expect("linkup url invalid")
+        Url::parse("http://localhost:80").expect("linkup url invalid")
     }
 
     fn start(&self) -> Result<(), Error> {

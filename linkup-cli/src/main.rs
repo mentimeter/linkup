@@ -15,7 +15,6 @@ mod worker_client;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
-const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
 
@@ -59,6 +58,12 @@ pub fn linkup_dir_path() -> PathBuf {
 pub fn linkup_bin_dir_path() -> PathBuf {
     let mut path = linkup_dir_path();
     path.push("bin");
+    path
+}
+
+pub fn linkup_certs_dir_path() -> PathBuf {
+    let mut path = linkup_dir_path();
+    path.push("certs");
     path
 }
 
@@ -291,7 +296,7 @@ async fn main() -> Result<()> {
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
-        Commands::Server(args) => commands::server(args).await,
+        Commands::Server(args) => commands::server(args, &linkup_certs_dir_path()).await,
         Commands::Uninstall(args) => commands::uninstall(args),
         Commands::Update(args) => commands::update(args).await,
         Commands::Deploy(args) => commands::deploy(args).await.map_err(CliError::from),

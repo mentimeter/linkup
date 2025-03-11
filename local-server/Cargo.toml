@@ -9,15 +9,18 @@ path = "src/lib.rs"
 
 [dependencies]
 axum = { version = "0.8.1", features = ["http2", "json"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 http = "1.2.0"
-hyper = "1.5.2"
-hyper-rustls = "0.27.5"
+hyper = { version = "1.5.2", features = ["server"] }
+hyper-rustls = { version = "0.27.5", features = ["http2"] }
 hyper-util = { version = "0.1.10", features = ["client-legacy"] }
 futures = "0.3.31"
 linkup = { path = "../linkup" }
 rustls = { version = "0.23.21", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.8.1"
 thiserror = "2.0.11"
-tokio = { version = "1.43.0", features = ["macros", "signal"] }
+tokio = { version = "1.43.0", features = ["macros", "signal", "rt-multi-thread"] }
 tower-http = { version = "0.6.2", features = ["trace"] }
 tower = "0.5.2"
+rcgen = { version = "0.13", features = ["x509-parser"] }
+rustls-pemfile = "2.2.0"
