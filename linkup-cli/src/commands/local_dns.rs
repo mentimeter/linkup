@@ -8,7 +8,7 @@ use clap::Subcommand;
 use crate::{
     commands, is_sudo,
     local_config::{config_path, get_config},
-    services, sudo_su, CliError, Result,
+    sudo_su, CliError, Result,
 };
 
 #[derive(clap::Args)]

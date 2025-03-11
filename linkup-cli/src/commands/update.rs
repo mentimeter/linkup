@@ -1,7 +1,5 @@
-use crate::{
-    current_version, linkup_bin_dir_path, linkup_exe_path, release, CliError, InstallationMethod,
-};
-use std::{fs, path::PathBuf};
+use crate::{current_version, linkup_exe_path, release, CliError, InstallationMethod};
+use std::fs;
 
 #[derive(clap::Args)]
 pub struct Args {

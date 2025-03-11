@@ -212,6 +212,7 @@ async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
     client.execute(req).await?.json().await
 }
 
+#[allow(dead_code)]
 pub async fn fetch_release(version: &Version) -> Result<Option<Release>, reqwest::Error> {
     let tag = version.to_string();
 
