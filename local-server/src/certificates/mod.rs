@@ -16,11 +16,11 @@ pub use wildcard_sni_resolver::WildcardSniResolver;
 
 const LINKUP_CA_COMMON_NAME: &str = "Linkup Local CA";
 
-pub fn ca_cert_pem_path(certs_dir: &Path) -> PathBuf {
+fn ca_cert_pem_path(certs_dir: &Path) -> PathBuf {
     certs_dir.join("linkup_ca.cert.pem")
 }
 
-pub fn ca_key_pem_path(certs_dir: &Path) -> PathBuf {
+fn ca_key_pem_path(certs_dir: &Path) -> PathBuf {
     certs_dir.join("linkup_ca.key.pem")
 }
 
@@ -63,6 +63,13 @@ fn build_certified_key(
     })
 }
 
+pub fn setup_self_signed_certificates(certs_dir: &Path) {
+    upsert_ca_cert(certs_dir);
+    add_ca_to_keychain(certs_dir);
+    install_nss();
+    add_ca_to_nss(certs_dir);
+}
+
 pub fn create_domain_cert(certs_dir: &Path, domain: &str) -> (Certificate, KeyPair) {
     let cert_pem_str = fs::read_to_string(ca_cert_pem_path(certs_dir)).unwrap();
     let key_pem_str = fs::read_to_string(ca_key_pem_path(certs_dir)).unwrap();
@@ -86,11 +93,6 @@ pub fn create_domain_cert(certs_dir: &Path, domain: &str) -> (Certificate, KeyPa
     fs::write(key_path, key_pair.serialize_pem()).unwrap();
 
     (cert, key_pair)
-}
-
-pub fn install_ca_certificate(certs_dir: &Path) {
-    upsert_ca_cert(certs_dir);
-    add_ca_to_keychain(certs_dir);
 }
 
 fn upsert_ca_cert(certs_dir: &Path) {
@@ -132,7 +134,7 @@ fn add_ca_to_keychain(certs_dir: &Path) {
         .expect("Failed to add CA to keychain");
 }
 
-pub fn install_nss() {
+fn install_nss() {
     if is_nss_installed() {
         println!("NSS already installed, skipping installation");
         return;
@@ -145,7 +147,7 @@ pub fn install_nss() {
         .expect("Failed to install NSS");
 }
 
-pub fn add_ca_to_nss(certs_dir: &Path) {
+fn add_ca_to_nss(certs_dir: &Path) {
     if !is_nss_installed() {
         println!("NSS not found, skipping CA installation");
         return;
