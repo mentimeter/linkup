@@ -113,42 +113,6 @@ impl Release {
 
         asset
     }
-
-    /// Examples of Caddy asset files:
-    /// - caddy-darwin-amd64.tar.gz
-    /// - caddy-darwin-arm64.tar.gz
-    /// - caddy-linux-amd64.tar.gz
-    /// - caddy-linux-arm64.tar.gz
-    pub fn caddy_asset(&self, os: &str, arch: &str) -> Option<Asset> {
-        let lookup_os = match os {
-            "macos" => "darwin",
-            "linux" => "linux",
-            lookup_os => lookup_os,
-        };
-
-        let lookup_arch = match arch {
-            "x86_64" => "amd64",
-            "aarch64" => "arm64",
-            lookup_arch => lookup_arch,
-        };
-
-        let asset = self
-            .assets
-            .iter()
-            .find(|asset| asset.name == format!("caddy-{}-{}.tar.gz", lookup_os, lookup_arch))
-            .cloned();
-
-        if asset.is_none() {
-            log::debug!(
-                "Caddy release for OS '{}' and ARCH '{}' not found on version {}",
-                lookup_os,
-                lookup_arch,
-                &self.version
-            );
-        }
-
-        asset
-    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -159,7 +123,6 @@ struct CachedLatestRelease {
 
 pub struct Update {
     pub linkup: Asset,
-    pub caddy: Asset,
 }
 
 pub async fn available_update(current_version: &Version) -> Option<Update> {
@@ -217,14 +180,11 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
         return None;
     }
 
-    let caddy = latest_release
-        .caddy_asset(os, arch)
-        .expect("Caddy asset to be present on a release");
     let linkup = latest_release
         .linkup_asset(os, arch)
         .expect("Linkup asset to be present on a release");
 
-    Some(Update { linkup, caddy })
+    Some(Update { linkup })
 }
 
 async fn fetch_latest_release() -> Result<Release, reqwest::Error> {

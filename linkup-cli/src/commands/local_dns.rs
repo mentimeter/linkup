@@ -48,12 +48,6 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     ensure_resolver_dir()?;
     install_resolvers(&input_config.top_level_domains())?;
 
-    println!("Installing Caddy...");
-
-    services::Caddy::install()
-        .await
-        .map_err(|e| CliError::LocalDNSInstall(e.to_string()))?;
-
     Ok(())
 }
 
@@ -70,10 +64,6 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     commands::stop(&commands::StopArgs {}, false)?;
 
     uninstall_resolvers(&input_config.top_level_domains())?;
-
-    services::Caddy::uninstall()
-        .await
-        .map_err(|e| CliError::LocalDNSUninstall(e.to_string()))?;
 
     Ok(())
 }

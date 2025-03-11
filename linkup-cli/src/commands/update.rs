@@ -29,16 +29,6 @@ pub async fn update(args: &Args) -> Result<(), CliError> {
             fs::rename(&new_linkup_path, &current_linkup_path)
                 .expect("failed to move the new exe as the current exe");
 
-            let new_caddy_path = update.caddy.download_decompressed("caddy").await.unwrap();
-
-            let current_caddy_path = get_caddy_path();
-            let bkp_caddy_path = current_caddy_path.with_extension("bkp");
-
-            fs::rename(&current_caddy_path, &bkp_caddy_path)
-                .expect("failed to move the current exe into a backup");
-            fs::rename(&new_caddy_path, &current_caddy_path)
-                .expect("failed to move the new exe as the current exe");
-
             println!("Finished update!");
         }
         None => {
@@ -60,11 +50,4 @@ pub fn update_command() -> String {
         InstallationMethod::Brew => "brew upgrade linkup".to_string(),
         InstallationMethod::Manual | InstallationMethod::Cargo => "linkup update".to_string(),
     }
-}
-
-fn get_caddy_path() -> PathBuf {
-    let mut path = linkup_bin_dir_path();
-    path.push("caddy");
-
-    path
 }
