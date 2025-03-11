@@ -11,7 +11,14 @@ use std::{
 use colored::Colorize;
 use crossterm::{cursor, ExecutableCommand};
 
-use crate::{commands::status::{format_state_domains, SessionStatus}, env_files::write_to_env_file, is_sudo, local_config::{config_path, config_to_state, get_config}, services::{self, BackgroundService}, sudo_su};
+use crate::{
+    commands::status::{format_state_domains, SessionStatus},
+    env_files::write_to_env_file,
+    is_sudo,
+    local_config::{config_path, config_to_state, get_config},
+    services::{self, BackgroundService},
+    sudo_su,
+};
 use crate::{local_config::LocalState, CliError};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
