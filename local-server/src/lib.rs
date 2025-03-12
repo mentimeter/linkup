@@ -130,7 +130,18 @@ async fn linkup_request_handler(
     let sessions = SessionAllocator::new(&store);
 
     let headers: linkup::HeaderMap = req.headers().into();
-    let url = req.uri().to_string();
+    let url = if req.uri().scheme().is_some() {
+        req.uri().to_string()
+    } else {
+        format!(
+            "http://{}{}",
+            req.headers()
+                .get(http::header::HOST)
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("localhost"),
+            req.uri()
+        )
+    };
 
     let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
         Ok(session) => session,
