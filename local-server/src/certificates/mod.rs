@@ -81,8 +81,12 @@ pub fn setup_self_signed_certificates(
 
     upsert_ca_cert(certs_dir);
     add_ca_to_keychain(certs_dir);
-    install_nss();
-    add_ca_to_nss(certs_dir);
+
+    let ff_cert_storages = firefox_profiles_cert_storages();
+    if !ff_cert_storages.is_empty() {
+        install_nss();
+        add_ca_to_nss(certs_dir, &ff_cert_storages);
+    }
 
     for domain in domains {
         create_domain_cert(&certs_dir, &format!("*.{}", domain));
@@ -155,6 +159,35 @@ fn add_ca_to_keychain(certs_dir: &Path) {
         .expect("Failed to add CA to keychain");
 }
 
+fn firefox_profiles_cert_storages() -> Vec<String> {
+    let home = env::var("HOME").expect("Failed to get HOME env var");
+
+    match fs::read_dir(PathBuf::from(home).join("Library/Application Support/Firefox/Profiles")) {
+        Ok(dir) => dir
+            .filter_map(|entry| {
+                let entry = entry.expect("Failed to read Firefox profile dir entry entry");
+                let path = entry.path();
+                if path.is_dir() {
+                    if path.join("cert9.db").exists() {
+                        Some(format!("{}{}", "sql:", path.to_str().unwrap()))
+                    } else if path.join("cert8.db").exists() {
+                        Some(format!("{}{}", "dmb:", path.to_str().unwrap()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<String>>(),
+        Err(error) => {
+            eprintln!("Failed to load Firefox profiles: {}", error);
+
+            Vec::new()
+        }
+    }
+}
+
 fn install_nss() {
     if is_nss_installed() {
         println!("NSS already installed, skipping installation");
@@ -168,53 +201,27 @@ fn install_nss() {
         .expect("Failed to install NSS");
 }
 
-fn add_ca_to_nss(certs_dir: &Path) {
+fn add_ca_to_nss(certs_dir: &Path, cert_storages: &[String]) {
     if !is_nss_installed() {
         println!("NSS not found, skipping CA installation");
         return;
     }
 
-    let home = env::var("HOME").expect("Failed to get HOME env var");
-    match fs::read_dir(PathBuf::from(home).join("Library/Application Support/Firefox/Profiles")) {
-        Ok(dir) => {
-            let profiles_dbs = dir
-                .filter_map(|entry| {
-                    let entry = entry.expect("Failed to read Firefox profile dir entry entry");
-                    let path = entry.path();
-                    if path.is_dir() {
-                        if path.join("cert9.db").exists() {
-                            Some(format!("{}{}", "sql:", path.to_str().unwrap()))
-                        } else if path.join("cert8.db").exists() {
-                            Some(format!("{}{}", "dmb:", path.to_str().unwrap()))
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<String>>();
+    for cert_storage in cert_storages {
+        let result = process::Command::new("certutil")
+            .arg("-A")
+            .arg("-d")
+            .arg(&cert_storage)
+            .arg("-t")
+            .arg("C,,")
+            .arg("-n")
+            .arg(LINKUP_CA_COMMON_NAME)
+            .arg("-i")
+            .arg(ca_cert_pem_path(certs_dir))
+            .status();
 
-            for profile in profiles_dbs {
-                let result = process::Command::new("certutil")
-                    .arg("-A")
-                    .arg("-d")
-                    .arg(&profile)
-                    .arg("-t")
-                    .arg("C,,")
-                    .arg("-n")
-                    .arg(LINKUP_CA_COMMON_NAME)
-                    .arg("-i")
-                    .arg(ca_cert_pem_path(certs_dir))
-                    .status();
-
-                if let Err(e) = result {
-                    eprintln!("certutil failed to run for profile {}: {}", profile, e);
-                }
-            }
-        }
-        Err(error) => {
-            eprintln!("Failed to load Firefox profiles: {}", error);
+        if let Err(e) = result {
+            eprintln!("certutil failed to run for profile {}: {}", cert_storage, e);
         }
     }
 }
