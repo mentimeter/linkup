@@ -907,11 +907,13 @@ impl TargetCfResources {
         }
 
         // Cleanup all the tunnels
+        let tunnel_prefix =
+            cloudflare::linkup::tunnel_prefix(cloudflare_client, &self.tunnel_zone_id).await?;
         let req = cloudflare::endpoints::cfd_tunnel::list_tunnels::ListTunnels {
             account_identifier: &self.account_id,
             params: cloudflare::endpoints::cfd_tunnel::list_tunnels::Params {
                 is_deleted: Some(false),
-                include_prefix: Some("linkup-tunnel-".to_string()),
+                include_prefix: Some(tunnel_prefix.clone()),
                 pagination_params: Some(
                     // TODO(augustoccesar)[2025-03-05]: Implement pagination
                     cloudflare::endpoints::cfd_tunnel::list_tunnels::PaginationParams {
@@ -963,7 +965,7 @@ impl TargetCfResources {
             zone_identifier: &self.tunnel_zone_id,
             params: cloudflare::endpoints::dns::ListDnsRecordsParams {
                 name: Some(cloudflare::endpoints::dns::ListDnsRecordsParamsName {
-                    startswith: Some("linkup-tunnel-".to_string()),
+                    startswith: Some(tunnel_prefix),
                     ..Default::default()
                 }),
                 page: Some(1),
