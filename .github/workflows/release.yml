@@ -49,20 +49,16 @@ jobs:
         include:
           - build: linux
             os: depot-ubuntu-22.04-8
-            rust: stable
             target: x86_64-unknown-linux-gnu
           - build: aarch64
             os: depot-ubuntu-22.04-arm-8
-            rust: stable
             target: aarch64-unknown-linux-gnu
             linker: gcc-aarch64-linux-gnu
           - build: macos
             os: depot-macos-14
-            rust: stable
             target: x86_64-apple-darwin
           - build: macos-aarch64
             os: depot-macos-14
-            rust: stable
             target: aarch64-apple-darwin
     outputs:
       release_version: ${{ steps.get_version.outputs.release_version }}
@@ -78,7 +74,7 @@ jobs:
 
       - name: Install Rust
         run: |
-          rustup install ${{ matrix.rust }}
+          rustup install stable
           rustup target add ${{ matrix.target }}
           rustup show
 
