@@ -63,11 +63,32 @@ fn build_certified_key(
     })
 }
 
-pub fn setup_self_signed_certificates(certs_dir: &Path) {
+#[derive(Debug, thiserror::Error)]
+pub enum SetupError {
+    #[error("Failed to create certificates directory '{0}': {1}")]
+    CreateCertsDir(PathBuf, String),
+}
+
+pub fn setup_self_signed_certificates(
+    certs_dir: &Path,
+    domains: &[String],
+) -> Result<(), SetupError> {
+    if !certs_dir.exists() {
+        fs::create_dir_all(certs_dir).map_err(|error| {
+            SetupError::CreateCertsDir(certs_dir.to_path_buf(), error.to_string())
+        })?;
+    }
+
     upsert_ca_cert(certs_dir);
     add_ca_to_keychain(certs_dir);
     install_nss();
     add_ca_to_nss(certs_dir);
+
+    for domain in domains {
+        create_domain_cert(&certs_dir, &format!("*.{}", domain));
+    }
+
+    Ok(())
 }
 
 pub fn create_domain_cert(certs_dir: &Path, domain: &str) -> (Certificate, KeyPair) {

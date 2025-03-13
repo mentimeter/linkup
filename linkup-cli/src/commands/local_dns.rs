@@ -48,19 +48,18 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     ensure_resolver_dir()?;
     install_resolvers(&input_config.top_level_domains())?;
 
-    ensure_certs_dir()?;
-    let certs_dir = linkup_certs_dir_path();
-    setup_self_signed_certificates(&certs_dir);
-
-    for domain in input_config
+    let domains = input_config
         .domains
         .iter()
         .map(|storable_domain| storable_domain.domain.clone())
-        .collect::<Vec<String>>()
-    {
-        linkup_local_server::certificates::create_domain_cert(&certs_dir, &format!("*.{}", domain));
-        println!("Created certificate for {}", domain);
-    }
+        .collect::<Vec<String>>();
+
+    setup_self_signed_certificates(&linkup_certs_dir_path(), &domains).map_err(|error| {
+        CliError::LocalDNSInstall(format!(
+            "Failed to setup self signed certificates: {}",
+            error.to_string()
+        ))
+    })?;
 
     Ok(())
 }
@@ -94,15 +93,6 @@ fn ensure_resolver_dir() -> Result<()> {
                 err
             ))
         })?;
-
-    Ok(())
-}
-
-fn ensure_certs_dir() -> Result<()> {
-    let path = linkup_certs_dir_path();
-    if !path.exists() {
-        fs::create_dir_all(path)?;
-    }
 
     Ok(())
 }
