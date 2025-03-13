@@ -14,8 +14,10 @@ use crossterm::{cursor, ExecutableCommand};
 use crate::{
     commands::status::{format_state_domains, SessionStatus},
     env_files::write_to_env_file,
+    is_sudo,
     local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
+    sudo_su,
 };
 use crate::{local_config::LocalState, CliError};
 
@@ -49,27 +51,8 @@ pub async fn start(
 
     let local_server = services::LocalServer::new();
     let cloudflare_tunnel = services::CloudflareTunnel::new();
-    let caddy = services::Caddy::new();
+    #[cfg(target_os = "macos")]
     let dnsmasq = services::Dnsmasq::new();
-
-    #[cfg(target_os = "linux")]
-    {
-        use crate::{is_sudo, sudo_su};
-        match (caddy.should_start(&state.domain_strings()), is_sudo()) {
-            // Should start Caddy and is not sudo
-            (Ok(true), false) => {
-                println!(
-                    "On linux binding port 443 and 80 requires sudo. And this is necessary to start caddy."
-                );
-
-                sudo_su()?;
-            }
-            // Should not start Caddy or should start Caddy but is already sudo
-            (Ok(false), _) | (Ok(true), true) => (),
-            // Can't check if should start Caddy
-            (Err(error), _) => log::error!("Failed to check if should start Caddy: {}", error),
-        }
-    }
 
     let mut display_thread: Option<JoinHandle<()>> = None;
     let display_channel = sync::mpsc::channel::<bool>();
@@ -82,7 +65,7 @@ pub async fn start(
             &[
                 services::LocalServer::NAME,
                 services::CloudflareTunnel::NAME,
-                services::Caddy::NAME,
+                #[cfg(target_os = "macos")]
                 services::Dnsmasq::NAME,
             ],
             status_update_channel.1,
@@ -94,6 +77,14 @@ pub async fn start(
     // we store any error that might happen on one of the steps and only return it after we have
     // send the message to the display thread to stop and we join it.
     let mut exit_error: Option<Box<dyn std::error::Error>> = None;
+
+    // TODO(augustoccesar)[2025-03-11]: Since we are binding now on 80 and 443 ourselves, we need
+    //   to get sudo permission. Ideally this wouldn't be necessary, so we should take a look if/how
+    //   we can avoid needing it. Caddy was able to bind on them without sudo (at least on macos),
+    //   so there could be a way.
+    if !is_sudo() {
+        sudo_su()?;
+    }
 
     match local_server
         .run_with_progress(&mut state, status_update_channel.0.clone())
@@ -113,16 +104,7 @@ pub async fn start(
         }
     }
 
-    if exit_error.is_none() {
-        match caddy
-            .run_with_progress(&mut state, status_update_channel.0.clone())
-            .await
-        {
-            Ok(_) => (),
-            Err(err) => exit_error = Some(Box::new(err)),
-        }
-    }
-
+    #[cfg(target_os = "macos")]
     if exit_error.is_none() {
         match dnsmasq
             .run_with_progress(&mut state, status_update_channel.0.clone())

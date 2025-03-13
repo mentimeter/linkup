@@ -17,10 +17,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{
-    linkup_file_path, local_config::LocalState, worker_client::WorkerClient,
-    LINKUP_LOCALSERVER_PORT,
-};
+use crate::{linkup_file_path, local_config::LocalState, worker_client::WorkerClient};
 
 use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
 
@@ -351,7 +348,7 @@ fn create_config_yml(tunnel_id: &str) -> Result<(), Error> {
     let credentials_file_path_str = credentials_file_path.to_string_lossy().to_string();
 
     let config = Config {
-        url: format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT),
+        url: "http://localhost".to_string(),
         tunnel: tunnel_id.to_string(),
         credentials_file: credentials_file_path_str,
     };

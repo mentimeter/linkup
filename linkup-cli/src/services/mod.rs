@@ -5,18 +5,18 @@ use std::{fmt::Display, sync};
 use sysinfo::{get_current_pid, ProcessRefreshKind, RefreshKind, System};
 use thiserror::Error;
 
-mod caddy;
 mod cloudflare_tunnel;
+#[cfg(target_os = "macos")]
 mod dnsmasq;
 mod local_server;
 
 pub use local_server::LocalServer;
 pub use sysinfo::{Pid, Signal};
-pub use {caddy::is_installed as is_caddy_installed, caddy::Caddy};
 pub use {
     cloudflare_tunnel::is_installed as is_cloudflared_installed,
     cloudflare_tunnel::CloudflareTunnel,
 };
+#[cfg(target_os = "macos")]
 pub use {dnsmasq::is_installed as is_dnsmasq_installed, dnsmasq::Dnsmasq};
 
 use crate::local_config::LocalState;
