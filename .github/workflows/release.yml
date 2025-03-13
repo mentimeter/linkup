@@ -48,26 +48,18 @@ jobs:
       matrix:
         include:
           - build: linux
-            os: ubuntu-latest
-            rust: stable
+            os: depot-ubuntu-22.04-8
             target: x86_64-unknown-linux-gnu
-            cross: false
           - build: aarch64
-            os: ubuntu-latest
-            rust: stable
+            os: depot-ubuntu-22.04-arm-8
             target: aarch64-unknown-linux-gnu
             linker: gcc-aarch64-linux-gnu
-            cross: true
           - build: macos
-            os: macos-latest
-            rust: stable
+            os: depot-macos-14
             target: x86_64-apple-darwin
-            cross: false
           - build: macos-aarch64
-            os: macos-latest
-            rust: stable
+            os: depot-macos-14
             target: aarch64-apple-darwin
-            cross: false
     outputs:
       release_version: ${{ steps.get_version.outputs.release_version }}
       mac_x86_sha: ${{ steps.mac_x86_sha.outputs.mac_x86_sha }}
@@ -80,17 +72,9 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install Linker
-        if: matrix.cross
-        run: |
-          cargo install cross
-          sudo apt update
-          sudo apt install -y ${{ matrix.linker }}
-          cat .cargo/config.github >> .cargo/config
-
       - name: Install Rust
         run: |
-          rustup install ${{ matrix.rust }}
+          rustup install stable
           rustup target add ${{ matrix.target }}
           rustup show
 
