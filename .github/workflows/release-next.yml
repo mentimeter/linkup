@@ -1,0 +1,135 @@
+name: Create Release of next branch
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - next
+
+jobs:
+  generate-version:
+    name: Generate Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.generate_version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate Next Release Version
+        id: generate_version
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const fs = require('fs');
+            const path = require('path');
+
+            const shortSha = execSync('git rev-parse --short HEAD').toString().trim();
+            const now = new Date();
+            const pad = (n) => n.toString().padStart(2, '0');
+            const timestamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
+            const nextVersion = `0.0.0-next-${timestamp}-${shortSha}`;
+
+            core.info(`Set release version to ${nextVersion}`);
+
+            return { version: nextVersion };
+
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    needs: [generate-version]
+    env:
+      RELEASE_VERSION: ${{ needs.generate-version.outputs.version }}
+    strategy:
+      matrix:
+        include:
+          - build: linux
+            os: depot-ubuntu-22.04-8
+            target: x86_64-unknown-linux-gnu
+          - build: aarch64
+            os: depot-ubuntu-22.04-arm-8
+            target: aarch64-unknown-linux-gnu
+            linker: gcc-aarch64-linux-gnu
+          - build: macos
+            os: depot-macos-14
+            target: x86_64-apple-darwin
+          - build: macos-aarch64
+            os: depot-macos-14
+            target: aarch64-apple-darwin
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Rust
+        run: |
+          rustup install stable
+          rustup target add ${{ matrix.target }}
+          rustup show
+
+      - name: Update Cargo.toml Version
+        run: |
+          sed -i 's/^version\s*=\s*".*"/version = "${{ env.RELEASE_VERSION }}"/' linkup-cli/Cargo.toml
+
+      - name: Build
+        run: cargo build --release --manifest-path linkup-cli/Cargo.toml --target ${{ matrix.target }}
+
+      - name: Package and Calculate Checksums
+        id: package
+        uses: actions/github-script@v6
+        env:
+          TARGET: ${{ matrix.target }}
+          RUNNER_OS: ${{ runner.os }}
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const fs = require('fs');
+            const os = require('os');
+            const path = require('path');
+
+            const releaseVersion = process.env.RELEASE_VERSION;
+            const target = process.env.TARGET;
+            const runnerOs = process.env.RUNNER_OS;
+            if (!releaseVersion) {
+              throw new Error("RELEASE_VERSION is not set");
+            }
+
+            const binaryPath = `target/${target}/release/linkup`;
+
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'linkup-'));
+
+            fs.copyFileSync(binaryPath, path.join(tmpDir, 'linkup'));
+
+            const assetName = `linkup-${releaseVersion}-${target}.tar.gz`;
+            execSync(`tar czf ${assetName} -C ${tmpDir} linkup`);
+
+            let checksum;
+            if (runnerOs === 'Linux') {
+              checksum = execSync(`sha256sum ${assetName}`).toString().split(' ')[0];
+            } else {
+              checksum = execSync(`shasum -a 256 ${assetName}`).toString().split(' ')[0];
+            }
+
+            const checksumFile = `${assetName}.sha256`;
+            fs.writeFileSync(checksumFile, `${checksum} ${assetName}`);
+
+            return { asset_name: assetName, checksum_file: checksumFile };
+
+      - name: "[TEST] Release Output"
+        run: |
+          echo "Release Version: ${{ env.RELEASE_VERSION }}"
+          echo "Asset: ${{ steps.package.outputs.asset_name }}"
+          echo "Checksum file: ${{ steps.package.outputs.checksum_file }}"
+
+      # - name: Release
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     tag_name: ${{ steps.set_version.outputs.release_version }}
+      #     prerelease: true
+      #     files: |
+      #       ${{ steps.package.outputs.asset_name }}
+      #       ${{ steps.package.outputs.checksum_file }}
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
