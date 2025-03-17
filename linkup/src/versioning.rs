@@ -11,33 +11,52 @@ pub struct Version {
     major: u16,
     minor: u16,
     patch: u16,
+    pre_release: Option<String>,
 }
 
 impl PartialEq for Version {
     fn eq(&self, other: &Self) -> bool {
-        self.major == other.major && self.minor == other.minor && self.patch == other.patch
+        self.major == other.major
+            && self.minor == other.minor
+            && self.patch == other.patch
+            && self.pre_release == other.pre_release
     }
 }
 
 impl PartialOrd for Version {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (
-            self.major.cmp(&other.major),
-            self.minor.cmp(&other.minor),
-            self.patch.cmp(&other.patch),
-        ) {
-            (std::cmp::Ordering::Equal, std::cmp::Ordering::Equal, ord) => Some(ord),
-            (std::cmp::Ordering::Equal, ord, _) => Some(ord),
-            (ord, _, _) => Some(ord),
+        match (&self.pre_release, &other.pre_release) {
+            (Some(a), Some(b)) => a.cmp(&b).into(),
+            (Some(_), None) => {
+                // pre-release is always lower than stable
+                return Some(std::cmp::Ordering::Less);
+            }
+            (None, Some(_)) => {
+                // stable is always higher than pre-release
+                return Some(std::cmp::Ordering::Greater);
+            }
+            (None, None) => {
+                match (
+                    self.major.cmp(&other.major),
+                    self.minor.cmp(&other.minor),
+                    self.patch.cmp(&other.patch),
+                ) {
+                    (std::cmp::Ordering::Equal, std::cmp::Ordering::Equal, ord) => Some(ord),
+                    (std::cmp::Ordering::Equal, ord, _) => Some(ord),
+                    (ord, _, _) => Some(ord),
+                }
+            }
         }
     }
 }
 
 impl Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)?;
-
-        Ok(())
+        if let Some(pre) = &self.pre_release {
+            write!(f, "{}.{}.{}-{}", self.major, self.minor, self.patch, pre)
+        } else {
+            write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+        }
     }
 }
 
@@ -45,9 +64,18 @@ impl TryFrom<&str> for Version {
     type Error = VersionError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let (major, minor, patch) = match value.split('.').collect::<Vec<&str>>()[..] {
+        let parts: Vec<&str> = value.split('-').collect();
+        let version_part = parts[0];
+
+        let (major, minor, patch) = match version_part.split('.').collect::<Vec<&str>>()[..] {
             [major, minor, patch] => (major, minor, patch),
             _ => return Err(VersionError::Parsing(value.to_string())),
+        };
+
+        let pre_release = if parts.len() > 1 {
+            Some(parts[1..].join("-"))
+        } else {
+            None
         };
 
         Ok(Self {
@@ -60,6 +88,7 @@ impl TryFrom<&str> for Version {
             patch: patch
                 .parse::<u16>()
                 .map_err(|_| VersionError::Parsing(value.to_string()))?,
+            pre_release,
         })
     }
 }
@@ -137,13 +166,44 @@ mod tests {
     }
 
     #[test]
+    fn test_pre_release_vs_stable() {
+        let pre_release_version = Version::try_from("0.0.0-next-20250317-abc123").unwrap();
+        let stable_version = Version::try_from("1.2.3").unwrap();
+
+        assert!(stable_version > pre_release_version);
+        assert!(stable_version >= pre_release_version);
+    }
+
+    #[test]
+    fn test_stable_vs_pre_release() {
+        let stable_version = Version::try_from("1.2.3").unwrap();
+        let pre_release_version = Version::try_from("0.0.0-next-20250317-abc123").unwrap();
+
+        assert!(pre_release_version <= stable_version);
+        assert!(pre_release_version < stable_version);
+    }
+
+    #[test]
     fn test_display() {
         let version = Version {
             major: 1,
             minor: 2,
             patch: 3,
+            pre_release: None,
         };
 
         assert_eq!(version.to_string(), "1.2.3");
+    }
+
+    #[test]
+    fn test_display_pre_release() {
+        let version = Version {
+            major: 1,
+            minor: 2,
+            patch: 3,
+            pre_release: Some("next-20250317-abc123".into()),
+        };
+
+        assert_eq!(version.to_string(), "1.2.3-next-20250317-abc123");
     }
 }
