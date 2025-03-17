@@ -13,6 +13,7 @@ const LINKUP_WORKER_INDEX_WASM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), 
 #[derive(Debug, Clone)]
 pub struct TargetCfResources {
     pub account_id: String,
+    pub tunnel_zone_id: String,
     pub account_token_name: String,
     pub worker_script_name: String,
     pub worker_script_parts: Vec<WorkerScriptPart>,
@@ -845,6 +846,7 @@ impl TargetCfResources {
     pub async fn execute_destroy_plan(
         &self,
         api: &impl CloudflareApi,
+        cloudflare_client: &cloudflare::framework::async_api::Client,
         plan: &DestroyPlan,
         notifier: &impl DeployNotifier,
     ) -> Result<(), DeployError> {
@@ -902,6 +904,106 @@ impl TargetCfResources {
             notifier.notify("Removing Linkup account token...");
             api.remove_account_token(token).await?;
             notifier.notify("Linkup account token removed.");
+        }
+
+        // Cleanup all the tunnels
+        let tunnel_prefix =
+            cloudflare::linkup::tunnel_prefix(cloudflare_client, &self.tunnel_zone_id).await?;
+        let req = cloudflare::endpoints::cfd_tunnel::list_tunnels::ListTunnels {
+            account_identifier: &self.account_id,
+            params: cloudflare::endpoints::cfd_tunnel::list_tunnels::Params {
+                is_deleted: Some(false),
+                include_prefix: Some(tunnel_prefix.clone()),
+                pagination_params: Some(
+                    // TODO(augustoccesar)[2025-03-05]: Implement pagination
+                    cloudflare::endpoints::cfd_tunnel::list_tunnels::PaginationParams {
+                        page: 1,
+                        per_page: 1000,
+                    },
+                ),
+                ..Default::default()
+            },
+        };
+
+        match cloudflare_client.request(&req).await {
+            Ok(res) => {
+                notifier.notify(&format!("Found {} tunnels to delete", res.result.len()));
+
+                for tunnel in res.result {
+                    let delete_req =
+                        cloudflare::endpoints::cfd_tunnel::delete_tunnel::DeleteTunnel {
+                            account_identifier: &self.account_id,
+                            tunnel_id: &tunnel.id.to_string(),
+                            params: cloudflare::endpoints::cfd_tunnel::delete_tunnel::Params {
+                                cascade: true,
+                            },
+                        };
+
+                    match cloudflare_client.request(&delete_req).await {
+                        Ok(_) => {
+                            notifier.notify(&format!(
+                                "Tunnel '{}' ({}) deleted",
+                                &tunnel.name, &tunnel.id
+                            ));
+                        }
+                        Err(_) => {
+                            notifier.notify(&format!(
+                                "Failed to delete tunnel '{}' ({})",
+                                &tunnel.name, &tunnel.id
+                            ));
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                notifier.notify(&format!("Failed to list tunnels: {}", error));
+            }
+        }
+
+        // Cleanup all tunnels DNS records
+        let list_tunnel_dns_req = cloudflare::endpoints::dns::ListDnsRecords {
+            zone_identifier: &self.tunnel_zone_id,
+            params: cloudflare::endpoints::dns::ListDnsRecordsParams {
+                name: Some(cloudflare::endpoints::dns::ListDnsRecordsParamsName {
+                    startswith: Some(tunnel_prefix),
+                    ..Default::default()
+                }),
+                page: Some(1),
+                per_page: Some(1000),
+                ..Default::default()
+            },
+        };
+
+        match cloudflare_client.request(&list_tunnel_dns_req).await {
+            Ok(res) => {
+                let dns_records = res.result;
+                notifier.notify(&format!(
+                    "Found {} DNS records to delete",
+                    dns_records.len()
+                ));
+
+                let dns_records_to_delete: Vec<String> =
+                    dns_records.iter().map(|record| record.id.clone()).collect();
+
+                let batch_delete_dns_req = cloudflare::endpoints::dns::BatchDnsRecords {
+                    zone_identifier: &self.tunnel_zone_id,
+                    params: cloudflare::endpoints::dns::BatchDnsRecordsParams {
+                        deletes: Some(dns_records_to_delete),
+                    },
+                };
+
+                match cloudflare_client.request(&batch_delete_dns_req).await {
+                    Ok(_) => {
+                        notifier.notify("DNS records deleted");
+                    }
+                    Err(error) => {
+                        notifier.notify(&format!("Failed to delete DNS records: {}", error));
+                    }
+                }
+            }
+            Err(error) => {
+                notifier.notify(&format!("Failed to list tunnels DNS records: {}", error));
+            }
         }
 
         Ok(())
@@ -973,6 +1075,7 @@ pub fn cf_resources(
 
     TargetCfResources {
         account_id: account_id.clone(),
+        tunnel_zone_id: tunnel_zone_id.clone(),
         account_token_name,
         worker_script_name: linkup_script_name.clone(),
         worker_script_entry: "shim.mjs".to_string(),

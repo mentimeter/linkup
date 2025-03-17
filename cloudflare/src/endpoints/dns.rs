@@ -9,6 +9,41 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+/// Batch operations to DNS Records
+/// <https://developers.cloudflare.com/api/resources/dns/subresources/records/methods/batch/>
+#[derive(Debug)]
+pub struct BatchDnsRecords<'a> {
+    pub zone_identifier: &'a str,
+    pub params: BatchDnsRecordsParams,
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Clone, Debug)]
+pub struct BatchDnsRecordsParams {
+    pub deletes: Option<Vec<String>>,
+    // TODO(augustoccesar)[2025-03-05]: Add support for patches, posts and puts. Then
+    //   upstreams it to cloudflare-rs.
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BatchDnsRecordsResponse {
+    pub deletes: Option<Vec<DnsRecord>>,
+    // TODO(augustoccesar)[2025-03-05]: Add support for patches, posts and puts. Then
+    //   upstreams it to cloudflare-rs.
+}
+
+impl ApiResult for BatchDnsRecordsResponse {}
+
+impl<'a> EndpointSpec<BatchDnsRecordsResponse> for BatchDnsRecords<'a> {
+    fn method(&self) -> Method {
+        Method::POST
+    }
+
+    fn path(&self) -> String {
+        format!("zones/{}/dns_records/batch", self.zone_identifier)
+    }
+}
+
 /// List DNS Records
 /// <https://api.cloudflare.com/#dns-records-for-a-zone-list-dns-records>
 #[derive(Debug)]
@@ -179,10 +214,19 @@ pub enum ListDnsRecordsOrder {
 
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Clone, Debug, Default)]
+pub struct ListDnsRecordsParamsName {
+    pub contains: Option<String>,
+    pub endswith: Option<String>,
+    pub startswith: Option<String>,
+    pub exact: Option<String>,
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Clone, Debug, Default)]
 pub struct ListDnsRecordsParams {
     #[serde(flatten)]
     pub record_type: Option<DnsContent>,
-    pub name: Option<String>,
+    pub name: Option<ListDnsRecordsParamsName>,
     pub page: Option<u32>,
     pub per_page: Option<u32>,
     pub order: Option<ListDnsRecordsOrder>,

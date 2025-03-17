@@ -149,7 +149,24 @@ async fn get_tunnel_handler(
     Query(query): Query<GetTunnelParams>,
 ) -> impl IntoResponse {
     let kv = state.tunnels_kv;
-    let tunnel_name = format!("linkup-tunnel-{}", query.session_name);
+
+    let cf_client = cloudflare_client(&state.cloudflare.api_token);
+    let tunnel_prefix =
+        match cloudflare::linkup::tunnel_prefix(&cf_client, &state.cloudflare.tunnel_zone_id).await
+        {
+            Ok(prefix) => prefix,
+            Err(error) => {
+                console_error!("Failed resolve tunnel prefix: {}", error);
+
+                return HttpError::new(
+                    "Failed to generate tunnel.".to_string(),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+                .into_response();
+            }
+        };
+
+    let tunnel_name = format!("{}{}", tunnel_prefix, query.session_name);
     let tunnel_data: Option<TunnelData> = kv.get(&tunnel_name).json().await.unwrap();
 
     match tunnel_data {
@@ -161,7 +178,7 @@ async fn get_tunnel_handler(
                 .await
                 .unwrap();
 
-            return Json(tunnel_data);
+            Json(tunnel_data).into_response()
         }
         None => {
             let tunnel_data = tunnel::create_tunnel(
@@ -179,7 +196,7 @@ async fn get_tunnel_handler(
                 .await
                 .unwrap();
 
-            Json(tunnel_data)
+            Json(tunnel_data).into_response()
         }
     }
 }
