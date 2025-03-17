@@ -166,14 +166,21 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
 
+    let is_beta = current_version.to_string().contains("-next");
+
     let latest_release = match cached_latest_release().await {
         Some(cached_latest_release) => cached_latest_release.release,
         None => {
-            let release = match fetch_latest_release().await {
+            let release = if is_beta {
+                fetch_next_release().await
+            } else {
+                fetch_stable_release().await
+            };
+
+            let release = match release {
                 Ok(release) => release,
                 Err(error) => {
                     log::error!("Failed to fetch the latest release: {}", error);
-
                     return None;
                 }
             };
@@ -227,8 +234,33 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
     Some(Update { linkup, caddy })
 }
 
-async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
+async fn fetch_stable_release() -> Result<Release, reqwest::Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/latest"
+        .parse()
+        .unwrap();
+
+    let mut req = reqwest::Request::new(reqwest::Method::GET, url);
+    let headers = req.headers_mut();
+    headers.append("User-Agent", HeaderValue::from_str("linkup-cli").unwrap());
+    headers.append(
+        "Accept",
+        HeaderValue::from_str("application/vnd.github+json").unwrap(),
+    );
+    headers.append(
+        "X-GitHub-Api-Version",
+        HeaderValue::from_str("2022-11-28").unwrap(),
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(1))
+        .build()
+        .unwrap();
+
+    client.execute(req).await?.json().await
+}
+
+pub async fn fetch_next_release() -> Result<Release, reqwest::Error> {
+    let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/tags/next"
         .parse()
         .unwrap();
 
