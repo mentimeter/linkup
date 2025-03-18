@@ -113,42 +113,6 @@ impl Release {
 
         asset
     }
-
-    /// Examples of Caddy asset files:
-    /// - caddy-darwin-amd64.tar.gz
-    /// - caddy-darwin-arm64.tar.gz
-    /// - caddy-linux-amd64.tar.gz
-    /// - caddy-linux-arm64.tar.gz
-    pub fn caddy_asset(&self, os: &str, arch: &str) -> Option<Asset> {
-        let lookup_os = match os {
-            "macos" => "darwin",
-            "linux" => "linux",
-            lookup_os => lookup_os,
-        };
-
-        let lookup_arch = match arch {
-            "x86_64" => "amd64",
-            "aarch64" => "arm64",
-            lookup_arch => lookup_arch,
-        };
-
-        let asset = self
-            .assets
-            .iter()
-            .find(|asset| asset.name == format!("caddy-{}-{}.tar.gz", lookup_os, lookup_arch))
-            .cloned();
-
-        if asset.is_none() {
-            log::debug!(
-                "Caddy release for OS '{}' and ARCH '{}' not found on version {}",
-                lookup_os,
-                lookup_arch,
-                &self.version
-            );
-        }
-
-        asset
-    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -159,7 +123,6 @@ struct CachedLatestRelease {
 
 pub struct Update {
     pub linkup: Asset,
-    pub caddy: Asset,
 }
 
 pub async fn available_update(current_version: &Version) -> Option<Update> {
@@ -222,14 +185,11 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
         return None;
     }
 
-    let caddy = latest_release
-        .caddy_asset(os, arch)
-        .expect("Caddy asset to be present on a release");
     let linkup = latest_release
         .linkup_asset(os, arch)
         .expect("Linkup asset to be present on a release");
 
-    Some(Update { linkup, caddy })
+    Some(Update { linkup })
 }
 
 async fn fetch_stable_release() -> Result<Release, reqwest::Error> {
@@ -261,36 +221,6 @@ pub async fn fetch_beta_release() -> Result<Release, reqwest::Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/tags/next"
         .parse()
         .unwrap();
-
-    let mut req = reqwest::Request::new(reqwest::Method::GET, url);
-    let headers = req.headers_mut();
-    headers.append("User-Agent", HeaderValue::from_str("linkup-cli").unwrap());
-    headers.append(
-        "Accept",
-        HeaderValue::from_str("application/vnd.github+json").unwrap(),
-    );
-    headers.append(
-        "X-GitHub-Api-Version",
-        HeaderValue::from_str("2022-11-28").unwrap(),
-    );
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(1))
-        .build()
-        .unwrap();
-
-    client.execute(req).await?.json().await
-}
-
-pub async fn fetch_release(version: &Version) -> Result<Option<Release>, reqwest::Error> {
-    let tag = version.to_string();
-
-    let url: Url = format!(
-        "https://api.github.com/repos/mentimeter/linkup/releases/tags/{}",
-        &tag
-    )
-    .parse()
-    .unwrap();
 
     let mut req = reqwest::Request::new(reqwest::Method::GET, url);
     let headers = req.headers_mut();

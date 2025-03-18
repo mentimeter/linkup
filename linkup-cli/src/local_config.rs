@@ -81,6 +81,7 @@ impl LocalState {
         }
     }
 
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn domain_strings(&self) -> Vec<String> {
         self.domains
             .iter()
@@ -134,6 +135,7 @@ pub struct YamlLocalConfig {
 }
 
 impl YamlLocalConfig {
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn top_level_domains(&self) -> Vec<String> {
         self.domains
             .iter()

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::env_files::clear_env_file;
 use crate::local_config::LocalState;
-use crate::{services, CliError};
+use crate::{is_sudo, services, sudo_su, CliError};
 
 #[derive(clap::Args)]
 pub struct Args {}
@@ -29,9 +29,17 @@ pub fn stop(_args: &Args, clear_env: bool) -> Result<(), CliError> {
         }
     }
 
+    // TODO(augustoccesar)[2025-03-11]: Since we are binding now on 80 and 443 ourselves, we need
+    //   to get sudo permission. Ideally this wouldn't be necessary, so we should take a look if/how
+    //   we can avoid needing it. Caddy was able to bind on them without sudo (at least on macos),
+    //   so there could be a way.
+    if !is_sudo() {
+        sudo_su()?;
+    }
+
     services::LocalServer::new().stop();
     services::CloudflareTunnel::new().stop();
-    services::Caddy::new().stop();
+    #[cfg(target_os = "macos")]
     services::Dnsmasq::new().stop();
 
     println!("Stopped linkup");
