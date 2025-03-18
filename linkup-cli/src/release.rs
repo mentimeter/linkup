@@ -170,7 +170,7 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
         Some(cached_latest_release) => cached_latest_release.release,
         None => {
             let release = if current_version.is_beta() {
-                fetch_next_release().await
+                fetch_beta_release().await
             } else {
                 fetch_stable_release().await
             };
@@ -257,7 +257,7 @@ async fn fetch_stable_release() -> Result<Release, reqwest::Error> {
     client.execute(req).await?.json().await
 }
 
-pub async fn fetch_next_release() -> Result<Release, reqwest::Error> {
+pub async fn fetch_beta_release() -> Result<Release, reqwest::Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/tags/next"
         .parse()
         .unwrap();
