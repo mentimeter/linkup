@@ -2,6 +2,8 @@ name: Create Release of next branch
 
 on:
   workflow_dispatch:
+  # pull_request is for it to trigger at least once so that we can dispatch
+  pull_request:
   push:
     branches:
       - next
