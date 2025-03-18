@@ -41,8 +41,6 @@ jobs:
     name: Build
     runs-on: ${{ matrix.os }}
     needs: [generate-version]
-    env:
-      RELEASE_VERSION: ${{ needs.generate-version.outputs.version }}
     strategy:
       matrix:
         include:
@@ -84,6 +82,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           RUNNER_OS: ${{ runner.os }}
+          RELEASE_VERSION: ${{ needs.generate-version.outputs.version }}
         with:
           script: |
             const { execSync } = require('child_process');
