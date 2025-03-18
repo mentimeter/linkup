@@ -1,11 +1,21 @@
 use std::{fs, process};
 
-use crate::{commands, linkup_dir_path, linkup_exe_path, CliError, InstallationMethod};
+use crate::{commands, linkup_dir_path, linkup_exe_path, prompt, CliError, InstallationMethod};
 
 #[derive(clap::Args)]
 pub struct Args {}
 
 pub fn uninstall(_args: &Args) -> Result<(), CliError> {
+    let response = prompt("Are you sure you want to uninstall linkup? [y/N]: ")
+        .trim()
+        .to_lowercase();
+
+    if !matches!(response.as_str(), "y" | "yes") {
+        println!("Aborted!");
+
+        return Ok(());
+    }
+
     commands::stop(&commands::StopArgs {}, true)?;
 
     let exe_path = linkup_exe_path();
