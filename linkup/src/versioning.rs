@@ -26,14 +26,14 @@ impl PartialEq for Version {
 impl PartialOrd for Version {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (&self.pre_release, &other.pre_release) {
-            (Some(a), Some(b)) => a.cmp(&b).into(),
+            (Some(a), Some(b)) => a.cmp(b).into(),
             (Some(_), None) => {
                 // pre-release is always lower than stable
-                return Some(std::cmp::Ordering::Less);
+                Some(std::cmp::Ordering::Less)
             }
             (None, Some(_)) => {
                 // stable is always higher than pre-release
-                return Some(std::cmp::Ordering::Greater);
+                Some(std::cmp::Ordering::Greater)
             }
             (None, None) => {
                 match (
