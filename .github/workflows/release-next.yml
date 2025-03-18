@@ -123,6 +123,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.generate-version.outputs.version }}
+          target_commitish: next
           prerelease: true
           files: |
             ${{ steps.package.outputs.asset_name }}
