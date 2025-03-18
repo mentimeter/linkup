@@ -63,15 +63,15 @@ jobs:
         with:
           ref: "next"
 
+      - name: Update Cargo.toml Version
+        run: |
+          sed -i '' 's@^version = .*@version = "${{ needs.generate-version.outputs.version }}"@' linkup-cli/Cargo.toml
+
       - name: Install Rust
         run: |
           rustup install stable
           rustup target add ${{ matrix.target }}
           rustup show
-
-      - name: Update Cargo.toml Version
-        run: |
-          sed -i '' 's@^version = .*@version = "${{ needs.generate-version.outputs.version }}"@' linkup-cli/Cargo.toml
 
       - name: Build
         run: cargo build --release --manifest-path linkup-cli/Cargo.toml --target ${{ matrix.target }}
