@@ -73,7 +73,7 @@ jobs:
 
       - name: Update Cargo.toml Version
         run: |
-          sed -i 's/^version\s*=\s*".*"/version = "${{ env.RELEASE_VERSION }}"/' linkup-cli/Cargo.toml
+          sed -i '' 's@^version = .*@version = "${{ needs.generate-version.outputs.version }}"@' linkup-cli/Cargo.toml
 
       - name: Build
         run: cargo build --release --manifest-path linkup-cli/Cargo.toml --target ${{ matrix.target }}
