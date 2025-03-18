@@ -65,7 +65,8 @@ jobs:
 
       - name: Update Cargo.toml Version
         run: |
-          sed -i '' 's@^version = .*@version = "${{ needs.generate-version.outputs.version }}"@' linkup-cli/Cargo.toml
+          sed -i.bak 's@^version = .*@version = "${{ needs.generate-version.outputs.version }}"@' linkup-cli/Cargo.toml
+          rm linkup-cli/Cargo.toml.bak
 
       - name: Install Rust
         run: |
