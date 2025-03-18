@@ -33,7 +33,13 @@ impl WildcardSniResolver {
     pub fn load_dir(certs_dir: &Path) -> Result<Self, WildcardSniResolverError> {
         let resolver = WildcardSniResolver::new();
 
-        let entries = fs::read_dir(certs_dir)?;
+        let entries = match fs::read_dir(certs_dir) {
+            Ok(entries) => entries,
+            Err(error) => match error.kind() {
+                std::io::ErrorKind::NotFound => return Ok(resolver),
+                _ => return Err(error.into()),
+            },
+        };
 
         for entry in entries.flatten() {
             let path = entry.path();
