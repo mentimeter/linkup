@@ -8,10 +8,20 @@ pub enum VersionError {
 
 #[derive(Debug, Clone)]
 pub struct Version {
-    major: u16,
-    minor: u16,
-    patch: u16,
-    pre_release: Option<String>,
+    pub major: u16,
+    pub minor: u16,
+    pub patch: u16,
+    pub pre_release: Option<String>,
+}
+
+impl Version {
+    pub fn is_beta(&self) -> bool {
+        if let Some(pre_release) = &self.pre_release {
+            return pre_release.starts_with("next-");
+        }
+
+        false
+    }
 }
 
 impl PartialEq for Version {

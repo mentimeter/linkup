@@ -166,12 +166,10 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
 
-    let is_beta = current_version.to_string().contains("-next");
-
     let latest_release = match cached_latest_release().await {
         Some(cached_latest_release) => cached_latest_release.release,
         None => {
-            let release = if is_beta {
+            let release = if current_version.is_beta() {
                 fetch_next_release().await
             } else {
                 fetch_stable_release().await
