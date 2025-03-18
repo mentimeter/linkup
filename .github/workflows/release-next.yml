@@ -20,7 +20,7 @@ jobs:
 
       - name: Generate Next Release Version
         id: generate_version
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             const { execSync } = require('child_process');
@@ -79,7 +79,7 @@ jobs:
 
       - name: Package and Calculate Checksums
         id: package
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         env:
           TARGET: ${{ matrix.target }}
           RUNNER_OS: ${{ runner.os }}
