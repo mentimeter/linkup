@@ -89,7 +89,7 @@ pub fn setup_self_signed_certificates(
     }
 
     for domain in domains {
-        create_domain_cert(&certs_dir, &format!("*.{}", domain));
+        create_domain_cert(certs_dir, &format!("*.{}", domain));
     }
 
     Ok(())
@@ -211,7 +211,7 @@ fn add_ca_to_nss(certs_dir: &Path, cert_storages: &[String]) {
         let result = process::Command::new("certutil")
             .arg("-A")
             .arg("-d")
-            .arg(&cert_storage)
+            .arg(cert_storage)
             .arg("-t")
             .arg("C,,")
             .arg("-n")

@@ -57,7 +57,7 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     setup_self_signed_certificates(&linkup_certs_dir_path(), &domains).map_err(|error| {
         CliError::LocalDNSInstall(format!(
             "Failed to setup self signed certificates: {}",
-            error.to_string()
+            error
         ))
     })?;
 
