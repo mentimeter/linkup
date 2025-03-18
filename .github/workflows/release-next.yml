@@ -46,16 +46,16 @@ jobs:
     strategy:
       matrix:
         include:
-          - build: linux
-            os: depot-ubuntu-22.04-8
-            target: x86_64-unknown-linux-gnu
-          - build: aarch64
-            os: depot-ubuntu-22.04-arm-8
-            target: aarch64-unknown-linux-gnu
-            linker: gcc-aarch64-linux-gnu
-          - build: macos
-            os: depot-macos-14
-            target: x86_64-apple-darwin
+          # - build: linux
+          #   os: depot-ubuntu-22.04-8
+          #   target: x86_64-unknown-linux-gnu
+          # - build: aarch64
+          #   os: depot-ubuntu-22.04-arm-8
+          #   target: aarch64-unknown-linux-gnu
+          #   linker: gcc-aarch64-linux-gnu
+          # - build: macos
+          #   os: depot-macos-14
+          #   target: x86_64-apple-darwin
           - build: macos-aarch64
             os: depot-macos-14
             target: aarch64-apple-darwin
