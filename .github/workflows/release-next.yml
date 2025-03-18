@@ -119,19 +119,13 @@ jobs:
             core.setOutput('asset_name', assetName);
             core.setOutput('checksum_file', checksumFile);
 
-      - name: "[TEST] Release Output"
-        run: |
-          echo "Release Version: ${{ env.RELEASE_VERSION }}"
-          echo "Asset: ${{ steps.package.outputs.asset_name }}"
-          echo "Checksum file: ${{ steps.package.outputs.checksum_file }}"
-
-      # - name: Release
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     tag_name: ${{ steps.set_version.outputs.release_version }}
-      #     prerelease: true
-      #     files: |
-      #       ${{ steps.package.outputs.asset_name }}
-      #       ${{ steps.package.outputs.checksum_file }}
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.generate-version.outputs.version }}
+          prerelease: true
+          files: |
+            ${{ steps.package.outputs.asset_name }}
+            ${{ steps.package.outputs.checksum_file }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
