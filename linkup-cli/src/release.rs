@@ -139,7 +139,8 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
             };
 
             let release = match release {
-                Ok(release) => release,
+                Ok(Some(release)) => release,
+                Ok(None) => return None,
                 Err(error) => {
                     log::error!("Failed to fetch the latest release: {}", error);
                     return None;
@@ -192,7 +193,7 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
     Some(Update { linkup })
 }
 
-async fn fetch_stable_release() -> Result<Release, reqwest::Error> {
+async fn fetch_stable_release() -> Result<Option<Release>, reqwest::Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/latest"
         .parse()
         .unwrap();
@@ -214,11 +215,13 @@ async fn fetch_stable_release() -> Result<Release, reqwest::Error> {
         .build()
         .unwrap();
 
-    client.execute(req).await?.json().await
+    let release = client.execute(req).await?.json().await?;
+
+    Ok(Some(release))
 }
 
-pub async fn fetch_beta_release() -> Result<Release, reqwest::Error> {
-    let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/tags/next"
+pub async fn fetch_beta_release() -> Result<Option<Release>, reqwest::Error> {
+    let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases"
         .parse()
         .unwrap();
 
@@ -239,7 +242,13 @@ pub async fn fetch_beta_release() -> Result<Release, reqwest::Error> {
         .build()
         .unwrap();
 
-    client.execute(req).await?.json().await
+    let releases: Vec<Release> = client.execute(req).await?.json().await?;
+
+    let beta_release = releases
+        .into_iter()
+        .find(|release| release.version.starts_with("0.0.0-next-"));
+
+    Ok(beta_release)
 }
 
 async fn cached_latest_release() -> Option<CachedLatestRelease> {
