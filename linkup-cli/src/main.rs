@@ -119,6 +119,18 @@ fn sudo_su() -> Result<()> {
     Ok(())
 }
 
+fn prompt(question: &str) -> String {
+    use std::io::Write;
+
+    print!("{}", question);
+    std::io::stdout().flush().ok();
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).ok();
+
+    input
+}
+
 pub type Result<T> = std::result::Result<T, CliError>;
 
 #[derive(Error, Debug)]
