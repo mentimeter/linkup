@@ -35,7 +35,7 @@ jobs:
 
             core.info(`Set release version to ${nextVersion}`);
 
-            return { version: nextVersion };
+            core.setOutput('version', nextVersion);
 
   build:
     name: Build
@@ -116,7 +116,8 @@ jobs:
             const checksumFile = `${assetName}.sha256`;
             fs.writeFileSync(checksumFile, `${checksum} ${assetName}`);
 
-            return { asset_name: assetName, checksum_file: checksumFile };
+            core.setOutput('asset_name', assetName);
+            core.setOutput('checksum_file', checksumFile);
 
       - name: "[TEST] Release Output"
         run: |
