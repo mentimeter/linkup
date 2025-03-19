@@ -66,13 +66,13 @@ rdr pass on lo0 inet proto tcp from any to any port 443 -> 127.0.0.1 port 8443
         }
     }
 
-    let status = process::Command::new("sudo")
+    let load_config_status = process::Command::new("sudo")
         .args(["pfctl", "-f", PORTS_CONFIG])
         .stdin(process::Stdio::null())
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
         .status()?;
-    if !status.success() {
+    if !load_config_status.success() {
         tracing::event!(
             tracing::Level::ERROR,
             "Failed to load {PORTS_CONFIG} into pfctl."
