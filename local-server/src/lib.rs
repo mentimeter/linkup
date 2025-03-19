@@ -97,7 +97,7 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
 
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], HTTPS_PORT));
+    let addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
     println!("listening on {}", &addr);
 
     axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
@@ -109,7 +109,7 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
 pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], HTTP_PORT));
+    let addr = SocketAddr::from(([127, 0, 0, 1], HTTP_PORT));
     println!("listening on {}", &addr);
 
     let listener = TcpListener::bind(addr)?;
