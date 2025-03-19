@@ -24,6 +24,7 @@ use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 pub mod certificates;
+pub mod port_forwarding;
 
 pub const HTTP_PORT: u16 = 8080;
 pub const HTTPS_PORT: u16 = 8443;
@@ -188,11 +189,15 @@ async fn handle_http_req(
     extra_headers: linkup::HeaderMap,
     client: HttpsClient,
 ) -> Response {
-    *req.uri_mut() = Uri::try_from(target_service.url).unwrap();
+    *req.uri_mut() = Uri::try_from(&target_service.url).unwrap();
     let extra_http_headers: HeaderMap = extra_headers.into();
     req.headers_mut().extend(extra_http_headers);
     // Request uri and host headers should not conflict
     req.headers_mut().remove(http::header::HOST);
+
+    if target_service.url.starts_with("http://") {
+        *req.version_mut() = http::Version::HTTP_11;
+    }
 
     // Send the modified request to the target service.
     let mut resp = match client.request(req).await {
