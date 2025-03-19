@@ -348,7 +348,7 @@ fn create_config_yml(tunnel_id: &str) -> Result<(), Error> {
     let credentials_file_path_str = credentials_file_path.to_string_lossy().to_string();
 
     let config = Config {
-        url: "http://localhost".to_string(),
+        url: format!("http://localhost:{}", linkup_local_server::HTTP_PORT),
         tunnel: tunnel_id.to_string(),
         credentials_file: credentials_file_path_str,
     };

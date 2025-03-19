@@ -25,6 +25,7 @@ pub fn setup_port_forwarding() -> Result<(), Box<dyn std::error::Error>> {
 
     let content = r#"rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 8080
 rdr pass on lo0 inet proto tcp from any to any port 443 -> 127.0.0.1 port 8443
+pass in quick on lo0 proto tcp from any to any port 8080
 "#;
 
     let temp_ports_config_path = "/tmp/pf.linkup.ports.conf.tmp";

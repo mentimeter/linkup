@@ -47,7 +47,11 @@ impl LocalServer {
     }
 
     pub fn url() -> Url {
-        Url::parse("http://localhost").expect("linkup url invalid")
+        Url::parse(&format!(
+            "http://localhost:{}",
+            linkup_local_server::HTTP_PORT
+        ))
+        .expect("linkup url invalid")
     }
 
     fn start(&self) -> Result<(), Error> {

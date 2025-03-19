@@ -142,7 +142,7 @@ async fn linkup_request_handler(
             req.headers()
                 .get(http::header::HOST)
                 .and_then(|h| h.to_str().ok())
-                .unwrap_or("localhost"),
+                .unwrap_or(&format!("localhost:{}", HTTP_PORT)),
             req.uri()
         )
     };
