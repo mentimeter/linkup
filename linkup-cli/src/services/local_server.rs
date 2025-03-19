@@ -46,9 +46,8 @@ impl LocalServer {
         }
     }
 
-    /// For internal communication to local-server, we only use the port 80 (HTTP).
     pub fn url() -> Url {
-        Url::parse("http://localhost:80").expect("linkup url invalid")
+        Url::parse("http://localhost").expect("linkup url invalid")
     }
 
     fn start(&self) -> Result<(), Error> {
@@ -59,9 +58,8 @@ impl LocalServer {
 
         // When running with cargo (e.g. `cargo run -- start`), we should start the server also with cargo.
         let mut command = if env::var("CARGO").is_ok() {
-            let mut cmd = process::Command::new("sudo");
+            let mut cmd = process::Command::new("cargo");
             cmd.args([
-                "cargo",
                 "run",
                 "--",
                 "server",
