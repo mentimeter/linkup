@@ -11,7 +11,7 @@
 // This means that if the user restart the computer, the first run of linkup will require sudo
 // again.
 
-use std::{io::Write, path::Path, process};
+use std::{path::Path, process};
 
 const PORTS_CONFIG: &str = "/etc/pf.linkup.ports.conf";
 const FLAG_FILE: &str = "/tmp/port_forwarding_active";
@@ -27,19 +27,18 @@ pub fn setup_port_forwarding() -> Result<(), Box<dyn std::error::Error>> {
 rdr pass on lo0 inet proto tcp from any to any port 443 -> 127.0.0.1 port 8443
 "#;
 
-    let mut tee_cmd = process::Command::new("sudo")
-        .args(["tee", PORTS_CONFIG])
-        .stdin(process::Stdio::piped()) // We will write to here to persist the file
+    let ports_config_status = process::Command::new("sudo")
+        .args([
+            "sh",
+            "-c",
+            &format!("echo '{}' | tee {}", content, PORTS_CONFIG),
+        ])
+        .stdin(process::Stdio::null())
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
-        .spawn()?;
+        .status()?;
 
-    if let Some(mut stdin) = tee_cmd.stdin.take() {
-        stdin.write_all(content.as_bytes())?;
-    }
-
-    let status = tee_cmd.wait()?;
-    if !status.success() {
+    if !ports_config_status.success() {
         tracing::event!(tracing::Level::ERROR, "Failed to write {PORTS_CONFIG}");
 
         return Err("Failed to write port forwarding config".into());
