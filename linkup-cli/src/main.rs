@@ -2,6 +2,7 @@ use std::{env, fs, io::ErrorKind, path::PathBuf, process};
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use linkup_local_server::port_forwarding::{is_port_forwarding_active, setup_port_forwarding};
 use thiserror::Error;
 
 pub use linkup::Version;
@@ -184,6 +185,8 @@ pub enum CliError {
     WorkerClientErr(#[from] worker_client::Error),
     #[error("{0}")]
     DeployErr(#[from] commands::deploy::DeployError),
+    #[error("{0}")]
+    SetupPortForwarding(String),
 }
 
 #[derive(Error, Debug)]
@@ -271,6 +274,19 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     ensure_linkup_dir()?;
+
+    if !is_port_forwarding_active() {
+        if !is_sudo() {
+            println!("Looks like you are running linkup for the first time on this session.");
+            println!("We need to register ports forwarding for the local server and for that we need sudo access.");
+            println!("You should only need to do this once per session (will be required again if you restart your computer).");
+
+            sudo_su()?
+        }
+
+        setup_port_forwarding()
+            .map_err(|error| CliError::SetupPortForwarding(error.to_string()))?;
+    }
 
     if !matches!(cli.command, Commands::Update(_))
         && commands::update::new_version_available().await
