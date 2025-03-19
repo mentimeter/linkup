@@ -27,25 +27,42 @@ pub fn setup_port_forwarding() -> Result<(), Box<dyn std::error::Error>> {
 rdr pass on lo0 inet proto tcp from any to any port 443 -> 127.0.0.1 port 8443
 "#;
 
-    let ports_config_status = process::Command::new("sudo")
-        .args([
-            "sh",
-            "-c",
-            &format!("echo '{}' | tee {}", content, PORTS_CONFIG),
-        ])
+    let temp_ports_config_path = "/tmp/pf.linkup.ports.conf.tmp";
+    match std::fs::write(temp_ports_config_path, content) {
+        Ok(_) => {
+            tracing::event!(
+                tracing::Level::DEBUG,
+                "Written port forwardings into {temp_ports_config_path}",
+            );
+        }
+        Err(error) => {
+            tracing::event!(
+                tracing::Level::ERROR,
+                "Failed to write {temp_ports_config_path}"
+            );
+
+            return Err(error.into());
+        }
+    }
+
+    let move_ports_config_status = process::Command::new("sudo")
+        .args(["mv", temp_ports_config_path, PORTS_CONFIG])
         .stdin(process::Stdio::null())
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
         .status()?;
 
-    if !ports_config_status.success() {
-        tracing::event!(tracing::Level::ERROR, "Failed to write {PORTS_CONFIG}");
+    if !move_ports_config_status.success() {
+        tracing::event!(
+            tracing::Level::ERROR,
+            "Failed to move {temp_ports_config_path} to {PORTS_CONFIG}"
+        );
 
-        return Err("Failed to write port forwarding config".into());
+        return Err("Failed to move the port forwarding file config".into());
     } else {
         tracing::event!(
             tracing::Level::DEBUG,
-            "Written port forwardings into {PORTS_CONFIG}",
+            "Moved port forwardings config from {temp_ports_config_path} to {PORTS_CONFIG}",
         );
     }
 
