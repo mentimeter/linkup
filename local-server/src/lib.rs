@@ -18,13 +18,15 @@ use linkup::{
     Session, SessionAllocator, TargetService, UpdateSessionRequest,
 };
 use rustls::ServerConfig;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpListener};
 use std::{path::Path, sync::Arc};
-use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 pub mod certificates;
+
+pub const HTTP_PORT: u16 = 8080;
+pub const HTTPS_PORT: u16 = 8443;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
@@ -94,7 +96,7 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
 
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 443));
+    let addr = SocketAddr::from(([0, 0, 0, 0], HTTPS_PORT));
     println!("listening on {}", &addr);
 
     axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
@@ -106,12 +108,13 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
 pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 80));
+    let addr = SocketAddr::from(([0, 0, 0, 0], HTTP_PORT));
     println!("listening on {}", &addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+    let listener = TcpListener::bind(addr)?;
+
+    axum_server::Server::from_tcp(listener)
+        .serve(app.into_make_service())
         .await?;
 
     Ok(())
@@ -361,11 +364,6 @@ async fn linkup_config_handler(
 
 async fn always_ok() -> &'static str {
     "OK"
-}
-
-async fn shutdown_signal() {
-    let _ = signal::ctrl_c().await;
-    println!("signal received, starting graceful shutdown");
 }
 
 fn https_client() -> HttpsClient {
