@@ -39,7 +39,7 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
         println!("  - Ensure there is a folder /etc/resolvers");
         println!("  - Create file(s) for /etc/resolver/<domain>");
         println!("  - Add Linkup CA certificate to keychain");
-        println!("  - Register port forwarding to 80 and 443");
+        println!("  - Register port forwarding for 80 and 443");
         println!("  - Flush DNS cache");
 
         sudo_su()?;
