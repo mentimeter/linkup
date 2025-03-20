@@ -1,9 +1,7 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf, process};
+use std::{env, fs, io::ErrorKind, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use commands::local_dns;
-use linkup_local_server::{is_port_forwarding_active, setup_port_forwarding};
 use thiserror::Error;
 
 pub use linkup::Version;
@@ -96,11 +94,12 @@ fn current_version() -> Version {
         .expect("current version on CARGO_PKG_VERSION should be a valid version")
 }
 
+#[cfg(target_os = "macos")]
 fn is_sudo() -> bool {
-    let sudo_check = process::Command::new("sudo")
+    let sudo_check = std::process::Command::new("sudo")
         .arg("-n")
-        .stdout(process::Stdio::null())
-        .stderr(process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .arg("true")
         .status();
 
@@ -111,12 +110,13 @@ fn is_sudo() -> bool {
     false
 }
 
+#[cfg(target_os = "macos")]
 fn sudo_su() -> Result<()> {
-    let status = process::Command::new("sudo")
+    let status = std::process::Command::new("sudo")
         .arg("su")
-        .stdin(process::Stdio::null())
-        .stdout(process::Stdio::null())
-        .stderr(process::Stdio::null())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()?;
 
     if !status.success() {
@@ -276,22 +276,28 @@ async fn main() -> Result<()> {
 
     ensure_linkup_dir()?;
 
-    // TODO(augustoccesar)[2025-03-20]: We should look if is better to not have the state loaded
-    //   from so many places. Maybe we can have in here a load a mutable state and pass it down to
-    //   where it is necessary. Not sure if would be better, but maybe worth looking.
-    if local_dns::is_installed(local_config::LocalState::load().ok().as_ref())
-        && !is_port_forwarding_active()
+    #[cfg(target_os = "macos")]
     {
-        if !is_sudo() {
-            println!("Looks like you are running linkup for the first time on this session.");
-            println!("We need to register ports forwarding for the local server and for that we need sudo access.");
-            println!("You should only need to do this once per session (will be required again if you restart your computer).");
+        use commands::local_dns;
+        use linkup_local_server::{is_port_forwarding_active, setup_port_forwarding};
 
-            sudo_su()?
+        // TODO(augustoccesar)[2025-03-20]: We should look if is better to not have the state loaded
+        //   from so many places. Maybe we can have in here a load a mutable state and pass it down to
+        //   where it is necessary. Not sure if would be better, but maybe worth looking.
+        if local_dns::is_installed(local_config::LocalState::load().ok().as_ref())
+            && !is_port_forwarding_active()
+        {
+            if !is_sudo() {
+                println!("Looks like you are running linkup for the first time on this session.");
+                println!("We need to register ports forwarding for the local server and for that we need sudo access.");
+                println!("You should only need to do this once per session (will be required again if you restart your computer).");
+
+                sudo_su()?
+            }
+
+            setup_port_forwarding()
+                .map_err(|error| CliError::SetupPortForwarding(error.to_string()))?;
         }
-
-        setup_port_forwarding()
-            .map_err(|error| CliError::SetupPortForwarding(error.to_string()))?;
     }
 
     if !matches!(cli.command, Commands::Update(_))
