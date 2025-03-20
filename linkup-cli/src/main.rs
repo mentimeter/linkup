@@ -2,7 +2,8 @@ use std::{env, fs, io::ErrorKind, path::PathBuf, process};
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use linkup_local_server::port_forwarding::{is_port_forwarding_active, setup_port_forwarding};
+use commands::local_dns;
+use linkup_local_server::{is_port_forwarding_active, setup_port_forwarding};
 use thiserror::Error;
 
 pub use linkup::Version;
@@ -275,7 +276,12 @@ async fn main() -> Result<()> {
 
     ensure_linkup_dir()?;
 
-    if !is_port_forwarding_active() {
+    // TODO(augustoccesar)[2025-03-20]: We should look if is better to not have the state loaded
+    //   from so many places. Maybe we can have in here a load a mutable state and pass it down to
+    //   where it is necessary. Not sure if would be better, but maybe worth looking.
+    if local_dns::is_installed(local_config::LocalState::load().ok().as_ref())
+        && !is_port_forwarding_active()
+    {
         if !is_sudo() {
             println!("Looks like you are running linkup for the first time on this session.");
             println!("We need to register ports forwarding for the local server and for that we need sudo access.");

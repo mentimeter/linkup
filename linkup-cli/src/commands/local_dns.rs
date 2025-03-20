@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     commands, is_sudo, linkup_certs_dir_path,
-    local_config::{config_path, get_config},
+    local_config::{config_path, get_config, LocalState},
     sudo_su, CliError, Result,
 };
 use clap::Subcommand;
@@ -38,6 +38,8 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
         println!("Linkup needs sudo access to:");
         println!("  - Ensure there is a folder /etc/resolvers");
         println!("  - Create file(s) for /etc/resolver/<domain>");
+        println!("  - Add Linkup CA certificate to keychain");
+        println!("  - Register port forwarding to 80 and 443");
         println!("  - Flush DNS cache");
 
         sudo_su()?;
@@ -61,9 +63,13 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
         ))
     })?;
 
+    linkup_local_server::setup_port_forwarding()
+        .map_err(|error| CliError::SetupPortForwarding(error.to_string()))?;
+
     Ok(())
 }
 
+// TODO(augustoccesar)[2025-03-20]: Remove Linkup CA from keychain on uninstall
 pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
@@ -71,12 +77,16 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     if !is_sudo() {
         println!("Linkup needs sudo access to:");
         println!("  - Delete file(s) on /etc/resolver");
+        println!("  - Reset port forwarding rules");
         println!("  - Flush DNS cache");
     }
 
     commands::stop(&commands::StopArgs {}, false)?;
 
     uninstall_resolvers(&input_config.top_level_domains())?;
+    linkup_local_server::reset_port_forwarding().map_err(|error| {
+        CliError::LocalDNSUninstall(format!("Failed to reset port forwarding: {error}"))
+    })?;
 
     Ok(())
 }
@@ -95,6 +105,23 @@ fn ensure_resolver_dir() -> Result<()> {
         })?;
 
     Ok(())
+}
+
+pub fn is_installed(state: Option<&LocalState>) -> bool {
+    match state {
+        Some(state) => match list_resolvers() {
+            Ok(resolvers) => state
+                .domain_strings()
+                .iter()
+                .any(|domain| resolvers.contains(domain)),
+            Err(error) => {
+                log::error!("Failed to load resolvers: {}", error);
+
+                false
+            }
+        },
+        None => false,
+    }
 }
 
 fn install_resolvers(resolve_domains: &[String]) -> Result<()> {

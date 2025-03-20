@@ -1,3 +1,6 @@
+pub mod certificates;
+mod port_forwarding;
+
 use axum::{
     body::Body,
     extract::{DefaultBodyLimit, Json, Request},
@@ -23,8 +26,9 @@ use std::{path::Path, sync::Arc};
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
-pub mod certificates;
-pub mod port_forwarding;
+pub use port_forwarding::{
+    is_port_forwarding_active, reset_port_forwarding, setup_port_forwarding,
+};
 
 pub const HTTP_PORT: u16 = 8080;
 pub const HTTPS_PORT: u16 = 8443;

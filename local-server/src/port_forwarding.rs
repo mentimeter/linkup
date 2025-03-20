@@ -105,3 +105,90 @@ pass in quick on lo0 proto tcp from any to any port 8080
 
     Ok(())
 }
+
+pub fn reset_port_forwarding() -> Result<(), Box<dyn std::error::Error>> {
+    tracing::event!(
+        tracing::Level::DEBUG,
+        "Resetting port forwarding to original state."
+    );
+
+    if !is_port_forwarding_active() {
+        tracing::event!(
+            tracing::Level::DEBUG,
+            "Port forwarding was not active, nothing to reset."
+        );
+
+        return Ok(());
+    }
+
+    let flush_states_status = process::Command::new("sudo")
+        .args(["pfctl", "-F", "states"])
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()?;
+
+    if !flush_states_status.success() {
+        tracing::event!(
+            tracing::Level::ERROR,
+            "Failed to flush pfctl current states."
+        );
+
+        return Err("Failed to flush port forwarding rules".into());
+    } else {
+        tracing::event!(tracing::Level::DEBUG, "Successfully flushed pfctl states.");
+    }
+
+    let reload_status = process::Command::new("sudo")
+        .args(["pfctl", "-f", "/etc/pf.conf"])
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()?;
+
+    if !reload_status.success() {
+        tracing::event!(
+            tracing::Level::ERROR,
+            "Failed to reload original port forwarding configuration."
+        );
+
+        return Err("Failed to reload original port forwarding rules".into());
+    } else {
+        tracing::event!(
+            tracing::Level::DEBUG,
+            "Successfully reloaded original port forwarding configuration."
+        );
+    }
+
+    if Path::new(PORTS_CONFIG).exists() {
+        let remove_status = process::Command::new("sudo")
+            .args(["rm", PORTS_CONFIG])
+            .stdin(process::Stdio::null())
+            .stdout(process::Stdio::null())
+            .stderr(process::Stdio::null())
+            .status()?;
+
+        if !remove_status.success() {
+            tracing::event!(
+                tracing::Level::WARN,
+                "Failed to remove port forwarding config file: {PORTS_CONFIG}"
+            );
+        } else {
+            tracing::event!(
+                tracing::Level::DEBUG,
+                "Removed port forwarding config file: {PORTS_CONFIG}"
+            );
+        }
+    }
+
+    if let Err(error) = std::fs::remove_file(FLAG_FILE) {
+        tracing::event!(
+            tracing::Level::WARN,
+            "Failed to remove flag file {FLAG_FILE}: {error}"
+        );
+    } else {
+        tracing::event!(tracing::Level::DEBUG, "Removed flag file: {FLAG_FILE}");
+    }
+
+    Ok(())
+}
