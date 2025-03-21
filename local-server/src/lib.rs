@@ -1,3 +1,6 @@
+pub mod certificates;
+mod port_forwarding;
+
 use axum::{
     body::Body,
     extract::{DefaultBodyLimit, Json, Request},
@@ -18,13 +21,17 @@ use linkup::{
     Session, SessionAllocator, TargetService, UpdateSessionRequest,
 };
 use rustls::ServerConfig;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpListener};
 use std::{path::Path, sync::Arc};
-use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
-pub mod certificates;
+pub use port_forwarding::{
+    is_port_forwarding_active, reset_port_forwarding, setup_port_forwarding,
+};
+
+pub const HTTP_PORT: u16 = 8080;
+pub const HTTPS_PORT: u16 = 8443;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
@@ -94,7 +101,7 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
 
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 443));
+    let addr = SocketAddr::from(([127, 0, 0, 1], HTTPS_PORT));
     println!("listening on {}", &addr);
 
     axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
@@ -106,12 +113,13 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
 pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 80));
+    let addr = SocketAddr::from(([127, 0, 0, 1], HTTP_PORT));
     println!("listening on {}", &addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+    let listener = TcpListener::bind(addr)?;
+
+    axum_server::Server::from_tcp(listener)
+        .serve(app.into_make_service())
         .await?;
 
     Ok(())
@@ -138,7 +146,7 @@ async fn linkup_request_handler(
             req.headers()
                 .get(http::header::HOST)
                 .and_then(|h| h.to_str().ok())
-                .unwrap_or("localhost"),
+                .unwrap_or(&format!("localhost:{}", HTTP_PORT)),
             req.uri()
         )
     };
@@ -185,11 +193,15 @@ async fn handle_http_req(
     extra_headers: linkup::HeaderMap,
     client: HttpsClient,
 ) -> Response {
-    *req.uri_mut() = Uri::try_from(target_service.url).unwrap();
+    *req.uri_mut() = Uri::try_from(&target_service.url).unwrap();
     let extra_http_headers: HeaderMap = extra_headers.into();
     req.headers_mut().extend(extra_http_headers);
     // Request uri and host headers should not conflict
     req.headers_mut().remove(http::header::HOST);
+
+    if target_service.url.starts_with("http://") {
+        *req.version_mut() = http::Version::HTTP_11;
+    }
 
     // Send the modified request to the target service.
     let mut resp = match client.request(req).await {
@@ -361,11 +373,6 @@ async fn linkup_config_handler(
 
 async fn always_ok() -> &'static str {
     "OK"
-}
-
-async fn shutdown_signal() {
-    let _ = signal::ctrl_c().await;
-    println!("signal received, starting graceful shutdown");
 }
 
 fn https_client() -> HttpsClient {
