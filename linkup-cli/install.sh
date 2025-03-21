@@ -1,5 +1,21 @@
 #!/bin/sh
 
+INSTALL_PRERELEASE=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --pre-release|-p)
+            INSTALL_PRERELEASE=1
+            shift
+            ;;
+        *)
+            printf '%s\n' "Unknown option: $1" 1>&2
+            printf '%s\n' "Usage: ./install.sh [--pre-release|-p]" 1>&2
+            exit 1
+            ;;
+    esac
+done
+
 if command -v -- "linkup" >/dev/null 2>&1; then
     printf '%s\n' "Linkup is already installed. To update it, run 'linkup update'." 1>&2
     exit 0
@@ -52,17 +68,44 @@ if [ -z "$FETCH_OS" ] || [ -z "$FETCH_ARCH" ]; then
     exit 1
 fi
 
-LOOKUP_FILE_DOWNLOAD_URL="https://github.com/mentimeter/linkup/releases/download/.*/linkup-.*-$FETCH_ARCH-$FETCH_OS.tar.gz"
-FILE_DOWNLOAD_URL=$(
-    curl -sL \
-        -H "Accept: application/vnd.github+json" \
-        -H "X-GitHub-Api-Version: 2022-11-28" \
-        https://api.github.com/repos/mentimeter/linkup/releases/latest |
-        grep -Eio "$LOOKUP_FILE_DOWNLOAD_URL"
-)
+if [ "$INSTALL_PRERELEASE" -eq 1 ]; then
+    printf '%s\n' "Looking for the latest pre-release version..." 1>&2
+
+    RELEASES_JSON=$(
+        curl -sL \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/mentimeter/linkup/releases"
+    )
+
+    RELEASE_DATA=$(echo "$RELEASES_JSON" | jq -r '[.[] | select(.prerelease==true)][0]')
+
+    if [ "$RELEASE_DATA" = "null" ] || [ -z "$RELEASE_DATA" ]; then
+        printf '%s\n' "No pre-releases found. Falling back to latest stable release." 1>&2
+        RELEASE_DATA=$(
+            curl -sL \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/mentimeter/linkup/releases/latest"
+        )
+    else
+        RELEASE_TAG=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
+        printf '%s\n' "Found pre-release version: $RELEASE_TAG" 1>&2
+    fi
+else
+    RELEASE_DATA=$(
+        curl -sL \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/mentimeter/linkup/releases/latest"
+    )
+fi
+
+ASSET_FILTER="linkup-.+-$FETCH_ARCH-$FETCH_OS\\.tar\\.gz$"
+FILE_DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r --arg filter "$ASSET_FILTER" '.assets[] | select(.name | test($filter)) | .browser_download_url')
 
 if [ -z "$FILE_DOWNLOAD_URL" ]; then
-    printf '%s\n' "Could not find file with pattern '$LOOKUP_FILE_DOWNLOAD_URL' on the latest GitHub release." 1>&2
+    printf '%s\n' "Could not find file with pattern 'linkup-*-$FETCH_ARCH-$FETCH_OS.tar.gz' in the GitHub release." 1>&2
     exit 1
 fi
 
