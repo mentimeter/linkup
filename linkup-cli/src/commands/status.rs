@@ -9,11 +9,10 @@ use std::{
     thread::{self, sleep},
     time::Duration,
 };
-use url::Url;
 
 use crate::{
     local_config::{LocalService, LocalState, ServiceTarget},
-    CliError, LINKUP_LOCALSERVER_PORT,
+    services, CliError,
 };
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -282,7 +281,7 @@ pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> V
 }
 
 fn linkup_services(state: &LocalState) -> Vec<LocalService> {
-    let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT)).unwrap();
+    let local_url = services::LocalServer::url();
 
     vec![
         LocalService {

@@ -3,13 +3,13 @@ use std::{
     process::{Command, Stdio},
 };
 
-use clap::Subcommand;
-
 use crate::{
-    commands, is_sudo,
+    commands, is_sudo, linkup_certs_dir_path,
     local_config::{config_path, get_config},
-    services, sudo_su, CliError, Result,
+    sudo_su, CliError, Result,
 };
+use clap::Subcommand;
+use linkup_local_server::certificates::setup_self_signed_certificates;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -48,11 +48,18 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     ensure_resolver_dir()?;
     install_resolvers(&input_config.top_level_domains())?;
 
-    println!("Installing Caddy...");
+    let domains = input_config
+        .domains
+        .iter()
+        .map(|storable_domain| storable_domain.domain.clone())
+        .collect::<Vec<String>>();
 
-    services::Caddy::install()
-        .await
-        .map_err(|e| CliError::LocalDNSInstall(e.to_string()))?;
+    setup_self_signed_certificates(&linkup_certs_dir_path(), &domains).map_err(|error| {
+        CliError::LocalDNSInstall(format!(
+            "Failed to setup self signed certificates: {}",
+            error
+        ))
+    })?;
 
     Ok(())
 }
@@ -70,10 +77,6 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     commands::stop(&commands::StopArgs {}, false)?;
 
     uninstall_resolvers(&input_config.top_level_domains())?;
-
-    services::Caddy::uninstall()
-        .await
-        .map_err(|e| CliError::LocalDNSUninstall(e.to_string()))?;
 
     Ok(())
 }
@@ -121,8 +124,6 @@ fn install_resolvers(resolve_domains: &[String]) -> Result<()> {
     }
 
     flush_dns_cache()?;
-
-    #[cfg(target_os = "macos")]
     kill_dns_responder()?;
 
     Ok(())
@@ -145,8 +146,6 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
     }
 
     flush_dns_cache()?;
-
-    #[cfg(target_os = "macos")]
     kill_dns_responder()?;
 
     Ok(())
@@ -170,15 +169,6 @@ pub fn list_resolvers() -> std::result::Result<Vec<String>, std::io::Error> {
 }
 
 fn flush_dns_cache() -> Result<()> {
-    #[cfg(target_os = "linux")]
-    let status_flush = Command::new("resolvectl")
-        .args(["flush-caches"])
-        .status()
-        .map_err(|_err| {
-            CliError::LocalDNSInstall("Failed to run resolvectl flush-caches".into())
-        })?;
-
-    #[cfg(target_os = "macos")]
     let status_flush = Command::new("dscacheutil")
         .args(["-flushcache"])
         .status()
@@ -193,7 +183,6 @@ fn flush_dns_cache() -> Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 fn kill_dns_responder() -> Result<()> {
     let status_kill_responder = Command::new("sudo")
         .args(["killall", "-HUP", "mDNSResponder"])

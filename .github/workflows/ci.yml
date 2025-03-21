@@ -6,7 +6,10 @@ name: CI
 jobs:
   check:
     name: Check and Clippy
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     env:
       RUSTFLAGS: -D warnings
     steps:
@@ -30,8 +33,11 @@ jobs:
       - run: cargo fmt --all --check
 
   test:
-    name: Test Suite
-    runs-on: ubuntu-latest
+    name: Test Suite (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
