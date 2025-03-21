@@ -132,11 +132,17 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
     let latest_release = match cached_latest_release().await {
         Some(cached_latest_release) => cached_latest_release.release,
         None => {
-            let release = match fetch_latest_release().await {
-                Ok(release) => release,
+            let release = if current_version.is_beta() {
+                fetch_beta_release().await
+            } else {
+                fetch_stable_release().await
+            };
+
+            let release = match release {
+                Ok(Some(release)) => release,
+                Ok(None) => return None,
                 Err(error) => {
                     log::error!("Failed to fetch the latest release: {}", error);
-
                     return None;
                 }
             };
@@ -187,7 +193,7 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
     Some(Update { linkup })
 }
 
-async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
+async fn fetch_stable_release() -> Result<Option<Release>, reqwest::Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/latest"
         .parse()
         .unwrap();
@@ -209,19 +215,15 @@ async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
         .build()
         .unwrap();
 
-    client.execute(req).await?.json().await
+    let release = client.execute(req).await?.json().await?;
+
+    Ok(Some(release))
 }
 
-#[allow(dead_code)]
-pub async fn fetch_release(version: &Version) -> Result<Option<Release>, reqwest::Error> {
-    let tag = version.to_string();
-
-    let url: Url = format!(
-        "https://api.github.com/repos/mentimeter/linkup/releases/tags/{}",
-        &tag
-    )
-    .parse()
-    .unwrap();
+pub async fn fetch_beta_release() -> Result<Option<Release>, reqwest::Error> {
+    let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases"
+        .parse()
+        .unwrap();
 
     let mut req = reqwest::Request::new(reqwest::Method::GET, url);
     let headers = req.headers_mut();
@@ -240,7 +242,13 @@ pub async fn fetch_release(version: &Version) -> Result<Option<Release>, reqwest
         .build()
         .unwrap();
 
-    client.execute(req).await?.json().await
+    let releases: Vec<Release> = client.execute(req).await?.json().await?;
+
+    let beta_release = releases
+        .into_iter()
+        .find(|release| release.version.starts_with("0.0.0-next-"));
+
+    Ok(beta_release)
 }
 
 async fn cached_latest_release() -> Option<CachedLatestRelease> {
