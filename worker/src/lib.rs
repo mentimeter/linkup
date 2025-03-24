@@ -302,7 +302,7 @@ async fn linkup_request_handler(
         Ok(session) => session,
         Err(_) => {
             return HttpError::new(
-                "Linkup was unable to determine the session origin of the request. 
+                "Linkup was unable to determine the session origin of the request.
                 Make sure your request includes a valid session ID in the referer or tracestate headers. - Local Server".to_string(),
                 StatusCode::UNPROCESSABLE_ENTITY,
             )
@@ -314,7 +314,7 @@ async fn linkup_request_handler(
         Some(result) => result,
         None => {
             return HttpError::new(
-                "The request belonged to a session, but there was no target for the request. 
+                "The request belonged to a session, but there was no target for the request.
                 Check your routing rules in the linkup config for a match. - Local Server"
                     .to_string(),
                 StatusCode::NOT_FOUND,
@@ -541,7 +541,9 @@ async fn authenticate(
             match headers.get("x-linkup-version") {
                 Some(value) => match Version::try_from(value.to_str().unwrap()) {
                     Ok(client_version) => {
-                        if client_version < state.min_supported_client_version {
+                        if client_version < state.min_supported_client_version
+                            && !client_version.is_beta()
+                        {
                             return (
                                     StatusCode::UNAUTHORIZED,
                                     "Your Linkup CLI is outdated, please upgrade to the latest version.",
