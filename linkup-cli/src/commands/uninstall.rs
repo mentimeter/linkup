@@ -42,7 +42,12 @@ pub fn uninstall(_args: &Args) -> Result<(), CliError> {
     let linkup_dir = linkup_dir_path();
 
     log::debug!("Removing linkup folder: {}", linkup_dir.display());
-    fs::remove_dir_all(linkup_dir)?;
+    if let Err(error) = fs::remove_dir_all(linkup_dir) {
+        match error.kind() {
+            std::io::ErrorKind::NotFound => (),
+            _ => return Err(error.into()),
+        }
+    }
 
     println!("linkup uninstalled!");
 
