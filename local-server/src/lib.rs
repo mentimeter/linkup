@@ -25,7 +25,6 @@ use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 pub mod certificates;
-pub mod port_forwarding;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
