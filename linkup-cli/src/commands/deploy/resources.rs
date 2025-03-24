@@ -1104,10 +1104,6 @@ pub fn cf_resources(
                 name: "CLOUDLFLARE_ALL_ZONE_IDS".to_string(),
                 text: all_zone_ids.join(","),
             },
-            cloudflare::endpoints::workers::WorkersBinding::DurableObjectNamespace {
-                name: "CERTIFICATE_LOCKS".to_string(),
-                class_name: "CertificateStoreLock".to_string(),
-            },
         ],
         worker_script_schedules: vec![cloudflare::endpoints::workers::WorkersSchedule {
             cron: Some("0 12 * * 2-6".to_string()),
@@ -1121,10 +1117,6 @@ pub fn cf_resources(
             KvNamespace {
                 name: format!("linkup-tunnels-kv-{joined_zone_names}"),
                 binding: "LINKUP_TUNNELS".to_string(),
-            },
-            KvNamespace {
-                name: format!("linkup-certificate-cache-kv-{joined_zone_names}"),
-                binding: "LINKUP_CERTIFICATE_CACHE".to_string(),
             },
         ],
         tunnel_zone_cache_rules: TargetCacheRules {

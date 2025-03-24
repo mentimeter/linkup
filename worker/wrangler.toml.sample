@@ -18,12 +18,5 @@ WORKER_TOKEN = "token123"
 [triggers]
 crons = [ "0 12 * * 2-6" ]
 
-[durable_objects]
-bindings = [{ name = "CERTIFICATE_LOCKS", class_name = "CertificateStoreLock" }]
-
-[[migrations]]
-tag = "v1"
-new_classes = ["CertificateStoreLock"]
-
 [build]
 command = "cargo install -q worker-build && worker-build --release"
