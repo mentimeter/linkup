@@ -9,7 +9,9 @@ use crate::{
     sudo_su, CliError, Result,
 };
 use clap::Subcommand;
-use linkup_local_server::certificates::setup_self_signed_certificates;
+use linkup_local_server::certificates::{
+    setup_self_signed_certificates, uninstall_self_signed_certificates,
+};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -85,6 +87,7 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     commands::stop(&commands::StopArgs {}, false)?;
 
     uninstall_resolvers(&input_config.top_level_domains())?;
+    uninstall_self_signed_certificates(&linkup_certs_dir_path());
 
     Ok(())
 }

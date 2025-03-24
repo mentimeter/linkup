@@ -107,6 +107,20 @@ pub fn setup_self_signed_certificates(
     Ok(())
 }
 
+pub fn uninstall_self_signed_certificates(certs_dir: &Path) {
+    if ca_exists_in_keychain() {
+        remove_ca_from_keychain();
+    }
+
+    match std::fs::remove_dir_all(certs_dir) {
+        Ok(_) => (),
+        Err(error) => match error.kind() {
+            std::io::ErrorKind::NotFound => (),
+            _ => panic!("{}", error),
+        },
+    }
+}
+
 pub fn create_domain_cert(certs_dir: &Path, domain: &str) -> (Certificate, KeyPair) {
     let cert_pem_str = fs::read_to_string(ca_cert_pem_path(certs_dir)).unwrap();
     let key_pem_str = fs::read_to_string(ca_key_pem_path(certs_dir)).unwrap();
@@ -155,6 +169,20 @@ fn upsert_ca_cert(certs_dir: &Path) {
     fs::write(ca_key_pem_path(certs_dir), key_pair.serialize_pem()).unwrap();
 }
 
+fn ca_exists_in_keychain() -> bool {
+    process::Command::new("sudo")
+        .arg("security")
+        .arg("find-certificate")
+        .arg("-c")
+        .arg(LINKUP_CA_COMMON_NAME)
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .expect("Failed to find linkup CA")
+        .success()
+}
+
 fn add_ca_to_keychain(certs_dir: &Path) {
     process::Command::new("sudo")
         .arg("security")
@@ -165,10 +193,30 @@ fn add_ca_to_keychain(certs_dir: &Path) {
         .arg("-k")
         .arg("/Library/Keychains/System.keychain")
         .arg(ca_cert_pem_path(certs_dir))
-        .stdout(process::Stdio::piped())
-        .stderr(process::Stdio::piped())
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
         .status()
         .expect("Failed to add CA to keychain");
+}
+
+fn remove_ca_from_keychain() {
+    let status = process::Command::new("sudo")
+        .arg("security")
+        .arg("delete-certificate")
+        .arg("-t")
+        .arg("-c")
+        .arg(LINKUP_CA_COMMON_NAME)
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .expect("Failed to execute CA deletion from keychain");
+
+    if !status.success() {
+        // TODO(augustoccesar)[2025-03-20]: Return error instead of panicking
+        panic!("Failed to remove linkup CA from keychain.")
+    }
 }
 
 fn firefox_profiles_cert_storages() -> Vec<String> {
