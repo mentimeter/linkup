@@ -87,7 +87,12 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     commands::stop(&commands::StopArgs {}, false)?;
 
     uninstall_resolvers(&input_config.top_level_domains())?;
-    uninstall_self_signed_certificates(&linkup_certs_dir_path());
+    uninstall_self_signed_certificates(&linkup_certs_dir_path()).map_err(|error| {
+        CliError::LocalDNSUninstall(format!(
+            "Failed to uninstall self-signed certificates: {}",
+            error
+        ))
+    })?;
 
     Ok(())
 }

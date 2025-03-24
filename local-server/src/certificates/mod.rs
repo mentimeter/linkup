@@ -107,16 +107,24 @@ pub fn setup_self_signed_certificates(
     Ok(())
 }
 
-pub fn uninstall_self_signed_certificates(certs_dir: &Path) {
+#[derive(Debug, thiserror::Error)]
+pub enum UninstallError {
+    #[error("Failed to remove certs folder: {0}")]
+    RemoveCertsFolder(String),
+    #[error("Failed to remove CA certificate from keychain: {0}")]
+    DeleteCaCertificate(String),
+}
+
+pub fn uninstall_self_signed_certificates(certs_dir: &Path) -> Result<(), UninstallError> {
     if ca_exists_in_keychain() {
-        remove_ca_from_keychain();
+        remove_ca_from_keychain()?;
     }
 
     match std::fs::remove_dir_all(certs_dir) {
-        Ok(_) => (),
+        Ok(_) => Ok(()),
         Err(error) => match error.kind() {
-            std::io::ErrorKind::NotFound => (),
-            _ => panic!("{}", error),
+            std::io::ErrorKind::NotFound => Ok(()),
+            _ => Err(UninstallError::RemoveCertsFolder(error.to_string())),
         },
     }
 }
@@ -200,7 +208,7 @@ fn add_ca_to_keychain(certs_dir: &Path) {
         .expect("Failed to add CA to keychain");
 }
 
-fn remove_ca_from_keychain() {
+fn remove_ca_from_keychain() -> Result<(), UninstallError> {
     let status = process::Command::new("sudo")
         .arg("security")
         .arg("delete-certificate")
@@ -211,12 +219,15 @@ fn remove_ca_from_keychain() {
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
         .status()
-        .expect("Failed to execute CA deletion from keychain");
+        .map_err(|error| UninstallError::DeleteCaCertificate(error.to_string()))?;
 
     if !status.success() {
-        // TODO(augustoccesar)[2025-03-20]: Return error instead of panicking
-        panic!("Failed to remove linkup CA from keychain.")
+        return Err(UninstallError::DeleteCaCertificate(
+            "security command returned unsuccessful exit status".to_string(),
+        ));
     }
+
+    Ok(())
 }
 
 fn firefox_profiles_cert_storages() -> Vec<String> {
