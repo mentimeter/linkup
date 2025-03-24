@@ -86,10 +86,8 @@ pid-file={}\n",
         get_running_pid(&self.pid_file_path)
     }
 
-    fn should_start(&self, domains: &[String]) -> Result<bool, Error> {
-        let resolvers = local_dns::list_resolvers()?;
-
-        Ok(domains.iter().any(|domain| resolvers.contains(domain)))
+    fn should_start(&self, state: &LocalState) -> bool {
+        local_dns::is_installed(Some(state))
     }
 }
 
@@ -101,30 +99,14 @@ impl BackgroundService<Error> for Dnsmasq {
         state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<(), Error> {
-        let domains = &state.domain_strings();
+        if !self.should_start(state) {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Skipped,
+                "Local DNS not installed",
+            );
 
-        match self.should_start(domains) {
-            Ok(true) => (),
-            Ok(false) => {
-                self.notify_update_with_details(
-                    &status_sender,
-                    super::RunStatus::Skipped,
-                    "Local DNS not installed",
-                );
-
-                return Ok(());
-            }
-            Err(err) => {
-                self.notify_update_with_details(
-                    &status_sender,
-                    super::RunStatus::Skipped,
-                    "Failed to read resolvers folder",
-                );
-
-                log::warn!("Failed to read resolvers folder: {}", err);
-
-                return Ok(());
-            }
+            return Ok(());
         }
 
         self.notify_update(&status_sender, super::RunStatus::Starting);
@@ -139,7 +121,7 @@ impl BackgroundService<Error> for Dnsmasq {
             return Ok(());
         }
 
-        if let Err(e) = self.setup(domains, &state.linkup.session_name) {
+        if let Err(e) = self.setup(&state.domain_strings(), &state.linkup.session_name) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,

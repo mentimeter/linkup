@@ -94,7 +94,7 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
 
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 443));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 443));
     println!("listening on {}", &addr);
 
     axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
@@ -106,7 +106,7 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
 pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 80));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 80));
     println!("listening on {}", &addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -185,11 +185,15 @@ async fn handle_http_req(
     extra_headers: linkup::HeaderMap,
     client: HttpsClient,
 ) -> Response {
-    *req.uri_mut() = Uri::try_from(target_service.url).unwrap();
+    *req.uri_mut() = Uri::try_from(&target_service.url).unwrap();
     let extra_http_headers: HeaderMap = extra_headers.into();
     req.headers_mut().extend(extra_http_headers);
     // Request uri and host headers should not conflict
     req.headers_mut().remove(http::header::HOST);
+
+    if target_service.url.starts_with("http://") {
+        *req.version_mut() = http::Version::HTTP_11;
+    }
 
     // Send the modified request to the target service.
     let mut resp = match client.request(req).await {

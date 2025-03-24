@@ -1,4 +1,4 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf, process};
+use std::{env, fs, io::ErrorKind, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -94,11 +94,12 @@ fn current_version() -> Version {
         .expect("current version on CARGO_PKG_VERSION should be a valid version")
 }
 
+#[cfg(target_os = "macos")]
 fn is_sudo() -> bool {
-    let sudo_check = process::Command::new("sudo")
+    let sudo_check = std::process::Command::new("sudo")
         .arg("-n")
-        .stdout(process::Stdio::null())
-        .stderr(process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .arg("true")
         .status();
 
@@ -109,12 +110,13 @@ fn is_sudo() -> bool {
     false
 }
 
+#[cfg(target_os = "macos")]
 fn sudo_su() -> Result<()> {
-    let status = process::Command::new("sudo")
+    let status = std::process::Command::new("sudo")
         .arg("su")
-        .stdin(process::Stdio::null())
-        .stdout(process::Stdio::null())
-        .stderr(process::Stdio::null())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()?;
 
     if !status.success() {

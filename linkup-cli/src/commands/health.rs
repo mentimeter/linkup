@@ -58,14 +58,13 @@ struct Session {
 }
 
 impl Session {
-    fn load() -> Result<Self, CliError> {
-        let state = LocalState::load()?;
-
+    fn load(state: &LocalState) -> Result<Self, CliError> {
         Ok(Self {
-            name: state.linkup.session_name,
+            name: state.linkup.session_name.clone(),
             tunnel_url: state
                 .linkup
                 .tunnel
+                .clone()
                 .map(|url| url.as_str().to_string())
                 .unwrap_or("None".to_string()),
         })
@@ -200,13 +199,15 @@ impl Linkup {
 #[cfg(target_os = "macos")]
 #[derive(Debug, Serialize)]
 struct LocalDNS {
+    is_installed: bool,
     resolvers: Vec<String>,
 }
 
 #[cfg(target_os = "macos")]
 impl LocalDNS {
-    fn load() -> Result<Self, CliError> {
+    fn load(state: &LocalState) -> Result<Self, CliError> {
         Ok(Self {
+            is_installed: local_dns::is_installed(Some(state)),
             resolvers: local_dns::list_resolvers()?,
         })
     }
@@ -224,7 +225,9 @@ struct Health {
 
 impl Health {
     pub fn load() -> Result<Self, CliError> {
-        let session = match Session::load() {
+        let state = LocalState::load()?;
+
+        let session = match Session::load(&state) {
             Ok(session) => Some(session),
             Err(CliError::NoState(_)) => None,
             Err(error) => {
@@ -239,7 +242,7 @@ impl Health {
             background_services: BackgroudServices::load(),
             linkup: Linkup::load()?,
             #[cfg(target_os = "macos")]
-            local_dns: LocalDNS::load()?,
+            local_dns: LocalDNS::load(&state)?,
         })
     }
 }
@@ -319,13 +322,20 @@ impl Display for Health {
 
         #[cfg(target_os = "macos")]
         {
-            write!(f, "{}", "Local DNS resolvers:".bold().italic())?;
+            writeln!(f, "{}", "Local DNS:".bold().italic())?;
+            write!(f, "  Installed: ",)?;
+            if self.local_dns.is_installed {
+                writeln!(f, "{}", "YES".green())?;
+            } else {
+                writeln!(f, "{}", "NO".yellow())?;
+            }
+            write!(f, "  Resolvers:")?;
             if self.local_dns.resolvers.is_empty() {
                 writeln!(f, " {}", "EMPTY".yellow())?;
             } else {
                 writeln!(f)?;
                 for file in &self.local_dns.resolvers {
-                    writeln!(f, "    - {}", file)?;
+                    writeln!(f, "      - {}", file)?;
                 }
             }
         }
