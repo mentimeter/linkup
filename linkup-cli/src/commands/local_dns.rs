@@ -9,7 +9,9 @@ use crate::{
     sudo_su, CliError, Result,
 };
 use clap::Subcommand;
-use linkup_local_server::certificates::setup_self_signed_certificates;
+use linkup_local_server::certificates::{
+    setup_self_signed_certificates, uninstall_self_signed_certificates,
+};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -34,13 +36,15 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
-    if !is_sudo() {
-        println!("Linkup needs sudo access to:");
-        println!("  - Ensure there is a folder /etc/resolvers");
-        println!("  - Create file(s) for /etc/resolver/<domain>");
-        println!("  - Add Linkup CA certificate to keychain");
-        println!("  - Flush DNS cache");
+    // NOTE(augustoccesar)[2025-03-24] We decided to print this anyways, even if the current session already have sudo.
+    // This should help with visibility of what is happening.
+    println!("Linkup needs sudo access to:");
+    println!("  - Ensure there is a folder /etc/resolvers");
+    println!("  - Create file(s) for /etc/resolver/<domain>");
+    println!("  - Add Linkup CA certificate to keychain");
+    println!("  - Flush DNS cache");
 
+    if !is_sudo() {
         sudo_su()?;
     }
 
@@ -69,15 +73,26 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
+    // NOTE(augustoccesar)[2025-03-24] We decided to print this anyways, even if the current session already have sudo.
+    // This should help with visibility of what is happening.
+    println!("Linkup needs sudo access to:");
+    println!("  - Delete file(s) on /etc/resolver");
+    println!("  - Remove Linkup CA certificate from keychain");
+    println!("  - Flush DNS cache");
+
     if !is_sudo() {
-        println!("Linkup needs sudo access to:");
-        println!("  - Delete file(s) on /etc/resolver");
-        println!("  - Flush DNS cache");
+        sudo_su()?;
     }
 
     commands::stop(&commands::StopArgs {}, false)?;
 
     uninstall_resolvers(&input_config.top_level_domains())?;
+    uninstall_self_signed_certificates(&linkup_certs_dir_path()).map_err(|error| {
+        CliError::LocalDNSUninstall(format!(
+            "Failed to uninstall self-signed certificates: {}",
+            error
+        ))
+    })?;
 
     Ok(())
 }

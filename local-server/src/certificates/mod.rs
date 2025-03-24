@@ -67,6 +67,8 @@ fn build_certified_key(
 pub enum SetupError {
     #[error("Failed to create certificates directory '{0}': {1}")]
     CreateCertsDir(PathBuf, String),
+    #[error("Missing NSS installation")]
+    MissingNSS,
 }
 
 pub fn setup_self_signed_certificates(
@@ -84,7 +86,17 @@ pub fn setup_self_signed_certificates(
 
     let ff_cert_storages = firefox_profiles_cert_storages();
     if !ff_cert_storages.is_empty() {
-        install_nss();
+        if !is_nss_installed() {
+            println!("It seems like you have Firefox installed.");
+            println!(
+            "For self-signed certificates to work with Firefox, you need to have nss installed."
+        );
+            println!("You can find it on https://formulae.brew.sh/formula/nss.");
+            println!("Please install it and then try to install local-dns again.");
+
+            return Err(SetupError::MissingNSS);
+        }
+
         add_ca_to_nss(certs_dir, &ff_cert_storages);
     }
 
@@ -93,6 +105,28 @@ pub fn setup_self_signed_certificates(
     }
 
     Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum UninstallError {
+    #[error("Failed to remove certs folder: {0}")]
+    RemoveCertsFolder(String),
+    #[error("Failed to remove CA certificate from keychain: {0}")]
+    DeleteCaCertificate(String),
+}
+
+pub fn uninstall_self_signed_certificates(certs_dir: &Path) -> Result<(), UninstallError> {
+    if ca_exists_in_keychain() {
+        remove_ca_from_keychain()?;
+    }
+
+    match std::fs::remove_dir_all(certs_dir) {
+        Ok(_) => Ok(()),
+        Err(error) => match error.kind() {
+            std::io::ErrorKind::NotFound => Ok(()),
+            _ => Err(UninstallError::RemoveCertsFolder(error.to_string())),
+        },
+    }
 }
 
 pub fn create_domain_cert(certs_dir: &Path, domain: &str) -> (Certificate, KeyPair) {
@@ -143,6 +177,20 @@ fn upsert_ca_cert(certs_dir: &Path) {
     fs::write(ca_key_pem_path(certs_dir), key_pair.serialize_pem()).unwrap();
 }
 
+fn ca_exists_in_keychain() -> bool {
+    process::Command::new("sudo")
+        .arg("security")
+        .arg("find-certificate")
+        .arg("-c")
+        .arg(LINKUP_CA_COMMON_NAME)
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .expect("Failed to find linkup CA")
+        .success()
+}
+
 fn add_ca_to_keychain(certs_dir: &Path) {
     process::Command::new("sudo")
         .arg("security")
@@ -153,10 +201,33 @@ fn add_ca_to_keychain(certs_dir: &Path) {
         .arg("-k")
         .arg("/Library/Keychains/System.keychain")
         .arg(ca_cert_pem_path(certs_dir))
-        .stdout(process::Stdio::piped())
-        .stderr(process::Stdio::piped())
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
         .status()
         .expect("Failed to add CA to keychain");
+}
+
+fn remove_ca_from_keychain() -> Result<(), UninstallError> {
+    let status = process::Command::new("sudo")
+        .arg("security")
+        .arg("delete-certificate")
+        .arg("-t")
+        .arg("-c")
+        .arg(LINKUP_CA_COMMON_NAME)
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .map_err(|error| UninstallError::DeleteCaCertificate(error.to_string()))?;
+
+    if !status.success() {
+        return Err(UninstallError::DeleteCaCertificate(
+            "security command returned unsuccessful exit status".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 fn firefox_profiles_cert_storages() -> Vec<String> {
@@ -186,19 +257,6 @@ fn firefox_profiles_cert_storages() -> Vec<String> {
             Vec::new()
         }
     }
-}
-
-fn install_nss() {
-    if is_nss_installed() {
-        println!("NSS already installed, skipping installation");
-        return;
-    }
-
-    process::Command::new("brew")
-        .arg("install")
-        .arg("nss")
-        .status()
-        .expect("Failed to install NSS");
 }
 
 fn add_ca_to_nss(certs_dir: &Path, cert_storages: &[String]) {
