@@ -1,12 +1,17 @@
 use std::{fs, process};
 
-use crate::{commands, linkup_dir_path, linkup_exe_path, CliError, InstallationMethod};
+use crate::{
+    commands::{self, local_dns},
+    linkup_dir_path, linkup_exe_path, CliError, InstallationMethod,
+};
 
 #[derive(clap::Args)]
 pub struct Args {}
 
-pub fn uninstall(_args: &Args) -> Result<(), CliError> {
+pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<(), CliError> {
     commands::stop(&commands::StopArgs {}, true)?;
+
+    local_dns::uninstall(config_arg).await?;
 
     let exe_path = linkup_exe_path();
 

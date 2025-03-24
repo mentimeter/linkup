@@ -299,7 +299,7 @@ async fn main() -> Result<()> {
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
         Commands::Server(args) => commands::server(args, &linkup_certs_dir_path()).await,
-        Commands::Uninstall(args) => commands::uninstall(args),
+        Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,
         Commands::Update(args) => commands::update(args).await,
         Commands::Deploy(args) => commands::deploy(args).await.map_err(CliError::from),
         Commands::Destroy(args) => commands::destroy(args).await.map_err(CliError::from),
