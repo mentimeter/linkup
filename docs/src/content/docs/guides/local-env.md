@@ -27,7 +27,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimete
 
 # Or to install a pre-release version (beta)
 
-INSTALL_PRERELEASE=1 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install.sh | sh
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install.sh | INSTALL_PRERELEASE=1 sh
 ```
 
 Once you have the cli installed you can start a linkup session by running:
