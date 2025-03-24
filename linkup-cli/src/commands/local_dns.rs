@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     commands, is_sudo, linkup_certs_dir_path,
-    local_config::{config_path, get_config},
+    local_config::{config_path, get_config, LocalState},
     sudo_su, CliError, Result,
 };
 use clap::Subcommand;
@@ -95,6 +95,23 @@ fn ensure_resolver_dir() -> Result<()> {
         })?;
 
     Ok(())
+}
+
+pub fn is_installed(state: Option<&LocalState>) -> bool {
+    match state {
+        Some(state) => match list_resolvers() {
+            Ok(resolvers) => state
+                .domain_strings()
+                .iter()
+                .any(|domain| resolvers.contains(domain)),
+            Err(error) => {
+                log::error!("Failed to load resolvers: {}", error);
+
+                false
+            }
+        },
+        None => false,
+    }
 }
 
 fn install_resolvers(resolve_domains: &[String]) -> Result<()> {
