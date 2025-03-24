@@ -67,6 +67,8 @@ fn build_certified_key(
 pub enum SetupError {
     #[error("Failed to create certificates directory '{0}': {1}")]
     CreateCertsDir(PathBuf, String),
+    #[error("Missing NSS installation")]
+    MissingNSS,
 }
 
 pub fn setup_self_signed_certificates(
@@ -84,7 +86,17 @@ pub fn setup_self_signed_certificates(
 
     let ff_cert_storages = firefox_profiles_cert_storages();
     if !ff_cert_storages.is_empty() {
-        install_nss();
+        if !is_nss_installed() {
+            println!("It seems like you have Firefox installed.");
+            println!(
+            "For self-signed certificates to work with Firefox, you need to have nss installed."
+        );
+            println!("You can find it on https://formulae.brew.sh/formula/nss.");
+            println!("Please install it and then try to install local-dns again.");
+
+            return Err(SetupError::MissingNSS);
+        }
+
         add_ca_to_nss(certs_dir, &ff_cert_storages);
     }
 
@@ -186,19 +198,6 @@ fn firefox_profiles_cert_storages() -> Vec<String> {
             Vec::new()
         }
     }
-}
-
-fn install_nss() {
-    if is_nss_installed() {
-        println!("NSS already installed, skipping installation");
-        return;
-    }
-
-    process::Command::new("brew")
-        .arg("install")
-        .arg("nss")
-        .status()
-        .expect("Failed to install NSS");
 }
 
 fn add_ca_to_nss(certs_dir: &Path, cert_storages: &[String]) {

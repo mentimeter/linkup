@@ -34,13 +34,15 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
-    if !is_sudo() {
-        println!("Linkup needs sudo access to:");
-        println!("  - Ensure there is a folder /etc/resolvers");
-        println!("  - Create file(s) for /etc/resolver/<domain>");
-        println!("  - Add Linkup CA certificate to keychain");
-        println!("  - Flush DNS cache");
+    // NOTE(augustoccesar)[2025-03-24] We decided to print this anyways, even if the current session already have sudo.
+    // This should help with visibility of what is happening.
+    println!("Linkup needs sudo access to:");
+    println!("  - Ensure there is a folder /etc/resolvers");
+    println!("  - Create file(s) for /etc/resolver/<domain>");
+    println!("  - Add Linkup CA certificate to keychain");
+    println!("  - Flush DNS cache");
 
+    if !is_sudo() {
         sudo_su()?;
     }
 
