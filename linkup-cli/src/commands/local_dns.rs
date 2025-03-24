@@ -38,6 +38,7 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
         println!("Linkup needs sudo access to:");
         println!("  - Ensure there is a folder /etc/resolvers");
         println!("  - Create file(s) for /etc/resolver/<domain>");
+        println!("  - Add Linkup CA certificate to keychain");
         println!("  - Flush DNS cache");
 
         sudo_su()?;
