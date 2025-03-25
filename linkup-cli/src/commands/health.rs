@@ -8,7 +8,11 @@ use clap::crate_version;
 use colored::Colorize;
 use serde::Serialize;
 
-use crate::{linkup_dir_path, local_config::LocalState, services, CliError};
+use crate::{
+    linkup_dir_path,
+    local_config::{self, LocalState},
+    services, CliError,
+};
 
 #[cfg(target_os = "macos")]
 use super::local_dns;
@@ -207,7 +211,10 @@ struct LocalDNS {
 impl LocalDNS {
     fn load(state: &LocalState) -> Result<Self, CliError> {
         Ok(Self {
-            is_installed: local_dns::is_installed(Some(state)),
+            is_installed: local_dns::is_installed(&local_config::managed_domains(
+                Some(state),
+                &None,
+            )),
             resolvers: local_dns::list_resolvers()?,
         })
     }

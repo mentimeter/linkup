@@ -5,7 +5,11 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::{commands::local_dns, linkup_dir_path, linkup_file_path, local_config::LocalState};
+use crate::{
+    commands::local_dns,
+    linkup_dir_path, linkup_file_path,
+    local_config::{self, LocalState},
+};
 
 use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
 
@@ -87,7 +91,7 @@ pid-file={}\n",
     }
 
     fn should_start(&self, state: &LocalState) -> bool {
-        local_dns::is_installed(Some(state))
+        local_dns::is_installed(&local_config::managed_domains(Some(state), &None))
     }
 }
 

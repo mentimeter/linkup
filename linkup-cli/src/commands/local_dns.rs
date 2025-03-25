@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     commands, is_sudo, linkup_certs_dir_path,
-    local_config::{config_path, get_config, LocalState},
+    local_config::{self, managed_domains, top_level_domains, LocalState},
     sudo_su, CliError, Result,
 };
 use clap::Subcommand;
@@ -33,9 +33,6 @@ pub async fn local_dns(args: &Args, config: &Option<String>) -> Result<()> {
 }
 
 pub async fn install(config_arg: &Option<String>) -> Result<()> {
-    let config_path = config_path(config_arg)?;
-    let input_config = get_config(&config_path)?;
-
     // NOTE(augustoccesar)[2025-03-24] We decided to print this anyways, even if the current session already have sudo.
     // This should help with visibility of what is happening.
     println!("Linkup needs sudo access to:");
@@ -51,13 +48,10 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     commands::stop(&commands::StopArgs {}, false)?;
 
     ensure_resolver_dir()?;
-    install_resolvers(&input_config.top_level_domains())?;
 
-    let domains = input_config
-        .domains
-        .iter()
-        .map(|storable_domain| storable_domain.domain.clone())
-        .collect::<Vec<String>>();
+    let domains = managed_domains(LocalState::load().ok().as_ref(), config_arg);
+
+    install_resolvers(&top_level_domains(&domains))?;
 
     setup_self_signed_certificates(&linkup_certs_dir_path(), &domains).map_err(|error| {
         CliError::LocalDNSInstall(format!(
@@ -70,9 +64,6 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
 }
 
 pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
-    let config_path = config_path(config_arg)?;
-    let input_config = get_config(&config_path)?;
-
     // NOTE(augustoccesar)[2025-03-24] We decided to print this anyways, even if the current session already have sudo.
     // This should help with visibility of what is happening.
     println!("Linkup needs sudo access to:");
@@ -86,7 +77,11 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
 
     commands::stop(&commands::StopArgs {}, false)?;
 
-    uninstall_resolvers(&input_config.top_level_domains())?;
+    let managed_top_level_domains = local_config::top_level_domains(
+        &local_config::managed_domains(LocalState::load().ok().as_ref(), config_arg),
+    );
+
+    uninstall_resolvers(&managed_top_level_domains)?;
     uninstall_self_signed_certificates(&linkup_certs_dir_path()).map_err(|error| {
         CliError::LocalDNSUninstall(format!(
             "Failed to uninstall self-signed certificates: {}",
@@ -113,20 +108,16 @@ fn ensure_resolver_dir() -> Result<()> {
     Ok(())
 }
 
-pub fn is_installed(state: Option<&LocalState>) -> bool {
-    match state {
-        Some(state) => match list_resolvers() {
-            Ok(resolvers) => state
-                .domain_strings()
-                .iter()
-                .any(|domain| resolvers.contains(domain)),
-            Err(error) => {
-                log::error!("Failed to load resolvers: {}", error);
+pub fn is_installed(managed_domains: &[String]) -> bool {
+    match list_resolvers() {
+        Ok(resolvers) => managed_domains
+            .iter()
+            .any(|domain| resolvers.contains(domain)),
+        Err(error) => {
+            log::error!("Failed to load resolvers: {}", error);
 
-                false
-            }
-        },
-        None => false,
+            false
+        }
     }
 }
 
