@@ -392,6 +392,7 @@ impl From<&LocalState> for ServerConfig {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn managed_domains(state: Option<&LocalState>, cfg_path: &Option<String>) -> Vec<String> {
     let config_domains = match config_path(cfg_path).ok() {
         Some(cfg_path) => match get_config(&cfg_path) {
@@ -422,6 +423,7 @@ pub fn managed_domains(state: Option<&LocalState>, cfg_path: &Option<String>) ->
     domain_set.into_iter().collect()
 }
 
+#[cfg(target_os = "macos")]
 pub fn top_level_domains(domains: &[String]) -> Vec<String> {
     domains
         .iter()
