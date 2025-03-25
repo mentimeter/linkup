@@ -135,20 +135,6 @@ pub struct YamlLocalConfig {
 }
 
 impl YamlLocalConfig {
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-    pub fn top_level_domains(&self) -> Vec<String> {
-        self.domains
-            .iter()
-            .filter(|&d| {
-                !self
-                    .domains
-                    .iter()
-                    .any(|other| other.domain != d.domain && d.domain.ends_with(&other.domain))
-            })
-            .map(|d| d.domain.clone())
-            .collect::<Vec<String>>()
-    }
-
     pub fn create_preview_request(&self, services: &[(String, String)]) -> CreatePreviewRequest {
         let services = self
             .services
@@ -404,6 +390,50 @@ impl From<&LocalState> for ServerConfig {
             remote: remote_storable_session,
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+pub fn managed_domains(state: Option<&LocalState>, cfg_path: &Option<String>) -> Vec<String> {
+    let config_domains = match config_path(cfg_path).ok() {
+        Some(cfg_path) => match get_config(&cfg_path) {
+            Ok(config) => Some(
+                config
+                    .domains
+                    .iter()
+                    .map(|storable_domain| storable_domain.domain.clone())
+                    .collect::<Vec<String>>(),
+            ),
+            Err(_) => None,
+        },
+        None => None,
+    };
+
+    let state_domains = state.map(|state| state.domain_strings());
+
+    let mut domain_set = std::collections::HashSet::new();
+
+    if let Some(domains) = config_domains {
+        domain_set.extend(domains);
+    }
+
+    if let Some(domains) = state_domains {
+        domain_set.extend(domains);
+    }
+
+    domain_set.into_iter().collect()
+}
+
+#[cfg(target_os = "macos")]
+pub fn top_level_domains(domains: &[String]) -> Vec<String> {
+    domains
+        .iter()
+        .filter(|&domain| {
+            !domains
+                .iter()
+                .any(|other_domain| other_domain != domain && domain.ends_with(other_domain))
+        })
+        .cloned()
+        .collect::<Vec<String>>()
 }
 
 #[cfg(test)]

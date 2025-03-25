@@ -207,7 +207,10 @@ struct LocalDNS {
 impl LocalDNS {
     fn load(state: &LocalState) -> Result<Self, CliError> {
         Ok(Self {
-            is_installed: local_dns::is_installed(Some(state)),
+            is_installed: local_dns::is_installed(&crate::local_config::managed_domains(
+                Some(state),
+                &None,
+            )),
             resolvers: local_dns::list_resolvers()?,
         })
     }
