@@ -1,5 +1,6 @@
 use crate::commands::deploy::auth;
 use crate::commands::deploy::resources::cf_resources;
+use crate::Result;
 
 use super::api::{AccountCloudflareApi, CloudflareApi};
 use super::console_notify::ConsoleNotifier;
@@ -7,8 +8,6 @@ use super::resources::TargetCfResources;
 
 #[derive(thiserror::Error, Debug)]
 pub enum DeployError {
-    #[error("No authentication method found, please set CLOUDFLARE_API_KEY and CLOUDFLARE_EMAIL or CLOUDFLARE_API_TOKEN")]
-    NoAuthenticationError,
     #[error("Cloudflare API error: {0}")]
     CloudflareApiError(#[from] reqwest::Error),
     #[error("Cloudflare Client error: {0}")]
@@ -45,7 +44,7 @@ pub struct DeployArgs {
     zone_ids: Vec<String>,
 }
 
-pub async fn deploy(args: &DeployArgs) -> Result<(), DeployError> {
+pub async fn deploy(args: &DeployArgs) -> Result<()> {
     println!("Deploying to Cloudflare...");
     println!("Account ID: {}", args.account_id);
     println!("Zone IDs: {:?}", args.zone_ids);
@@ -93,7 +92,7 @@ pub async fn deploy_to_cloudflare(
     api: &impl CloudflareApi,
     cloudflare_client: &cloudflare::framework::async_api::Client,
     notifier: &impl DeployNotifier,
-) -> Result<(), DeployError> {
+) -> Result<()> {
     // 1) Check what needs to change
     let plan = resources.check_deploy_plan(api, cloudflare_client).await?;
 

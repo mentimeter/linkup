@@ -1,10 +1,9 @@
 use crate::commands::deploy::{
     api::AccountCloudflareApi, auth, console_notify::ConsoleNotifier, resources::cf_resources,
 };
+use crate::Result;
 
-use super::{
-    api::CloudflareApi, cf_deploy::DeployNotifier, resources::TargetCfResources, DeployError,
-};
+use super::{api::CloudflareApi, cf_deploy::DeployNotifier, resources::TargetCfResources};
 
 #[derive(clap::Args)]
 pub struct DestroyArgs {
@@ -27,7 +26,7 @@ pub struct DestroyArgs {
     zone_ids: Vec<String>,
 }
 
-pub async fn destroy(args: &DestroyArgs) -> Result<(), DeployError> {
+pub async fn destroy(args: &DestroyArgs) -> Result<()> {
     println!("Destroying from Cloudflare...");
     println!("Account ID: {}", args.account_id);
     println!("Zone IDs: {:?}", args.zone_ids);
@@ -76,7 +75,7 @@ pub async fn destroy_from_cloudflare(
     api: &impl CloudflareApi,
     cloudflare_client: &cloudflare::framework::async_api::Client,
     notifier: &impl DeployNotifier,
-) -> Result<(), DeployError> {
+) -> Result<()> {
     // 1) Check which resources actually exist and need removal
     let plan = resources.check_destroy_plan(api).await?;
 

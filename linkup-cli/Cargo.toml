@@ -9,6 +9,7 @@ name = "linkup"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
 clap = { version = "4.5.27", features = ["derive", "cargo"] }
 clap_complete = "4.5.42"
 cloudflare = { path = "../cloudflare", default-features = false, features = [

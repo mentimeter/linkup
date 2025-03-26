@@ -9,6 +9,7 @@ use crate::{
     commands::local_dns,
     linkup_dir_path, linkup_file_path,
     local_config::{self, LocalState},
+    Result,
 };
 
 use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
@@ -65,7 +66,7 @@ pid-file={}\n",
         Ok(())
     }
 
-    fn start(&self) -> Result<(), Error> {
+    fn start(&self) -> Result<()> {
         log::debug!("Starting {}", Self::NAME);
 
         Command::new("dnsmasq")
@@ -95,14 +96,14 @@ pid-file={}\n",
     }
 }
 
-impl BackgroundService<Error> for Dnsmasq {
+impl BackgroundService for Dnsmasq {
     const NAME: &str = "Dnsmasq";
 
     async fn run_with_progress(
         &self,
         state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         if !self.should_start(state) {
             self.notify_update_with_details(
                 &status_sender,
@@ -132,7 +133,7 @@ impl BackgroundService<Error> for Dnsmasq {
                 "Failed to setup",
             );
 
-            return Err(e);
+            return Err(e.into());
         }
 
         if let Err(e) = self.start() {

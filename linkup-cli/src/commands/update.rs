@@ -1,4 +1,4 @@
-use crate::{current_version, linkup_exe_path, release, CliError, InstallationMethod};
+use crate::{current_version, linkup_exe_path, release, InstallationMethod, Result};
 use std::fs;
 
 #[derive(clap::Args)]
@@ -8,7 +8,7 @@ pub struct Args {
     skip_cache: bool,
 }
 
-pub async fn update(args: &Args) -> Result<(), CliError> {
+pub async fn update(args: &Args) -> Result<()> {
     if args.skip_cache {
         log::debug!("Clearing cache to force a new check for the latest version.");
 
@@ -19,7 +19,7 @@ pub async fn update(args: &Args) -> Result<(), CliError> {
         Some(update) => {
             let new_linkup_path = update.linkup.download_decompressed("linkup").await.unwrap();
 
-            let current_linkup_path = linkup_exe_path();
+            let current_linkup_path = linkup_exe_path()?;
             let bkp_linkup_path = current_linkup_path.with_extension("bkp");
 
             fs::rename(&current_linkup_path, &bkp_linkup_path)
@@ -43,9 +43,9 @@ pub async fn new_version_available() -> bool {
         .is_some()
 }
 
-pub fn update_command() -> String {
-    match InstallationMethod::current() {
-        InstallationMethod::Brew => "brew upgrade linkup".to_string(),
-        InstallationMethod::Manual | InstallationMethod::Cargo => "linkup update".to_string(),
+pub fn update_command() -> Result<String> {
+    match InstallationMethod::current()? {
+        InstallationMethod::Brew => Ok("brew upgrade linkup".to_string()),
+        InstallationMethod::Manual | InstallationMethod::Cargo => Ok("linkup update".to_string()),
     }
 }

@@ -6,8 +6,9 @@ use std::{
 use crate::{
     commands, is_sudo, linkup_certs_dir_path,
     local_config::{self, managed_domains, top_level_domains, LocalState},
-    sudo_su, CliError, Result,
+    sudo_su, Result,
 };
+use anyhow::{anyhow, Context};
 use clap::Subcommand;
 use linkup_local_server::certificates::{
     setup_self_signed_certificates, uninstall_self_signed_certificates,
@@ -53,12 +54,8 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
 
     install_resolvers(&top_level_domains(&domains))?;
 
-    setup_self_signed_certificates(&linkup_certs_dir_path(), &domains).map_err(|error| {
-        CliError::LocalDNSInstall(format!(
-            "Failed to setup self signed certificates: {}",
-            error
-        ))
-    })?;
+    setup_self_signed_certificates(&linkup_certs_dir_path(), &domains)
+        .context("Failed to setup self-signed certificates")?;
 
     Ok(())
 }
@@ -82,12 +79,8 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     );
 
     uninstall_resolvers(&managed_top_level_domains)?;
-    uninstall_self_signed_certificates(&linkup_certs_dir_path()).map_err(|error| {
-        CliError::LocalDNSUninstall(format!(
-            "Failed to uninstall self-signed certificates: {}",
-            error
-        ))
-    })?;
+    uninstall_self_signed_certificates(&linkup_certs_dir_path())
+        .context("Failed to uninstall self-signed certificates")?;
 
     Ok(())
 }
@@ -98,12 +91,7 @@ fn ensure_resolver_dir() -> Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map_err(|err| {
-            CliError::LocalDNSInstall(format!(
-                "failed to create /etc/resolver folder. Reason: {}",
-                err
-            ))
-        })?;
+        .context("Failed to create /etc/resolver folder")?;
 
     Ok(())
 }
@@ -123,27 +111,21 @@ pub fn is_installed(managed_domains: &[String]) -> bool {
 
 fn install_resolvers(resolve_domains: &[String]) -> Result<()> {
     for domain in resolve_domains.iter() {
-        let cmd_str = format!(
-            "echo \"nameserver 127.0.0.1\nport 8053\" > /etc/resolver/{}",
-            domain
-        );
+        let cmd_str = format!("echo \"nameserver 127.0.0.1\nport 8053\" > /etc/resolver/{domain}");
+
         let status = Command::new("sudo")
             .arg("bash")
             .arg("-c")
             .arg(&cmd_str)
             .status()
-            .map_err(|err| {
-                CliError::LocalDNSInstall(format!(
-                    "Failed to install resolver for domain {} to /etc/resolver/{}. Reason: {}",
-                    domain, domain, err
-                ))
+            .with_context(|| {
+                format!("Failed to install resolver for domain {domain} to /etc/resolver/{domain}")
             })?;
 
         if !status.success() {
-            return Err(CliError::LocalDNSInstall(format!(
-                "Failed to install resolver for domain {} to /etc/resolver/{}",
-                domain, domain
-            )));
+            return Err(anyhow!(
+                "Failed to install resolver for domain {domain} to /etc/resolver/{domain}"
+            ));
         }
     }
 
@@ -161,12 +143,7 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
-            .map_err(|err| {
-                CliError::LocalDNSUninstall(format!(
-                    "Failed to delete /etc/resolver/{}. Reason: {}",
-                    domain, err
-                ))
-            })?;
+            .with_context(|| format!("Failed to delete /etc/resolver/{domain}",))?;
     }
 
     flush_dns_cache()?;
@@ -196,12 +173,10 @@ fn flush_dns_cache() -> Result<()> {
     let status_flush = Command::new("dscacheutil")
         .args(["-flushcache"])
         .status()
-        .map_err(|_err| {
-            CliError::LocalDNSInstall("Failed to run dscacheutil -flushcache".into())
-        })?;
+        .context("Failed to flush DNS cache")?;
 
     if !status_flush.success() {
-        return Err(CliError::LocalDNSInstall("Failed flush DNS cache".into()));
+        return Err(anyhow!("Flushing DNS cache was unsuccessful"));
     }
 
     Ok(())
@@ -211,14 +186,10 @@ fn kill_dns_responder() -> Result<()> {
     let status_kill_responder = Command::new("sudo")
         .args(["killall", "-HUP", "mDNSResponder"])
         .status()
-        .map_err(|_err| {
-            CliError::LocalDNSInstall("Failed to run killall -HUP mDNSResponder".into())
-        })?;
+        .context("Failed to kill DNS responder")?;
 
     if !status_kill_responder.success() {
-        return Err(CliError::LocalDNSInstall(
-            "Failed to run killall -HUP mDNSResponder".into(),
-        ));
+        return Err(anyhow!("Killing DNS responder was unsuccessful"));
     }
 
     Ok(())

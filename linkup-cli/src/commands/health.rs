@@ -8,7 +8,7 @@ use clap::crate_version;
 use colored::Colorize;
 use serde::Serialize;
 
-use crate::{linkup_dir_path, local_config::LocalState, services, CliError};
+use crate::{linkup_dir_path, local_config::LocalState, services, Result};
 
 #[cfg(target_os = "macos")]
 use super::local_dns;
@@ -20,7 +20,7 @@ pub struct Args {
     json: bool,
 }
 
-pub fn health(args: &Args) -> Result<(), CliError> {
+pub fn health(args: &Args) -> Result<()> {
     let health = Health::load()?;
 
     let health = if args.json {
@@ -58,8 +58,8 @@ struct Session {
 }
 
 impl Session {
-    fn load(state: &LocalState) -> Result<Self, CliError> {
-        Ok(Self {
+    fn load(state: &LocalState) -> Self {
+        Self {
             name: state.linkup.session_name.clone(),
             tunnel_url: state
                 .linkup
@@ -67,7 +67,7 @@ impl Session {
                 .clone()
                 .map(|url| url.as_str().to_string())
                 .unwrap_or("None".to_string()),
-        })
+        }
     }
 }
 
@@ -181,7 +181,7 @@ struct Linkup {
 }
 
 impl Linkup {
-    fn load() -> Result<Self, CliError> {
+    fn load() -> Result<Self> {
         let dir_path = linkup_dir_path();
         let files: Vec<String> = fs::read_dir(&dir_path)?
             .map(|f| f.unwrap().file_name().into_string().unwrap())
@@ -205,7 +205,7 @@ struct LocalDNS {
 
 #[cfg(target_os = "macos")]
 impl LocalDNS {
-    fn load(state: &LocalState) -> Result<Self, CliError> {
+    fn load(state: &LocalState) -> Result<Self> {
         Ok(Self {
             is_installed: local_dns::is_installed(&crate::local_config::managed_domains(
                 Some(state),
@@ -219,7 +219,7 @@ impl LocalDNS {
 #[derive(Debug, Serialize)]
 struct Health {
     system: System,
-    session: Option<Session>,
+    session: Session,
     background_services: BackgroudServices,
     linkup: Linkup,
     #[cfg(target_os = "macos")]
@@ -227,17 +227,9 @@ struct Health {
 }
 
 impl Health {
-    pub fn load() -> Result<Self, CliError> {
+    pub fn load() -> Result<Self> {
         let state = LocalState::load()?;
-
-        let session = match Session::load(&state) {
-            Ok(session) => Some(session),
-            Err(CliError::NoState(_)) => None,
-            Err(error) => {
-                log::error!("Failed to load Session: {}", error);
-                None
-            }
-        };
+        let session = Session::load(&state);
 
         Ok(Self {
             system: System::load(),
@@ -261,20 +253,8 @@ impl Display for Health {
         writeln!(f, "  Architecture: {}", self.system.arch)?;
 
         writeln!(f, "{}", "Session info:".bold().italic())?;
-        writeln!(
-            f,
-            "  Name:       {}",
-            self.session
-                .as_ref()
-                .map_or("NONE".yellow(), |session| session.name.normal())
-        )?;
-        writeln!(
-            f,
-            "  Tunnel URL: {}",
-            self.session
-                .as_ref()
-                .map_or("NONE".yellow(), |session| session.tunnel_url.normal())
-        )?;
+        writeln!(f, "  Name:       {}", self.session.name.normal())?;
+        writeln!(f, "  Tunnel URL: {}", self.session.tunnel_url.normal())?;
 
         writeln!(f, "{}", "Background sevices:".bold().italic())?;
         write!(f, "  - Linkup Server  ")?;

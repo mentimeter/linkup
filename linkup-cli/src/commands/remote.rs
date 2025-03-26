@@ -1,7 +1,9 @@
 use crate::{
     local_config::{upload_state, LocalState, ServiceTarget},
-    CliError,
+    Result,
 };
+
+use anyhow::anyhow;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -16,11 +18,9 @@ pub struct Args {
     all: bool,
 }
 
-pub async fn remote(args: &Args) -> Result<(), CliError> {
+pub async fn remote(args: &Args) -> Result<()> {
     if args.service_names.is_empty() && !args.all {
-        return Err(CliError::NoSuchService(
-            "No service names provided".to_string(),
-        ));
+        return Err(anyhow!("No service names provided"));
     }
 
     let mut state = LocalState::load()?;
@@ -35,7 +35,8 @@ pub async fn remote(args: &Args) -> Result<(), CliError> {
                 .services
                 .iter_mut()
                 .find(|s| s.name.as_str() == service_name)
-                .ok_or_else(|| CliError::NoSuchService(service_name.to_string()))?;
+                .ok_or_else(|| anyhow!("Service with name '{}' does not exist", service_name))?;
+
             service.current = ServiceTarget::Remote;
         }
     }

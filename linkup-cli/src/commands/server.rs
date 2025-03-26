@@ -1,4 +1,4 @@
-use crate::CliError;
+use crate::Result;
 use linkup::MemoryStringStore;
 use std::fs;
 use std::path::Path;
@@ -11,7 +11,7 @@ pub struct Args {
 }
 
 #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
-pub async fn server(args: &Args, certs_dir: &Path) -> Result<(), CliError> {
+pub async fn server(args: &Args, certs_dir: &Path) -> Result<()> {
     let pid = std::process::id();
     fs::write(&args.pidfile, pid.to_string())?;
 
