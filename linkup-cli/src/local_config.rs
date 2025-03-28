@@ -227,7 +227,7 @@ pub fn config_path(config_arg: &Option<String>) -> Result<String> {
     match config_arg {
         Some(path) => {
             let absolute_path = fs::canonicalize(path)
-                .with_context(|| format!("Unalbe to resolve absolute path for {path:?}"))?;
+                .with_context(|| format!("Unable to resolve absolute path for {path:?}"))?;
 
             Ok(absolute_path.to_string_lossy().into_owned())
         }
