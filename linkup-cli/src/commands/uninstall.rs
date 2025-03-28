@@ -2,14 +2,14 @@ use std::{fs, process};
 
 use crate::{
     commands::{self},
-    linkup_dir_path, linkup_exe_path, CliError, InstallationMethod,
+    linkup_dir_path, linkup_exe_path, InstallationMethod, Result,
 };
 
 #[derive(clap::Args)]
 pub struct Args {}
 
 #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
-pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<(), CliError> {
+pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<()> {
     commands::stop(&commands::StopArgs {}, true)?;
 
     #[cfg(target_os = "macos")]
@@ -27,10 +27,10 @@ pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<(), 
         }
     }
 
-    let exe_path = linkup_exe_path();
+    let exe_path = linkup_exe_path()?;
 
     log::debug!("Linkup exe path: {:?}", &exe_path);
-    match InstallationMethod::current() {
+    match InstallationMethod::current()? {
         InstallationMethod::Brew => {
             log::debug!("Uninstalling linkup from Homebrew");
 

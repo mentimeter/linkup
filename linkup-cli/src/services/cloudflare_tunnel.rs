@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{linkup_file_path, local_config::LocalState, worker_client::WorkerClient};
+use crate::{linkup_file_path, local_config::LocalState, worker_client::WorkerClient, Result};
 
 use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
 
@@ -60,7 +60,7 @@ impl CloudflareTunnel {
         worker_url: &Url,
         worker_token: &str,
         linkup_session_name: &str,
-    ) -> Result<Url, Error> {
+    ) -> Result<Url> {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
@@ -139,7 +139,7 @@ impl CloudflareTunnel {
         false
     }
 
-    fn update_state(&self, tunnel_url: &Url, state: &mut LocalState) -> Result<(), Error> {
+    fn update_state(&self, tunnel_url: &Url, state: &mut LocalState) -> Result<()> {
         debug!("Adding tunnel url {} to the state", tunnel_url.as_str());
 
         state.linkup.tunnel = Some(tunnel_url.clone());
@@ -151,14 +151,14 @@ impl CloudflareTunnel {
     }
 }
 
-impl BackgroundService<Error> for CloudflareTunnel {
+impl BackgroundService for CloudflareTunnel {
     const NAME: &str = "Cloudflare Tunnel";
 
     async fn run_with_progress(
         &self,
         state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         if !state.should_use_tunnel() {
             self.notify_update_with_details(
                 &status_sender,
@@ -176,7 +176,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                 "Empty session name",
             );
 
-            return Err(Error::InvalidSessionName(state.linkup.session_name.clone()));
+            return Err(Error::InvalidSessionName(state.linkup.session_name.clone()).into());
         }
 
         if self.running_pid().is_some() {
@@ -225,7 +225,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                             "Failed to start tunnel",
                         );
 
-                        return Err(Error::PidfileNotFound);
+                        return Err(Error::PidfileNotFound.into());
                     }
 
                     self.notify_update(&status_sender, super::RunStatus::Starting);
@@ -259,7 +259,7 @@ impl BackgroundService<Error> for CloudflareTunnel {
                             "Failed to propagate tunnel DNS",
                         );
 
-                        return Err(Error::DNSNotPropagated);
+                        return Err(Error::DNSNotPropagated.into());
                     }
 
                     self.notify_update(&status_sender, super::RunStatus::Starting);

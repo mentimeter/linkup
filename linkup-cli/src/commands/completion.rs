@@ -3,7 +3,7 @@ use std::io::stdout;
 use clap::{Command, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
 
-use crate::{Cli, CliError};
+use crate::{Cli, Result};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -11,7 +11,7 @@ pub struct Args {
     shell: Option<Shell>,
 }
 
-pub fn completion(args: &Args) -> Result<(), CliError> {
+pub fn completion(args: &Args) -> Result<()> {
     if let Some(shell) = &args.shell {
         let mut cmd = Cli::command();
         print_completions(shell, &mut cmd);

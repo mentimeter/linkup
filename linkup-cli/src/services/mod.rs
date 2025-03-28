@@ -49,14 +49,14 @@ pub struct RunUpdate {
     pub details: Option<String>,
 }
 
-pub trait BackgroundService<E: std::error::Error> {
+pub trait BackgroundService {
     const NAME: &str;
 
     async fn run_with_progress(
         &self,
         local_state: &mut LocalState,
         status_sender: sync::mpsc::Sender<RunUpdate>,
-    ) -> Result<(), E>;
+    ) -> anyhow::Result<()>;
 
     fn notify_update(&self, status_sender: &sync::mpsc::Sender<RunUpdate>, status: RunStatus) {
         status_sender

@@ -1,9 +1,9 @@
-use crate::{commands, local_config::LocalState, CliError};
+use crate::{commands, local_config::LocalState, Result};
 
 #[derive(clap::Args)]
 pub struct Args {}
 
-pub async fn reset(_args: &Args) -> Result<(), CliError> {
+pub async fn reset(_args: &Args) -> Result<()> {
     let _ = LocalState::load()?;
 
     commands::stop(&commands::StopArgs {}, false)?;

@@ -14,7 +14,7 @@ use url::Url;
 use crate::{
     linkup_file_path,
     local_config::{upload_state, LocalState},
-    worker_client,
+    worker_client, Result,
 };
 
 use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
@@ -51,7 +51,7 @@ impl LocalServer {
         Url::parse("http://localhost:80").expect("linkup url invalid")
     }
 
-    fn start(&self) -> Result<(), Error> {
+    fn start(&self) -> Result<()> {
         log::debug!("Starting {}", Self::NAME);
 
         let stdout_file = File::create(&self.stdout_file_path)?;
@@ -109,7 +109,7 @@ impl LocalServer {
         matches!(response, Ok(res) if res.status() == StatusCode::OK)
     }
 
-    async fn update_state(&self, state: &mut LocalState) -> Result<(), Error> {
+    async fn update_state(&self, state: &mut LocalState) -> Result<()> {
         let session_name = upload_state(state).await?;
 
         state.linkup.session_name = session_name;
@@ -121,14 +121,14 @@ impl LocalServer {
     }
 }
 
-impl BackgroundService<Error> for LocalServer {
+impl BackgroundService for LocalServer {
     const NAME: &str = "Linkup local server";
 
     async fn run_with_progress(
         &self,
         state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
         if self.reachable().await {
@@ -175,7 +175,7 @@ impl BackgroundService<Error> for LocalServer {
                         "Failed to reach server",
                     );
 
-                    return Err(Error::ServerUnreachable);
+                    return Err(Error::ServerUnreachable.into());
                 }
             }
         }
