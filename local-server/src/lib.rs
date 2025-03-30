@@ -7,6 +7,22 @@ use axum::{
     Extension, Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
+use hickory_server::{
+    authority::{Catalog, ZoneType},
+    proto::{
+        rr::{Name, RData, Record},
+        xfer::Protocol,
+    },
+    resolver::{
+        config::{NameServerConfig, NameServerConfigGroup, ResolverOpts},
+        name_server::TokioConnectionProvider,
+    },
+    store::{
+        forwarder::{ForwardAuthority, ForwardConfig},
+        in_memory::InMemoryAuthority,
+    },
+    ServerFuture,
+};
 use http::{header::HeaderMap, Uri};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
@@ -18,9 +34,12 @@ use linkup::{
     Session, SessionAllocator, TargetService, UpdateSessionRequest,
 };
 use rustls::ServerConfig;
-use std::net::SocketAddr;
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    str::FromStr,
+};
 use std::{path::Path, sync::Arc};
-use tokio::signal;
+use tokio::{net::UdpSocket, signal};
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
@@ -117,9 +136,48 @@ pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Resu
     Ok(())
 }
 
-#[tokio::main]
-pub async fn local_linkup_main() -> std::io::Result<()> {
-    start_server_http(MemoryStringStore::default()).await
+pub async fn start_dns_server(linkup_session_name: String, domains: Vec<String>) {
+    let mut catalog = Catalog::new();
+
+    for domain in &domains {
+        let record_name = Name::from_str(&format!("{linkup_session_name}.{domain}.")).unwrap();
+
+        let authority = InMemoryAuthority::empty(record_name.clone(), ZoneType::Primary, false);
+
+        let record = Record::from_rdata(
+            record_name.clone(),
+            3600,
+            RData::A(Ipv4Addr::new(127, 0, 0, 1).into()),
+        );
+
+        authority.upsert(record, 0).await;
+
+        catalog.upsert(record_name.clone().into(), vec![Arc::new(authority)]);
+    }
+
+    let cf_name_server = NameServerConfig::new("1.1.1.1:53".parse().unwrap(), Protocol::Udp);
+    let name_servers = NameServerConfigGroup::from(vec![cf_name_server]);
+    let forward_config = ForwardConfig {
+        name_servers: name_servers.into(),
+        options: Some(ResolverOpts::default()),
+    };
+
+    let forwarder =
+        ForwardAuthority::builder_with_config(forward_config, TokioConnectionProvider::default())
+            .with_origin(Name::root())
+            .build()
+            .unwrap();
+
+    catalog.upsert(Name::root().into(), vec![Arc::new(forwarder)]);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8053));
+    let sock = UdpSocket::bind(&addr).await.unwrap();
+
+    let mut server = ServerFuture::new(catalog);
+    server.register_socket(sock);
+
+    println!("listening on {addr}");
+    server.block_until_done().await.unwrap();
 }
 
 async fn linkup_request_handler(

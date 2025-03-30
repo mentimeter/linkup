@@ -80,8 +80,6 @@ struct OrphanProcess {
 #[derive(Debug, Serialize)]
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
-    #[cfg(target_os = "macos")]
-    dnsmasq: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
 }
@@ -106,20 +104,6 @@ impl BackgroudServices {
             None => BackgroundServiceHealth::Stopped,
         };
 
-        #[cfg(target_os = "macos")]
-        let dnsmasq = if services::is_dnsmasq_installed() {
-            match services::Dnsmasq::new().running_pid() {
-                Some(pid) => {
-                    managed_pids.push(pid);
-
-                    BackgroundServiceHealth::Running(pid.as_u32())
-                }
-                None => BackgroundServiceHealth::Stopped,
-            }
-        } else {
-            BackgroundServiceHealth::NotInstalled
-        };
-
         let cloudflared = if services::is_cloudflared_installed() {
             match services::CloudflareTunnel::new().running_pid() {
                 Some(pid) => {
@@ -135,8 +119,6 @@ impl BackgroudServices {
 
         Self {
             linkup_server,
-            #[cfg(target_os = "macos")]
-            dnsmasq,
             cloudflared,
             possible_orphan_processes: find_potential_orphan_processes(managed_pids),
         }
@@ -262,20 +244,6 @@ impl Display for Health {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            write!(f, "  - dnsmasq        ")?;
-            match &self.background_services.dnsmasq {
-                BackgroundServiceHealth::NotInstalled => {
-                    writeln!(f, "{}", "NOT INSTALLED".yellow())?
-                }
-                BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
-                BackgroundServiceHealth::Running(pid) => {
-                    writeln!(f, "{} ({})", "RUNNING".blue(), pid)?
-                }
-            }
         }
 
         write!(f, "  - Cloudflared    ")?;

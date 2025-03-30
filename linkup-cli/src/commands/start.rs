@@ -46,8 +46,7 @@ pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) 
 
     let local_server = services::LocalServer::new();
     let cloudflare_tunnel = services::CloudflareTunnel::new();
-    #[cfg(target_os = "macos")]
-    let dnsmasq = services::Dnsmasq::new();
+    let local_dns_server = services::LocalDnsServer::new();
 
     let mut display_thread: Option<JoinHandle<()>> = None;
     let display_channel = sync::mpsc::channel::<bool>();
@@ -60,8 +59,7 @@ pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) 
             &[
                 services::LocalServer::NAME,
                 services::CloudflareTunnel::NAME,
-                #[cfg(target_os = "macos")]
-                services::Dnsmasq::NAME,
+                services::LocalDnsServer::NAME,
             ],
             status_update_channel.1,
             display_channel.1,
@@ -91,9 +89,8 @@ pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) 
         }
     }
 
-    #[cfg(target_os = "macos")]
     if exit_error.is_none() {
-        match dnsmasq
+        match local_dns_server
             .run_with_progress(&mut state, status_update_channel.0.clone())
             .await
         {
