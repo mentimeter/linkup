@@ -121,5 +121,3 @@ In order to be able to direct traffic to servers that might be running on `local
 In its default mode, Linkup has a fairly strong dependency on the network. For frontend engineers who are running development servers, they may have pages that require 50-100 mb of JavaScript to load.
 
 In order to speed up cases where the network might be a bottleneck, Linkup provides a local DNS mode that is optionally installable on developers' machines. Local DNS will resolve your application's domains directly to servers running on your local machine. This means that all requests that could have been handled directly by your local machine will not go over the public internet. Linkup also has the ability to manage certificates associated with these local domains to make the experience as seamless as possible.
-
-Currently, linkup local DNS uses [dnsmasq](https://www.dnsmasq.org/) to provide local DNS resolution.
