@@ -57,6 +57,8 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     setup_self_signed_certificates(&linkup_certs_dir_path(), &domains)
         .context("Failed to setup self-signed certificates")?;
 
+    println!("Local DNS installed!");
+
     Ok(())
 }
 
@@ -81,6 +83,8 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     uninstall_resolvers(&managed_top_level_domains)?;
     uninstall_self_signed_certificates(&linkup_certs_dir_path())
         .context("Failed to uninstall self-signed certificates")?;
+
+    println!("Local DNS uninstalled!");
 
     Ok(())
 }
