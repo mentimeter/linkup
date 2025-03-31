@@ -1,15 +1,22 @@
 use std::{fs, process};
 
-use crate::{
-    commands::{self},
-    linkup_dir_path, linkup_exe_path, InstallationMethod, Result,
-};
+use crate::{commands, linkup_dir_path, linkup_exe_path, prompt, InstallationMethod, Result};
 
 #[derive(clap::Args)]
 pub struct Args {}
 
 #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
 pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<()> {
+    let response = prompt("Are you sure you want to uninstall linkup? [y/N]: ")
+        .trim()
+        .to_lowercase();
+
+    if !matches!(response.as_str(), "y" | "yes") {
+        println!("Aborted!");
+
+        return Ok(());
+    }
+
     commands::stop(&commands::StopArgs {}, true)?;
 
     #[cfg(target_os = "macos")]
