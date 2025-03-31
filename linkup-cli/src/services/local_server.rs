@@ -7,12 +7,13 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use reqwest::StatusCode;
 use tokio::time::sleep;
 use url::Url;
 
 use crate::{
-    linkup_file_path,
+    linkup_certs_dir_path, linkup_file_path,
     local_config::{upload_state, LocalState},
     worker_client, Result,
 };
@@ -57,25 +58,18 @@ impl LocalServer {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
-        // When running with cargo (e.g. `cargo run -- start`), we should start the server also with cargo.
-        let mut command = if env::var("CARGO").is_ok() {
-            let mut cmd = process::Command::new("cargo");
-            cmd.env("RUST_LOG", "debug");
-            cmd.args([
-                "run",
-                "--",
-                "server",
-                "--pidfile",
-                self.pidfile_path.to_str().unwrap(),
-            ]);
-
-            cmd
-        } else {
-            let mut cmd = process::Command::new("linkup");
-            cmd.args(["server", "--pidfile", self.pidfile_path.to_str().unwrap()]);
-
-            cmd
-        };
+        let mut command = process::Command::new(
+            env::current_exe().context("Failed to get the current executable")?,
+        );
+        command.env("RUST_LOG", "debug");
+        command.args([
+            "server",
+            "--pidfile",
+            self.pidfile_path.to_str().unwrap(),
+            "local-worker",
+            "--certs-dir",
+            linkup_certs_dir_path().to_str().unwrap(),
+        ]);
 
         command
             .process_group(0)

@@ -247,7 +247,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
-        Commands::Server(args) => commands::server(args, &linkup_certs_dir_path()).await,
+        Commands::Server(args) => commands::server(args).await,
         Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,
         Commands::Update(args) => commands::update(args).await,
         Commands::Deploy(args) => commands::deploy(args).await,

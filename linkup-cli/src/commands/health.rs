@@ -80,9 +80,9 @@ struct OrphanProcess {
 #[derive(Debug, Serialize)]
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
-    #[cfg(target_os = "macos")]
-    dnsmasq: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
+    #[cfg(target_os = "macos")]
+    dns_server: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
 }
 
@@ -94,7 +94,8 @@ enum BackgroundServiceHealth {
 }
 
 impl BackgroudServices {
-    fn load() -> Self {
+    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+    fn load(state: &LocalState) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
         let linkup_server = match services::LocalServer::new().running_pid() {
@@ -104,20 +105,6 @@ impl BackgroudServices {
                 BackgroundServiceHealth::Running(pid.as_u32())
             }
             None => BackgroundServiceHealth::Stopped,
-        };
-
-        #[cfg(target_os = "macos")]
-        let dnsmasq = if services::is_dnsmasq_installed() {
-            match services::Dnsmasq::new().running_pid() {
-                Some(pid) => {
-                    managed_pids.push(pid);
-
-                    BackgroundServiceHealth::Running(pid.as_u32())
-                }
-                None => BackgroundServiceHealth::Stopped,
-            }
-        } else {
-            BackgroundServiceHealth::NotInstalled
         };
 
         let cloudflared = if services::is_cloudflared_installed() {
@@ -133,11 +120,26 @@ impl BackgroudServices {
             BackgroundServiceHealth::NotInstalled
         };
 
+        #[cfg(target_os = "macos")]
+        let dns_server =
+            if local_dns::is_installed(&crate::local_config::managed_domains(Some(state), &None)) {
+                match services::LocalDnsServer::new().running_pid() {
+                    Some(pid) => {
+                        managed_pids.push(pid);
+
+                        BackgroundServiceHealth::Running(pid.as_u32())
+                    }
+                    None => BackgroundServiceHealth::Stopped,
+                }
+            } else {
+                BackgroundServiceHealth::NotInstalled
+            };
+
         Self {
             linkup_server,
-            #[cfg(target_os = "macos")]
-            dnsmasq,
             cloudflared,
+            #[cfg(target_os = "macos")]
+            dns_server,
             possible_orphan_processes: find_potential_orphan_processes(managed_pids),
         }
     }
@@ -234,7 +236,7 @@ impl Health {
         Ok(Self {
             system: System::load(),
             session,
-            background_services: BackgroudServices::load(),
+            background_services: BackgroudServices::load(&state),
             linkup: Linkup::load()?,
             #[cfg(target_os = "macos")]
             local_dns: LocalDNS::load(&state)?,
@@ -266,8 +268,8 @@ impl Display for Health {
 
         #[cfg(target_os = "macos")]
         {
-            write!(f, "  - dnsmasq        ")?;
-            match &self.background_services.dnsmasq {
+            write!(f, "  - DNS Server     ")?;
+            match &self.background_services.dns_server {
                 BackgroundServiceHealth::NotInstalled => {
                     writeln!(f, "{}", "NOT INSTALLED".yellow())?
                 }

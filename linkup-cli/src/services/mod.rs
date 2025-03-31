@@ -7,17 +7,17 @@ use thiserror::Error;
 
 mod cloudflare_tunnel;
 #[cfg(target_os = "macos")]
-mod dnsmasq;
+mod local_dns_server;
 mod local_server;
 
+#[cfg(target_os = "macos")]
+pub use local_dns_server::LocalDnsServer;
 pub use local_server::LocalServer;
 pub use sysinfo::{Pid, Signal};
 pub use {
     cloudflare_tunnel::is_installed as is_cloudflared_installed,
     cloudflare_tunnel::CloudflareTunnel,
 };
-#[cfg(target_os = "macos")]
-pub use {dnsmasq::is_installed as is_dnsmasq_installed, dnsmasq::Dnsmasq};
 
 use crate::local_config::LocalState;
 

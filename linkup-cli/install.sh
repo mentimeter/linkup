@@ -10,11 +10,6 @@ check_dependencies() {
         printf '%s\n' "For more info check: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" 1>&2
         exit 1
     fi
-
-    if ! command_exists "dnsmasq"; then
-        printf '%s\n' "WARN: 'dnsmasq' is not installed. Some features will not work as expected. Please install it." 1>&2
-        printf '%s\n' "For more info check: https://thekelleys.org.uk/dnsmasq/doc.html" 1>&2
-    fi
 }
 
 detect_platform() {
