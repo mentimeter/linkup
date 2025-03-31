@@ -8,12 +8,7 @@ use clap::crate_version;
 use colored::Colorize;
 use serde::Serialize;
 
-use crate::{
-    linkup_dir_path,
-    local_config::LocalState,
-    services::{self, get_running_pid},
-    Result,
-};
+use crate::{linkup_dir_path, local_config::LocalState, services, Result};
 
 #[cfg(target_os = "macos")]
 use super::local_dns;

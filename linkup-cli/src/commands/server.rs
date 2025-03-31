@@ -19,7 +19,7 @@ pub enum ServerKind {
         certs_dir: String,
     },
 
-    DNS {
+    Dns {
         #[arg(long)]
         session_name: String,
         #[arg(long, value_parser, num_args = 1.., value_delimiter = ',')]
@@ -70,7 +70,7 @@ pub async fn server(args: &Args) -> Result<()> {
                 }
             }
         }
-        ServerKind::DNS {
+        ServerKind::Dns {
             session_name,
             domains,
         } => {

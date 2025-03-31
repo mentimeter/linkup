@@ -156,9 +156,8 @@ pub async fn start_dns_server(linkup_session_name: String, domains: Vec<String>)
     }
 
     let cf_name_server = NameServerConfig::new("1.1.1.1:53".parse().unwrap(), Protocol::Udp);
-    let name_servers = NameServerConfigGroup::from(vec![cf_name_server]);
     let forward_config = ForwardConfig {
-        name_servers: name_servers.into(),
+        name_servers: NameServerConfigGroup::from(vec![cf_name_server]),
         options: Some(ResolverOpts::default()),
     };
 

@@ -25,7 +25,7 @@ impl LocalDnsServer {
         }
     }
 
-    fn start(&self, session_name: &str, domains: &Vec<String>) -> Result<()> {
+    fn start(&self, session_name: &str, domains: &[String]) -> Result<()> {
         log::debug!("Starting {}", Self::NAME);
 
         let stdout_file = File::create(&self.stdout_file_path)?;
