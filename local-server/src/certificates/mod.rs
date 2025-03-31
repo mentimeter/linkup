@@ -252,7 +252,9 @@ fn firefox_profiles_cert_storages() -> Vec<String> {
             })
             .collect::<Vec<String>>(),
         Err(error) => {
-            eprintln!("Failed to load Firefox profiles: {}", error);
+            if !matches!(error.kind(), std::io::ErrorKind::NotFound) {
+                eprintln!("Failed to load Firefox profiles: {}", error);
+            }
 
             Vec::new()
         }
