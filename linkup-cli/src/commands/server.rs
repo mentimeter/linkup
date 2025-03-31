@@ -32,6 +32,7 @@ pub async fn server(args: &Args) -> Result<()> {
     fs::write(&args.pidfile, pid.to_string())?;
 
     match &args.server_kind {
+        #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
         ServerKind::LocalWorker { certs_dir } => {
             let config_store = MemoryStringStore::default();
 

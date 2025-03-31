@@ -6,9 +6,11 @@ use sysinfo::{get_current_pid, ProcessRefreshKind, RefreshKind, System};
 use thiserror::Error;
 
 mod cloudflare_tunnel;
+#[cfg(target_os = "macos")]
 mod local_dns_server;
 mod local_server;
 
+#[cfg(target_os = "macos")]
 pub use local_dns_server::LocalDnsServer;
 pub use local_server::LocalServer;
 pub use sysinfo::{Pid, Signal};
