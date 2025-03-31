@@ -8,7 +8,12 @@ use clap::crate_version;
 use colored::Colorize;
 use serde::Serialize;
 
-use crate::{linkup_dir_path, local_config::LocalState, services, Result};
+use crate::{
+    linkup_dir_path,
+    local_config::LocalState,
+    services::{self, get_running_pid},
+    Result,
+};
 
 #[cfg(target_os = "macos")]
 use super::local_dns;
@@ -81,6 +86,7 @@ struct OrphanProcess {
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
+    dns_server: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
 }
 
@@ -92,7 +98,7 @@ enum BackgroundServiceHealth {
 }
 
 impl BackgroudServices {
-    fn load() -> Self {
+    fn load(state: &LocalState) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
         let linkup_server = match services::LocalServer::new().running_pid() {
@@ -117,9 +123,24 @@ impl BackgroudServices {
             BackgroundServiceHealth::NotInstalled
         };
 
+        let dns_server =
+            if local_dns::is_installed(&crate::local_config::managed_domains(Some(state), &None)) {
+                match services::LocalDnsServer::new().running_pid() {
+                    Some(pid) => {
+                        managed_pids.push(pid);
+
+                        BackgroundServiceHealth::Running(pid.as_u32())
+                    }
+                    None => BackgroundServiceHealth::Stopped,
+                }
+            } else {
+                BackgroundServiceHealth::NotInstalled
+            };
+
         Self {
             linkup_server,
             cloudflared,
+            dns_server,
             possible_orphan_processes: find_potential_orphan_processes(managed_pids),
         }
     }
@@ -216,7 +237,7 @@ impl Health {
         Ok(Self {
             system: System::load(),
             session,
-            background_services: BackgroudServices::load(),
+            background_services: BackgroudServices::load(&state),
             linkup: Linkup::load()?,
             #[cfg(target_os = "macos")]
             local_dns: LocalDNS::load(&state)?,
@@ -241,6 +262,13 @@ impl Display for Health {
         writeln!(f, "{}", "Background sevices:".bold().italic())?;
         write!(f, "  - Linkup Server  ")?;
         match &self.background_services.linkup_server {
+            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
+            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
+            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
+        }
+
+        write!(f, "  - DNS Server     ")?;
+        match &self.background_services.dns_server {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
