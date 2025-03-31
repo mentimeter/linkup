@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use reqwest::StatusCode;
 use tokio::time::sleep;
 use url::Url;
@@ -57,7 +58,9 @@ impl LocalServer {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
-        let mut command = process::Command::new(env::current_exe().unwrap());
+        let mut command = process::Command::new(
+            env::current_exe().context("Failed to get the current executable")?,
+        );
         command.env("RUST_LOG", "debug");
         command.args([
             "server",

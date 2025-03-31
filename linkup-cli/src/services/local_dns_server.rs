@@ -6,6 +6,8 @@ use std::{
     process::{self, Stdio},
 };
 
+use anyhow::Context;
+
 use crate::{linkup_file_path, local_config::LocalState, Result};
 
 use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, Signal};
@@ -31,7 +33,9 @@ impl LocalDnsServer {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
-        let mut command = process::Command::new(env::current_exe().unwrap());
+        let mut command = process::Command::new(
+            env::current_exe().context("Failed to get the current executable")?,
+        );
         command.env("RUST_LOG", "debug");
         command.args([
             "server",
