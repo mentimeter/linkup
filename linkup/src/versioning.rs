@@ -6,6 +6,21 @@ pub enum VersionError {
     Parsing(String),
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum VersionChannel {
+    Stable,
+    Beta,
+}
+
+impl Display for VersionChannel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VersionChannel::Stable => write!(f, "stable"),
+            VersionChannel::Beta => write!(f, "beta"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Version {
     pub major: u16,
@@ -15,12 +30,11 @@ pub struct Version {
 }
 
 impl Version {
-    pub fn is_beta(&self) -> bool {
-        if let Some(pre_release) = &self.pre_release {
-            return pre_release.starts_with("next-");
+    pub fn channel(&self) -> VersionChannel {
+        match &self.pre_release {
+            Some(_) => VersionChannel::Beta,
+            None => VersionChannel::Stable,
         }
-
-        false
     }
 }
 
