@@ -19,7 +19,7 @@ use url::Url;
 
 use crate::{linkup_file_path, local_config::LocalState, worker_client::WorkerClient, Result};
 
-use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
+use super::{find_service_pid, BackgroundService, PidError};
 
 #[derive(thiserror::Error, Debug)]
 #[allow(dead_code)]
@@ -91,6 +91,7 @@ impl CloudflareTunnel {
             .stdout(stdout_file)
             .stderr(stderr_file)
             .stdin(Stdio::null())
+            .env("LINKUP_SERVICE_ID", Self::ID)
             .args([
                 "tunnel",
                 "--pidfile",
@@ -102,16 +103,6 @@ impl CloudflareTunnel {
             .spawn()?;
 
         Ok(tunnel_url)
-    }
-
-    pub fn stop(&self) {
-        log::debug!("Stopping {}", Self::NAME);
-
-        stop_pid_file(&self.pidfile_path, Signal::Interrupt);
-    }
-
-    pub fn running_pid(&self) -> Option<Pid> {
-        get_running_pid(&self.pidfile_path)
     }
 
     async fn dns_propagated(&self, tunnel_url: &Url) -> bool {
@@ -152,6 +143,7 @@ impl CloudflareTunnel {
 }
 
 impl BackgroundService for CloudflareTunnel {
+    const ID: &str = "cloudflare-tunnel";
     const NAME: &str = "Cloudflare Tunnel";
 
     async fn run_with_progress(
@@ -179,7 +171,7 @@ impl BackgroundService for CloudflareTunnel {
             return Err(Error::InvalidSessionName(state.linkup.session_name.clone()).into());
         }
 
-        if self.running_pid().is_some() {
+        if find_service_pid(Self::ID).is_some() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Started,
@@ -358,4 +350,33 @@ fn create_config_yml(tunnel_id: &str) -> Result<(), Error> {
     fs::write(dir_path.join("config.yml"), serialized)?;
 
     Ok(())
+}
+
+// Get the pid from a pidfile, but only return Some in case the pidfile is valid and the written pid on the file
+// is running.
+fn get_running_pid(file_path: &Path) -> Option<super::Pid> {
+    let pid = match get_pid(file_path) {
+        Ok(pid) => pid,
+        Err(_) => return None,
+    };
+
+    super::system().process(pid).map(|_| pid)
+}
+
+fn get_pid(file_path: &Path) -> Result<super::Pid, PidError> {
+    if let Err(e) = File::open(file_path) {
+        return Err(PidError::NoPidFile(e.to_string()));
+    }
+
+    match fs::read_to_string(file_path) {
+        Ok(content) => {
+            let pid_u32 = content
+                .trim()
+                .parse::<u32>()
+                .map_err(|e| PidError::BadPidFile(e.to_string()))?;
+
+            Ok(super::Pid::from_u32(pid_u32))
+        }
+        Err(e) => Err(PidError::BadPidFile(e.to_string())),
+    }
 }

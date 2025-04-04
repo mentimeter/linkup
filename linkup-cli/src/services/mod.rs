@@ -1,8 +1,6 @@
-use std::fs::{self, File};
-use std::path::Path;
 use std::{fmt::Display, sync};
 
-use sysinfo::{get_current_pid, ProcessRefreshKind, RefreshKind, System};
+use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 use thiserror::Error;
 
 mod cloudflare_tunnel;
@@ -50,6 +48,7 @@ pub struct RunUpdate {
 }
 
 pub trait BackgroundService {
+    const ID: &str;
     const NAME: &str;
 
     async fn run_with_progress(
@@ -92,40 +91,25 @@ pub enum PidError {
     BadPidFile(String),
 }
 
-fn get_pid(file_path: &Path) -> Result<Pid, PidError> {
-    if let Err(e) = File::open(file_path) {
-        return Err(PidError::NoPidFile(e.to_string()));
-    }
-
-    match fs::read_to_string(file_path) {
-        Ok(content) => {
-            let pid_u32 = content
-                .trim()
-                .parse::<u32>()
-                .map_err(|e| PidError::BadPidFile(e.to_string()))?;
-
-            Ok(Pid::from_u32(pid_u32))
+pub fn find_service_pid(service_id: &str) -> Option<Pid> {
+    for (pid, process) in system().processes() {
+        if process
+            .environ()
+            .iter()
+            .any(|item| item.to_string_lossy() == format!("LINKUP_SERVICE_ID={service_id}"))
+        {
+            return Some(*pid);
         }
-        Err(e) => Err(PidError::BadPidFile(e.to_string())),
     }
+
+    None
 }
 
-// Get the pid from a pidfile, but only return Some in case the pidfile is valid and the written pid on the file
-// is running.
-pub fn get_running_pid(file_path: &Path) -> Option<Pid> {
-    let pid = match get_pid(file_path) {
-        Ok(pid) => pid,
-        Err(_) => return None,
-    };
-
-    system().process(pid).map(|_| pid)
-}
-
-pub fn stop_pid_file(pid_file: &Path, signal: Signal) {
-    if let Some(pid) = get_running_pid(pid_file) {
+pub fn stop_service(service_id: &str) {
+    if let Some(pid) = find_service_pid(service_id) {
         system()
             .process(pid)
-            .map(|process| process.kill_with(signal));
+            .map(|process| process.kill_with(Signal::Interrupt));
     }
 }
 
@@ -133,8 +117,4 @@ pub fn system() -> System {
     System::new_with_specifics(
         RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
     )
-}
-
-pub fn get_current_process_pid() -> Pid {
-    get_current_pid().unwrap()
 }

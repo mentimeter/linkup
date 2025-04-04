@@ -1,13 +1,9 @@
 use crate::Result;
 use linkup::MemoryStringStore;
-use std::fs;
 use tokio::select;
 
 #[derive(clap::Args)]
 pub struct Args {
-    #[arg(long)]
-    pidfile: String,
-
     #[command(subcommand)]
     server_kind: ServerKind,
 }
@@ -28,9 +24,6 @@ pub enum ServerKind {
 }
 
 pub async fn server(args: &Args) -> Result<()> {
-    let pid = std::process::id();
-    fs::write(&args.pidfile, pid.to_string())?;
-
     match &args.server_kind {
         #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
         ServerKind::LocalWorker { certs_dir } => {

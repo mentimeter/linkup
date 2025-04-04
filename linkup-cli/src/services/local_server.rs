@@ -18,7 +18,7 @@ use crate::{
     worker_client, Result,
 };
 
-use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
+use super::{BackgroundService, PidError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -35,7 +35,6 @@ pub enum Error {
 pub struct LocalServer {
     stdout_file_path: PathBuf,
     stderr_file_path: PathBuf,
-    pidfile_path: PathBuf,
 }
 
 impl LocalServer {
@@ -43,7 +42,6 @@ impl LocalServer {
         Self {
             stdout_file_path: linkup_file_path("localserver-stdout"),
             stderr_file_path: linkup_file_path("localserver-stderr"),
-            pidfile_path: linkup_file_path("localserver-pid"),
         }
     }
 
@@ -62,10 +60,9 @@ impl LocalServer {
             env::current_exe().context("Failed to get the current executable")?,
         );
         command.env("RUST_LOG", "debug");
+        command.env("LINKUP_SERVICE_ID", Self::ID);
         command.args([
             "server",
-            "--pidfile",
-            self.pidfile_path.to_str().unwrap(),
             "local-worker",
             "--certs-dir",
             linkup_certs_dir_path().to_str().unwrap(),
@@ -79,16 +76,6 @@ impl LocalServer {
             .spawn()?;
 
         Ok(())
-    }
-
-    pub fn stop(&self) {
-        log::debug!("Stopping {}", Self::NAME);
-
-        stop_pid_file(&self.pidfile_path, Signal::Interrupt);
-    }
-
-    pub fn running_pid(&self) -> Option<Pid> {
-        get_running_pid(&self.pidfile_path)
     }
 
     async fn reachable(&self) -> bool {
@@ -116,6 +103,7 @@ impl LocalServer {
 }
 
 impl BackgroundService for LocalServer {
+    const ID: &str = "linkup-local-server";
     const NAME: &str = "Linkup local server";
 
     async fn run_with_progress(
