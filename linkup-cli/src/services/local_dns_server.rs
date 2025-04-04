@@ -10,12 +10,11 @@ use anyhow::Context;
 
 use crate::{linkup_file_path, local_config::LocalState, Result};
 
-use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, Signal};
+use super::BackgroundService;
 
 pub struct LocalDnsServer {
     stdout_file_path: PathBuf,
     stderr_file_path: PathBuf,
-    pidfile_path: PathBuf,
 }
 
 impl LocalDnsServer {
@@ -23,7 +22,6 @@ impl LocalDnsServer {
         Self {
             stdout_file_path: linkup_file_path("localdns-stdout"),
             stderr_file_path: linkup_file_path("localdns-stderr"),
-            pidfile_path: linkup_file_path("localdns-pid"),
         }
     }
 
@@ -37,10 +35,9 @@ impl LocalDnsServer {
             env::current_exe().context("Failed to get the current executable")?,
         );
         command.env("RUST_LOG", "debug");
+        command.env("LINKUP_SERVICE_ID", Self::ID);
         command.args([
             "server",
-            "--pidfile",
-            self.pidfile_path.to_str().unwrap(),
             "dns",
             "--session-name",
             session_name,
@@ -57,19 +54,10 @@ impl LocalDnsServer {
 
         Ok(())
     }
-
-    pub fn stop(&self) {
-        log::debug!("Stopping {}", Self::NAME);
-
-        stop_pid_file(&self.pidfile_path, Signal::Interrupt);
-    }
-
-    pub fn running_pid(&self) -> Option<Pid> {
-        get_running_pid(&self.pidfile_path)
-    }
 }
 
 impl BackgroundService for LocalDnsServer {
+    const ID: &str = "linkup-local-dns-server";
     const NAME: &str = "Local DNS server";
 
     async fn run_with_progress(

@@ -5,6 +5,7 @@ use anyhow::Context;
 
 use crate::env_files::clear_env_file;
 use crate::local_config::LocalState;
+use crate::services::{stop_service, BackgroundService};
 use crate::{services, Result};
 
 #[derive(clap::Args)]
@@ -31,10 +32,10 @@ pub fn stop(_args: &Args, clear_env: bool) -> Result<()> {
         }
     }
 
-    services::LocalServer::new().stop();
-    services::CloudflareTunnel::new().stop();
+    stop_service(services::LocalServer::ID);
+    stop_service(services::CloudflareTunnel::ID);
     #[cfg(target_os = "macos")]
-    services::LocalDnsServer::new().stop();
+    stop_service(services::LocalDnsServer::ID);
 
     println!("Stopped linkup");
 

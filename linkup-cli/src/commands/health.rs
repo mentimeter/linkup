@@ -8,7 +8,12 @@ use clap::crate_version;
 use colored::Colorize;
 use serde::Serialize;
 
-use crate::{linkup_dir_path, local_config::LocalState, services, Result};
+use crate::{
+    linkup_dir_path,
+    local_config::LocalState,
+    services::{self, find_service_pid, BackgroundService},
+    Result,
+};
 
 #[cfg(target_os = "macos")]
 use super::local_dns;
@@ -98,7 +103,7 @@ impl BackgroudServices {
     fn load(state: &LocalState) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
-        let linkup_server = match services::LocalServer::new().running_pid() {
+        let linkup_server = match find_service_pid(services::LocalServer::ID) {
             Some(pid) => {
                 managed_pids.push(pid);
 
@@ -108,7 +113,7 @@ impl BackgroudServices {
         };
 
         let cloudflared = if services::is_cloudflared_installed() {
-            match services::CloudflareTunnel::new().running_pid() {
+            match find_service_pid(services::CloudflareTunnel::ID) {
                 Some(pid) => {
                     managed_pids.push(pid);
 
@@ -123,7 +128,7 @@ impl BackgroudServices {
         #[cfg(target_os = "macos")]
         let dns_server =
             if local_dns::is_installed(&crate::local_config::managed_domains(Some(state), &None)) {
-                match services::LocalDnsServer::new().running_pid() {
+                match find_service_pid(services::LocalDnsServer::ID) {
                     Some(pid) => {
                         managed_pids.push(pid);
 
@@ -146,7 +151,7 @@ impl BackgroudServices {
 }
 
 fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<OrphanProcess> {
-    let current_pid = services::get_current_process_pid();
+    let current_pid = sysinfo::get_current_pid().unwrap();
     let mut orphans = Vec::new();
 
     for (pid, process) in services::system().processes() {
