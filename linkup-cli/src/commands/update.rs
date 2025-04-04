@@ -6,6 +6,25 @@ pub struct Args {
     /// Ignore the cached last version and check remote server again for the latest version.
     #[arg(long)]
     skip_cache: bool,
+
+    /// Which channel to update to/with.
+    #[arg(long)]
+    channel: Option<DesiredChannel>,
+}
+
+#[derive(Clone, clap::ValueEnum)]
+enum DesiredChannel {
+    Stable,
+    Beta,
+}
+
+impl From<&DesiredChannel> for linkup::VersionChannel {
+    fn from(value: &DesiredChannel) -> Self {
+        match value {
+            DesiredChannel::Stable => linkup::VersionChannel::Stable,
+            DesiredChannel::Beta => linkup::VersionChannel::Beta,
+        }
+    }
 }
 
 pub async fn update(args: &Args) -> Result<()> {
@@ -15,7 +34,9 @@ pub async fn update(args: &Args) -> Result<()> {
         release::clear_cache();
     }
 
-    match release::available_update(&current_version()).await {
+    let requested_channel = args.channel.as_ref().map(linkup::VersionChannel::from);
+
+    match release::available_update(&current_version(), requested_channel).await {
         Some(update) => {
             let new_linkup_path = update.linkup.download_decompressed("linkup").await.unwrap();
 
@@ -38,7 +59,7 @@ pub async fn update(args: &Args) -> Result<()> {
 }
 
 pub async fn new_version_available() -> bool {
-    release::available_update(&current_version())
+    release::available_update(&current_version(), None)
         .await
         .is_some()
 }

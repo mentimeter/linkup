@@ -11,7 +11,7 @@ use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
     allow_all_cors, get_additional_headers, get_target_service, CreatePreviewRequest, NameKind,
-    Session, SessionAllocator, UpdateSessionRequest, Version,
+    Session, SessionAllocator, UpdateSessionRequest, Version, VersionChannel,
 };
 use serde::{Deserialize, Serialize};
 use tower_service::Service;
@@ -542,7 +542,7 @@ async fn authenticate(
                 Some(value) => match Version::try_from(value.to_str().unwrap()) {
                     Ok(client_version) => {
                         if client_version < state.min_supported_client_version
-                            && !client_version.is_beta()
+                            && client_version.channel() != VersionChannel::Beta
                         {
                             return (
                                     StatusCode::UNAUTHORIZED,
