@@ -1741,6 +1741,7 @@ dependencies = [
  "hickory-resolver 0.24.2",
  "linkup",
  "linkup-local-server",
+ "linkup-server",
  "log",
  "mockall",
  "mockito",
@@ -1779,6 +1780,18 @@ dependencies = [
  "tokio",
  "tower 0.5.2",
  "tower-http",
+]
+
+[[package]]
+name = "linkup-server"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.1",
+ "axum-server",
+ "console_error_panic_hook",
+ "tower-service",
+ "worker",
+ "worker-macros",
 ]
 
 [[package]]

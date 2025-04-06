@@ -45,6 +45,8 @@ hex = "0.4.3"
 tar = "0.4.43"
 flate2 = "1.0.35"
 
+linkup-server = { path = "../linkup-server", features = ["local"] }
+
 [dev-dependencies]
 mockall = "0.13.1"
 mockito = "1.6.1"

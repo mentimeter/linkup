@@ -1,0 +1,30 @@
+[package]
+name = "linkup-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.1", features = [
+    "json",
+    "query",
+], default-features = false }
+
+axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
+
+console_error_panic_hook = { version = "0.1.7", optional = true }
+tower-service = { version = "0.3.3", optional = true }
+worker = { version = "0.5.0", features = ['http', 'axum'], optional = true }
+worker-macros = { version = "0.5.0", features = ['http'], optional = true }
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[features]
+all = ["local", "worker"]
+local = ["dep:axum-server"]
+worker = [
+    "dep:console_error_panic_hook",
+    "dep:tower-service",
+    "dep:worker",
+    "dep:worker-macros",
+]
