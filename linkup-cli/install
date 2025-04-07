@@ -252,9 +252,9 @@ def main() -> None:
 
     check_dependencies()
 
-    os, arch = detect_platform()
+    user_os, user_arch = detect_platform()
     release = get_release_data(context.channel)
-    download_and_extract(os, arch, release)
+    download_and_extract(user_os, user_arch, release)
 
     setup_path()
 
