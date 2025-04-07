@@ -8,15 +8,15 @@ if python_version.major < 3 or python_version.minor < 2:
     exit(1)
 
 import argparse
+import json
 import os
 import re
 import shutil
 import tarfile
 import urllib.request
-import json
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from dataclasses import dataclass
 from typing import Any, Optional, Tuple, List
 
 LINKUP_BIN_PATH = Path.home() / ".linkup" / "bin"
