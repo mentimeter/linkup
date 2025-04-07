@@ -32,7 +32,7 @@ class Shell(Enum):
         value_lower = value.lower()
 
         if value_lower == "bash":
-            return Shell.zsh
+            return Shell.bash
         elif value_lower == "zsh":
             return Shell.zsh
         elif value_lower == "fish":
