@@ -245,7 +245,7 @@ def parse_arguments(args: List[str]) -> Context:
 
 def main() -> None:
     if command_exists("linkup"):
-        print("Linkup is already installed. To update it, run 'linkup update'.")
+        print("Linkup is already installed.")
         sys.exit(0)
 
     context = parse_arguments(sys.argv[1:])
