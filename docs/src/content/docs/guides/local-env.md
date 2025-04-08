@@ -20,7 +20,7 @@ brew tap mentimeter/mentimeter
 brew install linkup
 ```
 
-### Using the `install` script
+### Using the `install.py` script
 
 ```sh
 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install | python3
