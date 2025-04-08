@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::Context;
 
-use crate::{linkup_file_path, local_config::LocalState, Result};
+use crate::{commands::local_dns, linkup_file_path, local_config::LocalState, Result};
 
 use super::BackgroundService;
 
@@ -69,6 +69,16 @@ impl BackgroundService for LocalDnsServer {
 
         let session_name = state.linkup.session_name.clone();
         let domains = state.domain_strings();
+
+        if !local_dns::is_installed(&domains) {
+            self.notify_update_with_details(
+                &status_sender,
+                super::RunStatus::Skipped,
+                "Not installed",
+            );
+
+            return Ok(());
+        }
 
         if let Err(e) = self.start(&session_name, &domains) {
             self.notify_update_with_details(
