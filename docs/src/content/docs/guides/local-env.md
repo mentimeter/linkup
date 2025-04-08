@@ -23,11 +23,11 @@ brew install linkup
 ### Using the `install` script
 
 ```sh
-curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install | sh
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install | python3
 
 # Or to install a pre-release version (beta)
 
-curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install | LINKUP_CHANNEL=beta sh
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install | python3 - --channel beta
 ```
 
 Once you have the cli installed you can start a linkup session by running:

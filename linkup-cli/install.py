@@ -228,14 +228,12 @@ def setup_path() -> None:
 
 
 def parse_arguments(args: List[str]) -> Context:
-    env_channel = os.environ.get("LINKUP_CHANNEL", "stable")
-
     parser = argparse.ArgumentParser(description="Install Linkup CLI")
 
     parser.add_argument(
         "--channel",
         choices=["stable", "beta"],
-        default=env_channel,
+        default="stable",
         help="Release channel to use (default: stable)"
     )
 
