@@ -255,7 +255,7 @@ def main() -> None:
 
     user_os, user_arch = detect_platform()
     release = get_release_data(context.channel)
-    download_and_extract(user_os, user_arch, release)
+    download_and_extract(user_os, user_arch, context.channel, release)
 
     setup_path()
 
