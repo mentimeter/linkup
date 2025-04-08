@@ -126,19 +126,23 @@ impl BackgroudServices {
         };
 
         #[cfg(target_os = "macos")]
-        let dns_server =
-            if local_dns::is_installed(&crate::local_config::managed_domains(Some(state), &None)) {
-                match find_service_pid(services::LocalDnsServer::ID) {
-                    Some(pid) => {
-                        managed_pids.push(pid);
+        let dns_server = match find_service_pid(services::LocalDnsServer::ID) {
+            Some(pid) => {
+                managed_pids.push(pid);
 
-                        BackgroundServiceHealth::Running(pid.as_u32())
-                    }
-                    None => BackgroundServiceHealth::Stopped,
+                BackgroundServiceHealth::Running(pid.as_u32())
+            }
+            None => {
+                if local_dns::is_installed(&crate::local_config::managed_domains(
+                    Some(state),
+                    &None,
+                )) {
+                    BackgroundServiceHealth::Stopped
+                } else {
+                    BackgroundServiceHealth::NotInstalled
                 }
-            } else {
-                BackgroundServiceHealth::NotInstalled
-            };
+            }
+        };
 
         Self {
             linkup_server,
