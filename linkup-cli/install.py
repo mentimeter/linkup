@@ -178,8 +178,9 @@ def get_latest_stable_release() -> GithubRelease:
         return GithubRelease.from_json(json.load(response))
 
 
-def download_and_extract(user_os: OS, user_arch: Arch, release: GithubRelease) -> None:
-    print(f"Looking for asset on release {release.tag_name} for {user_os.value}/{user_arch.value}")
+def download_and_extract(user_os: OS, user_arch: Arch, channel: Channel, release: GithubRelease) -> None:
+    print(f"Latest release on {channel.name} channel: {release.tag_name}.")
+    print(f"Looking for asset for {user_os.value}/{user_arch.value}...")
     asset_pattern = re.compile(rf"linkup-.+-{user_arch.value}-{user_os.value}\.tar\.gz$")
 
     download_url = next(
