@@ -6,6 +6,7 @@ use std::{
 
 use clap::crate_version;
 use colored::Colorize;
+use regex::Regex;
 use serde::Serialize;
 
 use crate::{
@@ -155,32 +156,53 @@ impl BackgroudServices {
 }
 
 fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<OrphanProcess> {
+    let env_var_format = Regex::new(r"[A-Z_][A-Z0-9_]*=.*").unwrap();
+
     let current_pid = sysinfo::get_current_pid().unwrap();
     let mut orphans = Vec::new();
 
     for (pid, process) in services::system().processes() {
-        if process
-            .cmd()
-            .iter()
-            .any(|item| item.to_string_lossy().contains("linkup"))
-            && pid != &current_pid
-            && !managed_pids.contains(pid)
-        {
-            let process_cmd = process
-                .cmd()
-                .iter()
-                .map(|s| s.to_string_lossy())
-                .collect::<Vec<_>>()
-                .join(" ");
+        if pid == &current_pid || managed_pids.contains(pid) {
+            continue;
+        }
 
-            orphans.push(OrphanProcess {
-                cmd: process_cmd,
-                pid: pid.as_u32(),
-            });
+        let command = process.cmd();
+        for part in command.iter() {
+            let mut part_string = part.to_string_lossy();
+
+            if env_var_format.is_match(&part_string) {
+                part_string = part_string
+                    .replace(linkup_dir_path().to_str().unwrap(), "")
+                    .into();
+            }
+
+            if part_string.contains("linkup") {
+                let full_command = command
+                    .iter()
+                    .map(|part| part.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                orphans.push(OrphanProcess {
+                    cmd: truncate_with_ellipsis(&full_command, 120),
+                    pid: pid.as_u32(),
+                });
+            }
         }
     }
 
     orphans
+}
+
+fn truncate_with_ellipsis(value: &str, max_len: usize) -> String {
+    if value.len() > max_len {
+        let mut truncated = value.chars().take(max_len - 3).collect::<String>();
+
+        truncated.push_str("...");
+        truncated
+    } else {
+        value.to_string()
+    }
 }
 
 #[derive(Debug, Serialize)]
