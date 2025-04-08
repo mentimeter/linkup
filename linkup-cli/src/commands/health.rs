@@ -156,7 +156,7 @@ impl BackgroudServices {
 }
 
 fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<OrphanProcess> {
-    let env_var_format = Regex::new(r"[A-Z_][A-Z0-9_]*=.*").unwrap();
+    let env_var_format = Regex::new(r"^[A-Z_][A-Z0-9_]*=.*$").unwrap();
 
     let current_pid = sysinfo::get_current_pid().unwrap();
     let mut orphans = Vec::new();
@@ -172,7 +172,7 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
 
             if env_var_format.is_match(&part_string) {
                 part_string = part_string
-                    .replace(linkup_dir_path().to_str().unwrap(), "")
+                    .replace(&linkup_dir_path().to_string_lossy().to_string(), "")
                     .into();
             }
 
