@@ -30,7 +30,7 @@ pub async fn local(args: &Args) -> Result<()> {
             "{}",
             "Seems like you don't have any state yet to point to local.".yellow()
         );
-        println!("{}", "Have you run `linkup start` at least once?".yellow());
+        println!("{}", "Have you run 'linkup start' at least once?".yellow());
 
         return Ok(());
     }
@@ -38,7 +38,7 @@ pub async fn local(args: &Args) -> Result<()> {
     if find_service_pid(services::LocalServer::ID).is_none() {
         println!(
             "{}",
-            "Seems like your local Linkup server is not running. Please run `linkup start` first."
+            "Seems like your local Linkup server is not running. Please run 'linkup start' first."
                 .yellow()
         );
 

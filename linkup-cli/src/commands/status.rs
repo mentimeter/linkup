@@ -45,7 +45,10 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
             "{}",
             "\nSeems like you don't have any state yet, so there is no status to report.".yellow()
         );
-        println!("{}", "Have you run `start` at least once?\n".yellow());
+        println!(
+            "{}",
+            "Have you run 'linkup start' at least once?\n".yellow()
+        );
 
         return Ok(());
     }
