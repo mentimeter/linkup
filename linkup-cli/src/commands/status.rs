@@ -43,12 +43,9 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
     if !LocalState::exists() {
         println!(
             "{}",
-            "\nSeems like you don't have any state yet, so there is no status to report.".yellow()
+            "Seems like you don't have any state yet, so there is no status to report.".yellow()
         );
-        println!(
-            "{}",
-            "Have you run 'linkup start' at least once?\n".yellow()
-        );
+        println!("{}", "Have you run 'linkup start' at least once?".yellow());
 
         return Ok(());
     }
