@@ -1,6 +1,6 @@
 [package]
 name = "linkup-cli"
-version = "2.2.0"
+version = "3.0.0"
 edition = "2021"
 build = "build.rs"
 
@@ -9,6 +9,7 @@ name = "linkup"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
 clap = { version = "4.5.27", features = ["derive", "cargo"] }
 clap_complete = "4.5.42"
 cloudflare = { path = "../cloudflare", default-features = false, features = [
@@ -47,3 +48,6 @@ flate2 = "1.0.35"
 [dev-dependencies]
 mockall = "0.13.1"
 mockito = "1.6.1"
+
+[features]
+default = []

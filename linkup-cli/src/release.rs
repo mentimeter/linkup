@@ -5,6 +5,7 @@ use std::{
 };
 
 use flate2::read::GzDecoder;
+use linkup::VersionChannel;
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use tar::Archive;
@@ -12,7 +13,8 @@ use url::Url;
 
 use crate::{linkup_file_path, Version};
 
-const CACHED_LATEST_RELEASE_FILE: &str = "latest_release.json";
+const CACHED_LATEST_STABLE_RELEASE_FILE: &str = "latest_release_stable.json";
+const CACHED_LATEST_BETA_RELEASE_FILE: &str = "latest_release_beta.json";
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -113,42 +115,6 @@ impl Release {
 
         asset
     }
-
-    /// Examples of Caddy asset files:
-    /// - caddy-darwin-amd64.tar.gz
-    /// - caddy-darwin-arm64.tar.gz
-    /// - caddy-linux-amd64.tar.gz
-    /// - caddy-linux-arm64.tar.gz
-    pub fn caddy_asset(&self, os: &str, arch: &str) -> Option<Asset> {
-        let lookup_os = match os {
-            "macos" => "darwin",
-            "linux" => "linux",
-            lookup_os => lookup_os,
-        };
-
-        let lookup_arch = match arch {
-            "x86_64" => "amd64",
-            "aarch64" => "arm64",
-            lookup_arch => lookup_arch,
-        };
-
-        let asset = self
-            .assets
-            .iter()
-            .find(|asset| asset.name == format!("caddy-{}-{}.tar.gz", lookup_os, lookup_arch))
-            .cloned();
-
-        if asset.is_none() {
-            log::debug!(
-                "Caddy release for OS '{}' and ARCH '{}' not found on version {}",
-                lookup_os,
-                lookup_arch,
-                &self.version
-            );
-        }
-
-        asset
-    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -159,18 +125,45 @@ struct CachedLatestRelease {
 
 pub struct Update {
     pub linkup: Asset,
-    pub caddy: Asset,
 }
 
-pub async fn available_update(current_version: &Version) -> Option<Update> {
+pub async fn available_update(
+    current_version: &Version,
+    desired_channel: Option<linkup::VersionChannel>,
+) -> Option<Update> {
     let os = env::consts::OS;
     let arch = env::consts::ARCH;
 
-    let latest_release = match cached_latest_release().await {
-        Some(cached_latest_release) => cached_latest_release.release,
+    let channel = desired_channel.unwrap_or_else(|| current_version.channel());
+    log::debug!("Looking for available update on '{channel}' channel.");
+
+    let latest_release = match cached_latest_release(&channel).await {
+        Some(cached_latest_release) => {
+            let release = cached_latest_release.release;
+
+            log::debug!("Found cached release: {}", release.version);
+
+            release
+        }
         None => {
-            let release = match fetch_latest_release().await {
-                Ok(release) => release,
+            log::debug!("No cached release found. Fetching from remote...");
+
+            let release = match channel {
+                linkup::VersionChannel::Stable => fetch_stable_release().await,
+                linkup::VersionChannel::Beta => fetch_beta_release().await,
+            };
+
+            let release = match release {
+                Ok(Some(release)) => {
+                    log::debug!("Found release {} on channel '{channel}'.", release.version);
+
+                    release
+                }
+                Ok(None) => {
+                    log::debug!("No release found on remote for channel '{channel}'");
+
+                    return None;
+                }
                 Err(error) => {
                     log::error!("Failed to fetch the latest release: {}", error);
 
@@ -178,7 +171,12 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
                 }
             };
 
-            match fs::File::create(linkup_file_path(CACHED_LATEST_RELEASE_FILE)) {
+            let cache_file = match channel {
+                VersionChannel::Stable => CACHED_LATEST_STABLE_RELEASE_FILE,
+                VersionChannel::Beta => CACHED_LATEST_BETA_RELEASE_FILE,
+            };
+
+            match fs::File::create(linkup_file_path(cache_file)) {
                 Ok(new_file) => {
                     let release_cache = CachedLatestRelease {
                         time: now(),
@@ -213,21 +211,21 @@ pub async fn available_update(current_version: &Version) -> Option<Update> {
         }
     };
 
-    if current_version >= &latest_version {
+    // Only check the version if the channel is the same.
+    if current_version.channel() == latest_version.channel() && current_version >= &latest_version {
+        log::debug!("Current version ({current_version}) is newer than latest ({latest_version}).");
+
         return None;
     }
 
-    let caddy = latest_release
-        .caddy_asset(os, arch)
-        .expect("Caddy asset to be present on a release");
     let linkup = latest_release
         .linkup_asset(os, arch)
         .expect("Linkup asset to be present on a release");
 
-    Some(Update { linkup, caddy })
+    Some(Update { linkup })
 }
 
-async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
+async fn fetch_stable_release() -> Result<Option<Release>, reqwest::Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/latest"
         .parse()
         .unwrap();
@@ -249,18 +247,15 @@ async fn fetch_latest_release() -> Result<Release, reqwest::Error> {
         .build()
         .unwrap();
 
-    client.execute(req).await?.json().await
+    let release = client.execute(req).await?.json().await?;
+
+    Ok(Some(release))
 }
 
-pub async fn fetch_release(version: &Version) -> Result<Option<Release>, reqwest::Error> {
-    let tag = version.to_string();
-
-    let url: Url = format!(
-        "https://api.github.com/repos/mentimeter/linkup/releases/tags/{}",
-        &tag
-    )
-    .parse()
-    .unwrap();
+pub async fn fetch_beta_release() -> Result<Option<Release>, reqwest::Error> {
+    let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases"
+        .parse()
+        .unwrap();
 
     let mut req = reqwest::Request::new(reqwest::Method::GET, url);
     let headers = req.headers_mut();
@@ -279,11 +274,22 @@ pub async fn fetch_release(version: &Version) -> Result<Option<Release>, reqwest
         .build()
         .unwrap();
 
-    client.execute(req).await?.json().await
+    let releases: Vec<Release> = client.execute(req).await?.json().await?;
+
+    let beta_release = releases
+        .into_iter()
+        .find(|release| release.version.starts_with("0.0.0-next-"));
+
+    Ok(beta_release)
 }
 
-async fn cached_latest_release() -> Option<CachedLatestRelease> {
-    let path = linkup_file_path(CACHED_LATEST_RELEASE_FILE);
+async fn cached_latest_release(channel: &VersionChannel) -> Option<CachedLatestRelease> {
+    let file = match channel {
+        VersionChannel::Stable => CACHED_LATEST_STABLE_RELEASE_FILE,
+        VersionChannel::Beta => CACHED_LATEST_STABLE_RELEASE_FILE,
+    };
+
+    let path = linkup_file_path(file);
     if !path.exists() {
         return None;
     }
@@ -325,11 +331,14 @@ async fn cached_latest_release() -> Option<CachedLatestRelease> {
 }
 
 pub fn clear_cache() {
-    let path = linkup_file_path(CACHED_LATEST_RELEASE_FILE);
-
-    if path.exists() {
-        if let Err(error) = fs::remove_file(path) {
-            log::error!("Failed to delete latest release cache file: {}", error);
+    for path in [
+        linkup_file_path(CACHED_LATEST_STABLE_RELEASE_FILE),
+        linkup_file_path(CACHED_LATEST_BETA_RELEASE_FILE),
+    ] {
+        if path.exists() {
+            if let Err(error) = fs::remove_file(&path) {
+                log::error!("Failed to delete release cache file {path:?}: {error}");
+            }
         }
     }
 }

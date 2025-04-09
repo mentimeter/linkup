@@ -7,19 +7,18 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use reqwest::StatusCode;
 use tokio::time::sleep;
 use url::Url;
 
 use crate::{
-    linkup_file_path,
+    linkup_certs_dir_path, linkup_file_path,
     local_config::{upload_state, LocalState},
-    worker_client,
+    worker_client, Result,
 };
 
-use super::{get_running_pid, stop_pid_file, BackgroundService, Pid, PidError, Signal};
-
-pub const LINKUP_LOCAL_SERVER_PORT: u16 = 9066;
+use super::{BackgroundService, PidError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -36,7 +35,6 @@ pub enum Error {
 pub struct LocalServer {
     stdout_file_path: PathBuf,
     stderr_file_path: PathBuf,
-    pidfile_path: PathBuf,
 }
 
 impl LocalServer {
@@ -44,39 +42,31 @@ impl LocalServer {
         Self {
             stdout_file_path: linkup_file_path("localserver-stdout"),
             stderr_file_path: linkup_file_path("localserver-stderr"),
-            pidfile_path: linkup_file_path("localserver-pid"),
         }
     }
 
+    /// For internal communication to local-server, we only use the port 80 (HTTP).
     pub fn url() -> Url {
-        Url::parse(&format!("http://localhost:{}", LINKUP_LOCAL_SERVER_PORT))
-            .expect("linkup url invalid")
+        Url::parse("http://localhost:80").expect("linkup url invalid")
     }
 
-    fn start(&self) -> Result<(), Error> {
+    fn start(&self) -> Result<()> {
         log::debug!("Starting {}", Self::NAME);
 
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
-        // When running with cargo (e.g. `cargo run -- start`), we should start the server also with cargo.
-        let mut command = if env::var("CARGO").is_ok() {
-            let mut cmd = process::Command::new("cargo");
-            cmd.args([
-                "run",
-                "--",
-                "server",
-                "--pidfile",
-                self.pidfile_path.to_str().unwrap(),
-            ]);
-
-            cmd
-        } else {
-            let mut cmd = process::Command::new("linkup");
-            cmd.args(["server", "--pidfile", self.pidfile_path.to_str().unwrap()]);
-
-            cmd
-        };
+        let mut command = process::Command::new(
+            env::current_exe().context("Failed to get the current executable")?,
+        );
+        command.env("RUST_LOG", "debug");
+        command.env("LINKUP_SERVICE_ID", Self::ID);
+        command.args([
+            "server",
+            "local-worker",
+            "--certs-dir",
+            linkup_certs_dir_path().to_str().unwrap(),
+        ]);
 
         command
             .process_group(0)
@@ -86,16 +76,6 @@ impl LocalServer {
             .spawn()?;
 
         Ok(())
-    }
-
-    pub fn stop(&self) {
-        log::debug!("Stopping {}", Self::NAME);
-
-        stop_pid_file(&self.pidfile_path, Signal::Interrupt);
-    }
-
-    pub fn running_pid(&self) -> Option<Pid> {
-        get_running_pid(&self.pidfile_path)
     }
 
     async fn reachable(&self) -> bool {
@@ -110,7 +90,7 @@ impl LocalServer {
         matches!(response, Ok(res) if res.status() == StatusCode::OK)
     }
 
-    async fn update_state(&self, state: &mut LocalState) -> Result<(), Error> {
+    async fn update_state(&self, state: &mut LocalState) -> Result<()> {
         let session_name = upload_state(state).await?;
 
         state.linkup.session_name = session_name;
@@ -122,14 +102,15 @@ impl LocalServer {
     }
 }
 
-impl BackgroundService<Error> for LocalServer {
+impl BackgroundService for LocalServer {
+    const ID: &str = "linkup-local-server";
     const NAME: &str = "Linkup local server";
 
     async fn run_with_progress(
         &self,
         state: &mut LocalState,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
         if self.reachable().await {
@@ -176,7 +157,7 @@ impl BackgroundService<Error> for LocalServer {
                         "Failed to reach server",
                     );
 
-                    return Err(Error::ServerUnreachable);
+                    return Err(Error::ServerUnreachable.into());
                 }
             }
         }

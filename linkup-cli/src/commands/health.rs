@@ -6,10 +6,17 @@ use std::{
 
 use clap::crate_version;
 use colored::Colorize;
+use regex::Regex;
 use serde::Serialize;
 
-use crate::{linkup_dir_path, local_config::LocalState, services, CliError};
+use crate::{
+    linkup_dir_path,
+    local_config::LocalState,
+    services::{self, find_service_pid, BackgroundService},
+    Result,
+};
 
+#[cfg(target_os = "macos")]
 use super::local_dns;
 
 #[derive(clap::Args)]
@@ -19,7 +26,7 @@ pub struct Args {
     json: bool,
 }
 
-pub fn health(args: &Args) -> Result<(), CliError> {
+pub fn health(args: &Args) -> Result<()> {
     let health = Health::load()?;
 
     let health = if args.json {
@@ -57,17 +64,16 @@ struct Session {
 }
 
 impl Session {
-    fn load() -> Result<Self, CliError> {
-        let state = LocalState::load()?;
-
-        Ok(Self {
-            name: state.linkup.session_name,
+    fn load(state: &LocalState) -> Self {
+        Self {
+            name: state.linkup.session_name.clone(),
             tunnel_url: state
                 .linkup
                 .tunnel
+                .clone()
                 .map(|url| url.as_str().to_string())
                 .unwrap_or("None".to_string()),
-        })
+        }
     }
 }
 
@@ -80,9 +86,9 @@ struct OrphanProcess {
 #[derive(Debug, Serialize)]
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
-    caddy: BackgroundServiceHealth,
-    dnsmasq: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
+    #[cfg(target_os = "macos")]
+    dns_server: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
 }
 
@@ -94,10 +100,11 @@ enum BackgroundServiceHealth {
 }
 
 impl BackgroudServices {
-    fn load() -> Self {
+    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+    fn load(state: &LocalState) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
-        let linkup_server = match services::LocalServer::new().running_pid() {
+        let linkup_server = match find_service_pid(services::LocalServer::ID) {
             Some(pid) => {
                 managed_pids.push(pid);
 
@@ -106,34 +113,8 @@ impl BackgroudServices {
             None => BackgroundServiceHealth::Stopped,
         };
 
-        let dnsmasq = if services::is_dnsmasq_installed() {
-            match services::Dnsmasq::new().running_pid() {
-                Some(pid) => {
-                    managed_pids.push(pid);
-
-                    BackgroundServiceHealth::Running(pid.as_u32())
-                }
-                None => BackgroundServiceHealth::Stopped,
-            }
-        } else {
-            BackgroundServiceHealth::NotInstalled
-        };
-
-        let caddy = if services::is_caddy_installed() {
-            match services::Caddy::new().running_pid() {
-                Some(pid) => {
-                    managed_pids.push(pid);
-
-                    BackgroundServiceHealth::Running(pid.as_u32())
-                }
-                None => BackgroundServiceHealth::Stopped,
-            }
-        } else {
-            BackgroundServiceHealth::NotInstalled
-        };
-
         let cloudflared = if services::is_cloudflared_installed() {
-            match services::CloudflareTunnel::new().running_pid() {
+            match find_service_pid(services::CloudflareTunnel::ID) {
                 Some(pid) => {
                     managed_pids.push(pid);
 
@@ -143,45 +124,85 @@ impl BackgroudServices {
             }
         } else {
             BackgroundServiceHealth::NotInstalled
+        };
+
+        #[cfg(target_os = "macos")]
+        let dns_server = match find_service_pid(services::LocalDnsServer::ID) {
+            Some(pid) => {
+                managed_pids.push(pid);
+
+                BackgroundServiceHealth::Running(pid.as_u32())
+            }
+            None => {
+                if local_dns::is_installed(&crate::local_config::managed_domains(
+                    Some(state),
+                    &None,
+                )) {
+                    BackgroundServiceHealth::Stopped
+                } else {
+                    BackgroundServiceHealth::NotInstalled
+                }
+            }
         };
 
         Self {
             linkup_server,
-            caddy,
-            dnsmasq,
             cloudflared,
+            #[cfg(target_os = "macos")]
+            dns_server,
             possible_orphan_processes: find_potential_orphan_processes(managed_pids),
         }
     }
 }
 
 fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<OrphanProcess> {
-    let current_pid = services::get_current_process_pid();
+    let env_var_format = Regex::new(r"^[A-Z_][A-Z0-9_]*=.*$").unwrap();
+
+    let current_pid = sysinfo::get_current_pid().unwrap();
     let mut orphans = Vec::new();
 
     for (pid, process) in services::system().processes() {
-        if process
-            .cmd()
-            .iter()
-            .any(|item| item.to_string_lossy().contains("linkup"))
-            && pid != &current_pid
-            && !managed_pids.contains(pid)
-        {
-            let process_cmd = process
-                .cmd()
-                .iter()
-                .map(|s| s.to_string_lossy())
-                .collect::<Vec<_>>()
-                .join(" ");
+        if pid == &current_pid || managed_pids.contains(pid) {
+            continue;
+        }
 
-            orphans.push(OrphanProcess {
-                cmd: process_cmd,
-                pid: pid.as_u32(),
-            });
+        let command = process.cmd();
+        for part in command.iter() {
+            let mut part_string = part.to_string_lossy();
+
+            if env_var_format.is_match(&part_string) {
+                part_string = part_string
+                    .replace(&linkup_dir_path().to_string_lossy().to_string(), "")
+                    .into();
+            }
+
+            if part_string.contains("linkup") {
+                let full_command = command
+                    .iter()
+                    .map(|part| part.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                orphans.push(OrphanProcess {
+                    cmd: truncate_with_ellipsis(&full_command, 120),
+                    pid: pid.as_u32(),
+                });
+            }
         }
     }
 
     orphans
+}
+
+fn truncate_with_ellipsis(value: &str, max_len: usize) -> String {
+    if value.len() > max_len {
+        let mut truncated = value.chars().take(max_len - 3).collect::<String>();
+
+        truncated.push_str("...");
+        truncated
+    } else {
+        value.to_string()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -193,7 +214,7 @@ struct Linkup {
 }
 
 impl Linkup {
-    fn load() -> Result<Self, CliError> {
+    fn load() -> Result<Self> {
         let dir_path = linkup_dir_path();
         let files: Vec<String> = fs::read_dir(&dir_path)?
             .map(|f| f.unwrap().file_name().into_string().unwrap())
@@ -208,14 +229,21 @@ impl Linkup {
     }
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Debug, Serialize)]
 struct LocalDNS {
+    is_installed: bool,
     resolvers: Vec<String>,
 }
 
+#[cfg(target_os = "macos")]
 impl LocalDNS {
-    fn load() -> Result<Self, CliError> {
+    fn load(state: &LocalState) -> Result<Self> {
         Ok(Self {
+            is_installed: local_dns::is_installed(&crate::local_config::managed_domains(
+                Some(state),
+                &None,
+            )),
             resolvers: local_dns::list_resolvers()?,
         })
     }
@@ -224,29 +252,25 @@ impl LocalDNS {
 #[derive(Debug, Serialize)]
 struct Health {
     system: System,
-    session: Option<Session>,
+    session: Session,
     background_services: BackgroudServices,
     linkup: Linkup,
+    #[cfg(target_os = "macos")]
     local_dns: LocalDNS,
 }
 
 impl Health {
-    pub fn load() -> Result<Self, CliError> {
-        let session = match Session::load() {
-            Ok(session) => Some(session),
-            Err(CliError::NoState(_)) => None,
-            Err(error) => {
-                log::error!("Failed to load Session: {}", error);
-                None
-            }
-        };
+    pub fn load() -> Result<Self> {
+        let state = LocalState::load()?;
+        let session = Session::load(&state);
 
         Ok(Self {
             system: System::load(),
             session,
-            background_services: BackgroudServices::load(),
+            background_services: BackgroudServices::load(&state),
             linkup: Linkup::load()?,
-            local_dns: LocalDNS::load()?,
+            #[cfg(target_os = "macos")]
+            local_dns: LocalDNS::load(&state)?,
         })
     }
 }
@@ -262,20 +286,8 @@ impl Display for Health {
         writeln!(f, "  Architecture: {}", self.system.arch)?;
 
         writeln!(f, "{}", "Session info:".bold().italic())?;
-        writeln!(
-            f,
-            "  Name:       {}",
-            self.session
-                .as_ref()
-                .map_or("NONE".yellow(), |session| session.name.normal())
-        )?;
-        writeln!(
-            f,
-            "  Tunnel URL: {}",
-            self.session
-                .as_ref()
-                .map_or("NONE".yellow(), |session| session.tunnel_url.normal())
-        )?;
+        writeln!(f, "  Name:       {}", self.session.name.normal())?;
+        writeln!(f, "  Tunnel URL: {}", self.session.tunnel_url.normal())?;
 
         writeln!(f, "{}", "Background sevices:".bold().italic())?;
         write!(f, "  - Linkup Server  ")?;
@@ -284,18 +296,21 @@ impl Display for Health {
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
         }
-        write!(f, "  - Caddy          ")?;
-        match &self.background_services.caddy {
-            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
-            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
-            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
+
+        #[cfg(target_os = "macos")]
+        {
+            write!(f, "  - DNS Server     ")?;
+            match &self.background_services.dns_server {
+                BackgroundServiceHealth::NotInstalled => {
+                    writeln!(f, "{}", "NOT INSTALLED".yellow())?
+                }
+                BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
+                BackgroundServiceHealth::Running(pid) => {
+                    writeln!(f, "{} ({})", "RUNNING".blue(), pid)?
+                }
+            }
         }
-        write!(f, "  - dnsmasq        ")?;
-        match &self.background_services.dnsmasq {
-            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
-            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
-            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-        }
+
         write!(f, "  - Cloudflared    ")?;
         match &self.background_services.cloudflared {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
@@ -321,13 +336,23 @@ impl Display for Health {
             }
         }
 
-        write!(f, "{}", "Local DNS resolvers:".bold().italic())?;
-        if self.local_dns.resolvers.is_empty() {
-            writeln!(f, " {}", "EMPTY".yellow())?;
-        } else {
-            writeln!(f)?;
-            for file in &self.local_dns.resolvers {
-                writeln!(f, "    - {}", file)?;
+        #[cfg(target_os = "macos")]
+        {
+            writeln!(f, "{}", "Local DNS:".bold().italic())?;
+            write!(f, "  Installed: ",)?;
+            if self.local_dns.is_installed {
+                writeln!(f, "{}", "YES".green())?;
+            } else {
+                writeln!(f, "{}", "NO".yellow())?;
+            }
+            write!(f, "  Resolvers:")?;
+            if self.local_dns.resolvers.is_empty() {
+                writeln!(f, " {}", "EMPTY".yellow())?;
+            } else {
+                writeln!(f)?;
+                for file in &self.local_dns.resolvers {
+                    writeln!(f, "      - {}", file)?;
+                }
             }
         }
 

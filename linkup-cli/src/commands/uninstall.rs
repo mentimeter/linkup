@@ -1,11 +1,12 @@
 use std::{fs, process};
 
-use crate::{commands, linkup_dir_path, linkup_exe_path, prompt, CliError, InstallationMethod};
+use crate::{commands, linkup_dir_path, linkup_exe_path, prompt, InstallationMethod, Result};
 
 #[derive(clap::Args)]
 pub struct Args {}
 
-pub fn uninstall(_args: &Args) -> Result<(), CliError> {
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
+pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<()> {
     let response = prompt("Are you sure you want to uninstall linkup? [y/N]: ")
         .trim()
         .to_lowercase();
@@ -18,10 +19,25 @@ pub fn uninstall(_args: &Args) -> Result<(), CliError> {
 
     commands::stop(&commands::StopArgs {}, true)?;
 
-    let exe_path = linkup_exe_path();
+    #[cfg(target_os = "macos")]
+    {
+        use crate::{
+            commands::local_dns,
+            local_config::{self, LocalState},
+        };
+
+        if local_dns::is_installed(&local_config::managed_domains(
+            LocalState::load().ok().as_ref(),
+            config_arg,
+        )) {
+            local_dns::uninstall(config_arg).await?;
+        }
+    }
+
+    let exe_path = linkup_exe_path()?;
 
     log::debug!("Linkup exe path: {:?}", &exe_path);
-    match InstallationMethod::current() {
+    match InstallationMethod::current()? {
         InstallationMethod::Brew => {
             log::debug!("Uninstalling linkup from Homebrew");
 
@@ -52,7 +68,12 @@ pub fn uninstall(_args: &Args) -> Result<(), CliError> {
     let linkup_dir = linkup_dir_path();
 
     log::debug!("Removing linkup folder: {}", linkup_dir.display());
-    fs::remove_dir_all(linkup_dir)?;
+    if let Err(error) = fs::remove_dir_all(linkup_dir) {
+        match error.kind() {
+            std::io::ErrorKind::NotFound => (),
+            _ => return Err(error.into()),
+        }
+    }
 
     println!("linkup uninstalled!");
 

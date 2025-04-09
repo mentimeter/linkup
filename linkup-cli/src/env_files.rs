@@ -4,7 +4,9 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{CliError, Result};
+use anyhow::Context;
+
+use crate::Result;
 
 const LINKUP_ENV_SEPARATOR: &str = "##### Linkup environment - DO NOT EDIT #####";
 
@@ -15,11 +17,8 @@ pub fn write_to_env_file(service: &str, dev_env_path: &PathBuf, env_path: &PathB
         }
     }
 
-    let mut dev_env_content = fs::read_to_string(dev_env_path).map_err(|e| {
-        CliError::SetServiceEnv(
-            service.to_string(),
-            format!("could not read dev env file: {}", e),
-        )
+    let mut dev_env_content = fs::read_to_string(dev_env_path).with_context(|| {
+        format!("Failed to read service '{service}' dev env file {dev_env_path:?}")
     })?;
 
     if dev_env_content.ends_with('\n') {
@@ -30,12 +29,7 @@ pub fn write_to_env_file(service: &str, dev_env_path: &PathBuf, env_path: &PathB
         .create(true)
         .append(true)
         .open(env_path)
-        .map_err(|e| {
-            CliError::SetServiceEnv(
-                service.to_string(),
-                format!("Failed to open .env file: {}", e),
-            )
-        })?;
+        .with_context(|| "Failed to open service '{service}' env file {env_path:?}")?;
 
     let content = [
         format!("\n{}", LINKUP_ENV_SEPARATOR),
@@ -43,23 +37,15 @@ pub fn write_to_env_file(service: &str, dev_env_path: &PathBuf, env_path: &PathB
         format!("\n{}", LINKUP_ENV_SEPARATOR),
     ];
 
-    writeln!(env_file, "{}", content.concat()).map_err(|e| {
-        CliError::SetServiceEnv(
-            service.to_string(),
-            format!("could not write to env file: {}", e),
-        )
-    })?;
+    writeln!(env_file, "{}", content.concat())
+        .with_context(|| format!("Failed to write to service '{service}' env file {env_path:?}"))?;
 
     Ok(())
 }
 
 pub fn clear_env_file(service: &str, env_path: &PathBuf) -> Result<()> {
-    let mut file_content = fs::read_to_string(env_path).map_err(|e| {
-        CliError::RemoveServiceEnv(
-            service.to_string(),
-            format!("could not read dev env file: {}", e),
-        )
-    })?;
+    let mut file_content = fs::read_to_string(env_path)
+        .with_context(|| "Failed to read service '{service}' env file {env_path:?}")?;
 
     if let (Some(mut linkup_block_start), Some(mut linkup_block_end)) = (
         file_content.find(LINKUP_ENV_SEPARATOR),
@@ -87,17 +73,10 @@ pub fn clear_env_file(service: &str, env_path: &PathBuf) -> Result<()> {
             .write(true)
             .truncate(true)
             .open(env_path)
-            .map_err(|e| {
-                CliError::RemoveServiceEnv(
-                    service.to_string(),
-                    format!("Failed to open .env file for writing: {}", e),
-                )
-            })?;
-        file.write_all(file_content.as_bytes()).map_err(|e| {
-            CliError::RemoveServiceEnv(
-                service.to_string(),
-                format!("Failed to write .env file: {}", e),
-            )
+            .with_context(|| "Failed to open service '{service}' env file {env_path:?}")?;
+
+        file.write_all(file_content.as_bytes()).with_context(|| {
+            format!("Failed to write to service '{service}' env file {env_path:?}")
         })?;
     }
 

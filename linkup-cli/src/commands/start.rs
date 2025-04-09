@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::{anyhow, Context, Error};
 use colored::Colorize;
 use crossterm::{cursor, ExecutableCommand};
 
@@ -17,7 +18,7 @@ use crate::{
     local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
 };
-use crate::{local_config::LocalState, CliError};
+use crate::{local_config::LocalState, Result};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -31,11 +32,7 @@ pub struct Args {
     pub no_tunnel: bool,
 }
 
-pub async fn start(
-    args: &Args,
-    fresh_state: bool,
-    config_arg: &Option<String>,
-) -> Result<(), CliError> {
+pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) -> Result<()> {
     let mut state = if fresh_state {
         let state = load_and_save_state(config_arg, args.no_tunnel, true)?;
         set_linkup_env(state.clone())?;
@@ -49,27 +46,8 @@ pub async fn start(
 
     let local_server = services::LocalServer::new();
     let cloudflare_tunnel = services::CloudflareTunnel::new();
-    let caddy = services::Caddy::new();
-    let dnsmasq = services::Dnsmasq::new();
-
-    #[cfg(target_os = "linux")]
-    {
-        use crate::{is_sudo, sudo_su};
-        match (caddy.should_start(&state.domain_strings()), is_sudo()) {
-            // Should start Caddy and is not sudo
-            (Ok(true), false) => {
-                println!(
-                    "On linux binding port 443 and 80 requires sudo. And this is necessary to start caddy."
-                );
-
-                sudo_su()?;
-            }
-            // Should not start Caddy or should start Caddy but is already sudo
-            (Ok(false), _) | (Ok(true), true) => (),
-            // Can't check if should start Caddy
-            (Err(error), _) => log::error!("Failed to check if should start Caddy: {}", error),
-        }
-    }
+    #[cfg(target_os = "macos")]
+    let local_dns_server = services::LocalDnsServer::new();
 
     let mut display_thread: Option<JoinHandle<()>> = None;
     let display_channel = sync::mpsc::channel::<bool>();
@@ -82,8 +60,8 @@ pub async fn start(
             &[
                 services::LocalServer::NAME,
                 services::CloudflareTunnel::NAME,
-                services::Caddy::NAME,
-                services::Dnsmasq::NAME,
+                #[cfg(target_os = "macos")]
+                services::LocalDnsServer::NAME,
             ],
             status_update_channel.1,
             display_channel.1,
@@ -93,14 +71,14 @@ pub async fn start(
     // To make sure that we get the last update to the display thread before the error is bubbled up,
     // we store any error that might happen on one of the steps and only return it after we have
     // send the message to the display thread to stop and we join it.
-    let mut exit_error: Option<Box<dyn std::error::Error>> = None;
+    let mut exit_error: Option<Error> = None;
 
     match local_server
         .run_with_progress(&mut state, status_update_channel.0.clone())
         .await
     {
         Ok(_) => (),
-        Err(err) => exit_error = Some(Box::new(err)),
+        Err(err) => exit_error = Some(err),
     }
 
     if exit_error.is_none() {
@@ -109,27 +87,20 @@ pub async fn start(
             .await
         {
             Ok(_) => (),
-            Err(err) => exit_error = Some(Box::new(err)),
+            Err(err) => exit_error = Some(err),
         }
     }
 
-    if exit_error.is_none() {
-        match caddy
-            .run_with_progress(&mut state, status_update_channel.0.clone())
-            .await
-        {
-            Ok(_) => (),
-            Err(err) => exit_error = Some(Box::new(err)),
-        }
-    }
-
-    if exit_error.is_none() {
-        match dnsmasq
-            .run_with_progress(&mut state, status_update_channel.0.clone())
-            .await
-        {
-            Ok(_) => (),
-            Err(err) => exit_error = Some(Box::new(err)),
+    #[cfg(target_os = "macos")]
+    {
+        if exit_error.is_none() {
+            match local_dns_server
+                .run_with_progress(&mut state, status_update_channel.0.clone())
+                .await
+            {
+                Ok(_) => (),
+                Err(err) => exit_error = Some(err),
+            }
         }
     }
 
@@ -139,7 +110,7 @@ pub async fn start(
     }
 
     if let Some(exit_error) = exit_error {
-        return Err(CliError::StartErr(exit_error.to_string()));
+        return Err(exit_error).context("Failed to start CLI");
     }
 
     let status = SessionStatus {
@@ -251,7 +222,7 @@ fn spawn_display_thread(
     })
 }
 
-fn set_linkup_env(state: LocalState) -> Result<(), CliError> {
+fn set_linkup_env(state: LocalState) -> Result<()> {
     // Set env vars to linkup
     for service in &state.services {
         if let Some(d) = &service.directory {
@@ -266,7 +237,7 @@ fn load_and_save_state(
     config_arg: &Option<String>,
     no_tunnel: bool,
     is_paid: bool,
-) -> Result<LocalState, CliError> {
+) -> Result<LocalState> {
     let previous_state = LocalState::load();
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
@@ -288,35 +259,24 @@ fn load_and_save_state(
     Ok(state)
 }
 
-fn set_service_env(directory: String, config_path: String) -> Result<(), CliError> {
-    let config_dir = Path::new(&config_path).parent().ok_or_else(|| {
-        CliError::SetServiceEnv(
-            directory.clone(),
-            "config_path does not have a parent directory".to_string(),
-        )
-    })?;
+fn set_service_env(directory: String, config_path: String) -> Result<()> {
+    let config_dir = Path::new(&config_path)
+        .parent()
+        .with_context(|| format!("config_path '{directory}' does not have a parent directory"))?;
 
     let service_path = PathBuf::from(config_dir).join(&directory);
 
-    let dev_env_files_result = fs::read_dir(service_path);
-    let dev_env_files: Vec<_> = match dev_env_files_result {
-        Ok(entries) => entries
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                entry.file_name().to_string_lossy().ends_with(".linkup")
-                    && entry.file_name().to_string_lossy().starts_with(".env.")
-            })
-            .collect(),
-        Err(e) => {
-            return Err(CliError::SetServiceEnv(
-                directory.clone(),
-                format!("Failed to read directory: {}", e),
-            ))
-        }
-    };
+    let dev_env_files: Vec<_> = fs::read_dir(&service_path)
+        .with_context(|| format!("Failed to read service directory {:?}", &service_path))?
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry.file_name().to_string_lossy().ends_with(".linkup")
+                && entry.file_name().to_string_lossy().starts_with(".env.")
+        })
+        .collect();
 
     if dev_env_files.is_empty() {
-        return Err(CliError::NoDevEnv(directory));
+        return Err(anyhow!("No dev env files found on {:?}", directory));
     }
 
     for dev_env_file in dev_env_files {

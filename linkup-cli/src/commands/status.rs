@@ -1,3 +1,4 @@
+use anyhow::Context;
 use colored::{ColoredString, Colorize};
 use crossterm::{cursor, execute, style::Print, terminal};
 use linkup::{get_additional_headers, HeaderMap, StorableDomain, TargetService};
@@ -9,11 +10,10 @@ use std::{
     thread::{self, sleep},
     time::Duration,
 };
-use url::Url;
 
 use crate::{
     local_config::{LocalService, LocalState, ServiceTarget},
-    CliError, LINKUP_LOCALSERVER_PORT,
+    services, Result,
 };
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -30,7 +30,7 @@ pub struct Args {
     all: bool,
 }
 
-pub fn status(args: &Args) -> Result<(), CliError> {
+pub fn status(args: &Args) -> anyhow::Result<()> {
     // TODO(augustocesar)[2024-10-28]: Remove --all/-a in a future release.
     // Do not print the warning in case of JSON so it doesn't break any usage if the result of the command
     // is passed on to somewhere else.
@@ -40,7 +40,7 @@ pub fn status(args: &Args) -> Result<(), CliError> {
         println!("{}", warning.yellow());
     }
 
-    let state = LocalState::load()?;
+    let state = LocalState::load().context("Failed to load local state")?;
     let linkup_services = linkup_services(&state);
     let all_services = state.services.into_iter().chain(linkup_services);
 
@@ -282,7 +282,7 @@ pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> V
 }
 
 fn linkup_services(state: &LocalState) -> Vec<LocalService> {
-    let local_url = Url::parse(&format!("http://localhost:{}", LINKUP_LOCALSERVER_PORT)).unwrap();
+    let local_url = services::LocalServer::url();
 
     vec![
         LocalService {

@@ -3,12 +3,15 @@ use std::{
     process::{Command, Stdio},
 };
 
-use clap::Subcommand;
-
 use crate::{
-    commands, is_sudo,
-    local_config::{config_path, get_config},
-    services, sudo_su, CliError, Result,
+    commands, is_sudo, linkup_certs_dir_path,
+    local_config::{self, managed_domains, top_level_domains, LocalState},
+    sudo_su, Result,
+};
+use anyhow::{anyhow, Context};
+use clap::Subcommand;
+use linkup_local_server::certificates::{
+    setup_self_signed_certificates, uninstall_self_signed_certificates,
 };
 
 #[derive(clap::Args)]
@@ -31,49 +34,57 @@ pub async fn local_dns(args: &Args, config: &Option<String>) -> Result<()> {
 }
 
 pub async fn install(config_arg: &Option<String>) -> Result<()> {
-    let config_path = config_path(config_arg)?;
-    let input_config = get_config(&config_path)?;
+    // NOTE(augustoccesar)[2025-03-24] We decided to print this anyways, even if the current session already have sudo.
+    // This should help with visibility of what is happening.
+    println!("Linkup needs sudo access to:");
+    println!("  - Ensure there is a folder /etc/resolvers");
+    println!("  - Create file(s) for /etc/resolver/<domain>");
+    println!("  - Add Linkup CA certificate to keychain");
+    println!("  - Flush DNS cache");
 
     if !is_sudo() {
-        println!("Linkup needs sudo access to:");
-        println!("  - Ensure there is a folder /etc/resolvers");
-        println!("  - Create file(s) for /etc/resolver/<domain>");
-        println!("  - Flush DNS cache");
-
         sudo_su()?;
     }
 
     commands::stop(&commands::StopArgs {}, false)?;
 
     ensure_resolver_dir()?;
-    install_resolvers(&input_config.top_level_domains())?;
 
-    println!("Installing Caddy...");
+    let domains = managed_domains(LocalState::load().ok().as_ref(), config_arg);
 
-    services::Caddy::install()
-        .await
-        .map_err(|e| CliError::LocalDNSInstall(e.to_string()))?;
+    install_resolvers(&top_level_domains(&domains))?;
+
+    setup_self_signed_certificates(&linkup_certs_dir_path(), &domains)
+        .context("Failed to setup self-signed certificates")?;
+
+    println!("Local DNS installed!");
 
     Ok(())
 }
 
 pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
-    let config_path = config_path(config_arg)?;
-    let input_config = get_config(&config_path)?;
+    // NOTE(augustoccesar)[2025-03-24] We decided to print this anyways, even if the current session already have sudo.
+    // This should help with visibility of what is happening.
+    println!("Linkup needs sudo access to:");
+    println!("  - Delete file(s) on /etc/resolver");
+    println!("  - Remove Linkup CA certificate from keychain");
+    println!("  - Flush DNS cache");
 
     if !is_sudo() {
-        println!("Linkup needs sudo access to:");
-        println!("  - Delete file(s) on /etc/resolver");
-        println!("  - Flush DNS cache");
+        sudo_su()?;
     }
 
     commands::stop(&commands::StopArgs {}, false)?;
 
-    uninstall_resolvers(&input_config.top_level_domains())?;
+    let managed_top_level_domains = local_config::top_level_domains(
+        &local_config::managed_domains(LocalState::load().ok().as_ref(), config_arg),
+    );
 
-    services::Caddy::uninstall()
-        .await
-        .map_err(|e| CliError::LocalDNSUninstall(e.to_string()))?;
+    uninstall_resolvers(&managed_top_level_domains)?;
+    uninstall_self_signed_certificates(&linkup_certs_dir_path())
+        .context("Failed to uninstall self-signed certificates")?;
+
+    println!("Local DNS uninstalled!");
 
     Ok(())
 }
@@ -84,45 +95,45 @@ fn ensure_resolver_dir() -> Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map_err(|err| {
-            CliError::LocalDNSInstall(format!(
-                "failed to create /etc/resolver folder. Reason: {}",
-                err
-            ))
-        })?;
+        .context("Failed to create /etc/resolver folder")?;
 
     Ok(())
 }
 
+pub fn is_installed(managed_domains: &[String]) -> bool {
+    match list_resolvers() {
+        Ok(resolvers) => managed_domains
+            .iter()
+            .any(|domain| resolvers.contains(domain)),
+        Err(error) => {
+            log::error!("Failed to load resolvers: {}", error);
+
+            false
+        }
+    }
+}
+
 fn install_resolvers(resolve_domains: &[String]) -> Result<()> {
     for domain in resolve_domains.iter() {
-        let cmd_str = format!(
-            "echo \"nameserver 127.0.0.1\nport 8053\" > /etc/resolver/{}",
-            domain
-        );
+        let cmd_str = format!("echo \"nameserver 127.0.0.1\nport 8053\" > /etc/resolver/{domain}");
+
         let status = Command::new("sudo")
             .arg("bash")
             .arg("-c")
             .arg(&cmd_str)
             .status()
-            .map_err(|err| {
-                CliError::LocalDNSInstall(format!(
-                    "Failed to install resolver for domain {} to /etc/resolver/{}. Reason: {}",
-                    domain, domain, err
-                ))
+            .with_context(|| {
+                format!("Failed to install resolver for domain {domain} to /etc/resolver/{domain}")
             })?;
 
         if !status.success() {
-            return Err(CliError::LocalDNSInstall(format!(
-                "Failed to install resolver for domain {} to /etc/resolver/{}",
-                domain, domain
-            )));
+            return Err(anyhow!(
+                "Failed to install resolver for domain {domain} to /etc/resolver/{domain}"
+            ));
         }
     }
 
     flush_dns_cache()?;
-
-    #[cfg(target_os = "macos")]
     kill_dns_responder()?;
 
     Ok(())
@@ -136,17 +147,10 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
-            .map_err(|err| {
-                CliError::LocalDNSUninstall(format!(
-                    "Failed to delete /etc/resolver/{}. Reason: {}",
-                    domain, err
-                ))
-            })?;
+            .with_context(|| format!("Failed to delete /etc/resolver/{domain}",))?;
     }
 
     flush_dns_cache()?;
-
-    #[cfg(target_os = "macos")]
     kill_dns_responder()?;
 
     Ok(())
@@ -170,42 +174,26 @@ pub fn list_resolvers() -> std::result::Result<Vec<String>, std::io::Error> {
 }
 
 fn flush_dns_cache() -> Result<()> {
-    #[cfg(target_os = "linux")]
-    let status_flush = Command::new("resolvectl")
-        .args(["flush-caches"])
-        .status()
-        .map_err(|_err| {
-            CliError::LocalDNSInstall("Failed to run resolvectl flush-caches".into())
-        })?;
-
-    #[cfg(target_os = "macos")]
     let status_flush = Command::new("dscacheutil")
         .args(["-flushcache"])
         .status()
-        .map_err(|_err| {
-            CliError::LocalDNSInstall("Failed to run dscacheutil -flushcache".into())
-        })?;
+        .context("Failed to flush DNS cache")?;
 
     if !status_flush.success() {
-        return Err(CliError::LocalDNSInstall("Failed flush DNS cache".into()));
+        return Err(anyhow!("Flushing DNS cache was unsuccessful"));
     }
 
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 fn kill_dns_responder() -> Result<()> {
     let status_kill_responder = Command::new("sudo")
         .args(["killall", "-HUP", "mDNSResponder"])
         .status()
-        .map_err(|_err| {
-            CliError::LocalDNSInstall("Failed to run killall -HUP mDNSResponder".into())
-        })?;
+        .context("Failed to kill DNS responder")?;
 
     if !status_kill_responder.success() {
-        return Err(CliError::LocalDNSInstall(
-            "Failed to run killall -HUP mDNSResponder".into(),
-        ));
+        return Err(anyhow!("Killing DNS responder was unsuccessful"));
     }
 
     Ok(())

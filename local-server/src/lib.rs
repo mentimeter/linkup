@@ -6,24 +6,46 @@ use axum::{
     routing::{any, get, post},
     Extension, Router,
 };
+use axum_server::tls_rustls::RustlsConfig;
+use hickory_server::{
+    authority::{Catalog, ZoneType},
+    proto::{
+        rr::{Name, RData, Record},
+        xfer::Protocol,
+    },
+    resolver::{
+        config::{NameServerConfig, NameServerConfigGroup, ResolverOpts},
+        name_server::TokioConnectionProvider,
+    },
+    store::{
+        forwarder::{ForwardAuthority, ForwardConfig},
+        in_memory::InMemoryAuthority,
+    },
+    ServerFuture,
+};
 use http::{header::HeaderMap, Uri};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
     client::legacy::{connect::HttpConnector, Client},
     rt::{TokioExecutor, TokioIo},
 };
-
 use linkup::{
     allow_all_cors, get_additional_headers, get_target_service, MemoryStringStore, NameKind,
     Session, SessionAllocator, TargetService, UpdateSessionRequest,
 };
-use tokio::signal;
+use rustls::ServerConfig;
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    str::FromStr,
+};
+use std::{path::Path, sync::Arc};
+use tokio::{net::UdpSocket, signal};
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
-type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
+pub mod certificates;
 
-const LINKUP_LOCALSERVER_PORT: u16 = 9066;
+type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
 #[derive(Debug)]
 struct ApiError {
@@ -50,8 +72,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-pub fn linkup_router() -> Router {
-    let config_store = MemoryStringStore::default();
+pub fn linkup_router(config_store: MemoryStringStore) -> Router {
     let client = https_client();
 
     Router::new()
@@ -71,13 +92,43 @@ pub fn linkup_router() -> Router {
         )
 }
 
-pub async fn start_server() -> std::io::Result<()> {
-    let app = linkup_router();
+pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Path) {
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", LINKUP_LOCALSERVER_PORT))
+    let sni = match certificates::WildcardSniResolver::load_dir(certs_dir) {
+        Ok(sni) => sni,
+        Err(error) => {
+            eprintln!(
+                "Failed to load certificates from {:?} into SNI: {}",
+                certs_dir, error
+            );
+            return;
+        }
+    };
+
+    let mut server_config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_cert_resolver(Arc::new(sni));
+    server_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+    let app = linkup_router(config_store);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 443));
+    println!("listening on {}", &addr);
+
+    axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
+        .serve(app.into_make_service())
         .await
-        .unwrap();
-    println!("listening on {}", listener.local_addr().unwrap());
+        .expect("failed to start HTTPS server");
+}
+
+pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {
+    let app = linkup_router(config_store);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 80));
+    println!("listening on {}", &addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
@@ -85,9 +136,47 @@ pub async fn start_server() -> std::io::Result<()> {
     Ok(())
 }
 
-#[tokio::main]
-pub async fn local_linkup_main() -> std::io::Result<()> {
-    start_server().await
+pub async fn start_dns_server(linkup_session_name: String, domains: Vec<String>) {
+    let mut catalog = Catalog::new();
+
+    for domain in &domains {
+        let record_name = Name::from_str(&format!("{linkup_session_name}.{domain}.")).unwrap();
+
+        let authority = InMemoryAuthority::empty(record_name.clone(), ZoneType::Primary, false);
+
+        let record = Record::from_rdata(
+            record_name.clone(),
+            3600,
+            RData::A(Ipv4Addr::new(127, 0, 0, 1).into()),
+        );
+
+        authority.upsert(record, 0).await;
+
+        catalog.upsert(record_name.clone().into(), vec![Arc::new(authority)]);
+    }
+
+    let cf_name_server = NameServerConfig::new("1.1.1.1:53".parse().unwrap(), Protocol::Udp);
+    let forward_config = ForwardConfig {
+        name_servers: NameServerConfigGroup::from(vec![cf_name_server]),
+        options: Some(ResolverOpts::default()),
+    };
+
+    let forwarder =
+        ForwardAuthority::builder_with_config(forward_config, TokioConnectionProvider::default())
+            .with_origin(Name::root())
+            .build()
+            .unwrap();
+
+    catalog.upsert(Name::root().into(), vec![Arc::new(forwarder)]);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8053));
+    let sock = UdpSocket::bind(&addr).await.unwrap();
+
+    let mut server = ServerFuture::new(catalog);
+    server.register_socket(sock);
+
+    println!("listening on {addr}");
+    server.block_until_done().await.unwrap();
 }
 
 async fn linkup_request_handler(
@@ -98,7 +187,19 @@ async fn linkup_request_handler(
     let sessions = SessionAllocator::new(&store);
 
     let headers: linkup::HeaderMap = req.headers().into();
-    let url = format!("http://localhost:{}{}", LINKUP_LOCALSERVER_PORT, req.uri());
+    let url = if req.uri().scheme().is_some() {
+        req.uri().to_string()
+    } else {
+        format!(
+            "http://{}{}",
+            req.headers()
+                .get(http::header::HOST)
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("localhost"),
+            req.uri()
+        )
+    };
+
     let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
         Ok(session) => session,
         Err(_) => {
@@ -106,7 +207,7 @@ async fn linkup_request_handler(
                 "Linkup was unable to determine the session origin of the request. Ensure that your request includes a valid session identifier in the referer or tracestate headers. - Local Server".to_string(),
                 StatusCode::UNPROCESSABLE_ENTITY,
             )
-            .into_response()
+                .into_response()
         }
     };
 
@@ -117,7 +218,7 @@ async fn linkup_request_handler(
                 "The request belonged to a session, but there was no target for the request. Check that the routing rules in your linkup config have a match for this request. - Local Server".to_string(),
                 StatusCode::NOT_FOUND,
             )
-            .into_response()
+                .into_response()
         }
     };
 
@@ -141,11 +242,15 @@ async fn handle_http_req(
     extra_headers: linkup::HeaderMap,
     client: HttpsClient,
 ) -> Response {
-    *req.uri_mut() = Uri::try_from(target_service.url).unwrap();
+    *req.uri_mut() = Uri::try_from(&target_service.url).unwrap();
     let extra_http_headers: HeaderMap = extra_headers.into();
     req.headers_mut().extend(extra_http_headers);
     // Request uri and host headers should not conflict
     req.headers_mut().remove(http::header::HOST);
+
+    if target_service.url.starts_with("http://") {
+        *req.version_mut() = http::Version::HTTP_11;
+    }
 
     // Send the modified request to the target service.
     let mut resp = match client.request(req).await {
@@ -340,6 +445,7 @@ fn https_client() -> HttpsClient {
         .with_tls_config(tls)
         .https_or_http()
         .enable_http1()
+        .enable_http2()
         .build();
 
     Client::builder(TokioExecutor::new()).build(https)

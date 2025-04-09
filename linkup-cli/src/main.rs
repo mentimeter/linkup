@@ -1,9 +1,11 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf, process};
+use std::{env, fs, io::ErrorKind, path::PathBuf};
 
+use anyhow::{anyhow, Context};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use thiserror::Error;
 
+pub use anyhow::Result;
 pub use linkup::Version;
 
 mod commands;
@@ -15,7 +17,6 @@ mod worker_client;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
-const LINKUP_LOCALSERVER_PORT: u16 = 9066;
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
 
@@ -26,22 +27,22 @@ pub enum InstallationMethod {
 }
 
 impl InstallationMethod {
-    fn current() -> Self {
-        for component in linkup_exe_path().components() {
+    fn current() -> Result<Self> {
+        for component in linkup_exe_path()?.components() {
             if component.as_os_str() == "Cellar" {
-                return Self::Brew;
+                return Ok(Self::Brew);
             } else if component.as_os_str() == ".cargo" {
-                return Self::Cargo;
+                return Ok(Self::Cargo);
             }
         }
 
-        Self::Manual
+        Ok(Self::Manual)
     }
 }
 
-pub fn linkup_exe_path() -> PathBuf {
-    fs::canonicalize(std::env::current_exe().expect("current exe to be accessible"))
-        .expect("exe path to be valid")
+pub fn linkup_exe_path() -> Result<PathBuf> {
+    fs::canonicalize(std::env::current_exe().context("Failed to get the current executable")?)
+        .context("Failed to canonicalize the executable path")
 }
 
 pub fn linkup_dir_path() -> PathBuf {
@@ -62,6 +63,12 @@ pub fn linkup_bin_dir_path() -> PathBuf {
     path
 }
 
+pub fn linkup_certs_dir_path() -> PathBuf {
+    let mut path = linkup_dir_path();
+    path.push("certs");
+    path
+}
+
 pub fn linkup_file_path(file: &str) -> PathBuf {
     let mut path = linkup_dir_path();
     path.push(file);
@@ -75,11 +82,11 @@ fn ensure_linkup_dir() -> Result<()> {
         Ok(_) => Ok(()),
         Err(e) => match e.kind() {
             ErrorKind::AlreadyExists => Ok(()),
-            _ => Err(CliError::BadConfig(format!(
+            _ => Err(anyhow!(
                 "Could not create linkup dir at {}: {}",
                 path.display(),
                 e
-            ))),
+            )),
         },
     }
 }
@@ -89,11 +96,12 @@ fn current_version() -> Version {
         .expect("current version on CARGO_PKG_VERSION should be a valid version")
 }
 
+#[cfg(target_os = "macos")]
 fn is_sudo() -> bool {
-    let sudo_check = process::Command::new("sudo")
+    let sudo_check = std::process::Command::new("sudo")
         .arg("-n")
-        .stdout(process::Stdio::null())
-        .stderr(process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .arg("true")
         .status();
 
@@ -104,16 +112,17 @@ fn is_sudo() -> bool {
     false
 }
 
+#[cfg(target_os = "macos")]
 fn sudo_su() -> Result<()> {
-    let status = process::Command::new("sudo")
+    let status = std::process::Command::new("sudo")
         .arg("su")
-        .stdin(process::Stdio::null())
-        .stdout(process::Stdio::null())
-        .stderr(process::Stdio::null())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()?;
 
     if !status.success() {
-        return Err(CliError::StartErr("failed to sudo".to_string()));
+        return Err(anyhow!("Failed to sudo"));
     }
 
     Ok(())
@@ -129,70 +138,6 @@ fn prompt(question: &str) -> String {
     std::io::stdin().read_line(&mut input).ok();
 
     input
-}
-
-pub type Result<T> = std::result::Result<T, CliError>;
-
-#[derive(Error, Debug)]
-pub enum CliError {
-    #[error("no valid state file: {0}")]
-    NoState(String),
-    #[error("there was a problem with the provided config: {0}")]
-    BadConfig(String),
-    #[error("no valid config file provided: {0}")]
-    NoConfig(String),
-    #[error("a service directory was provided that contained no .env.*.linkup file: {0}")]
-    NoDevEnv(String),
-    #[error("couldn't set env for service {0}: {1}")]
-    SetServiceEnv(String, String),
-    #[error("couldn't remove env for service {0}: {1}")]
-    RemoveServiceEnv(String, String),
-    #[error("could not save statefile: {0}")]
-    SaveState(String),
-    #[error("could not start local server: {0}")]
-    StartLocalServer(String),
-    #[error("could not start local tunnel: {0}")]
-    StartLocalTunnel(String),
-    #[error("linkup component did not start in time: {0}")]
-    StartLinkupTimeout(String),
-    #[error("could not start Caddy: {0}")]
-    StartCaddy(String),
-    #[error("could not start DNSMasq: {0}")]
-    StartDNSMasq(String),
-    #[error("could not load config to {0}: {1}")]
-    LoadConfig(String, String),
-    #[error("could not start: {0}")]
-    StartErr(String),
-    #[error("could not stop: {0}")]
-    StopErr(String),
-    #[error("could not get status: {0}")]
-    StatusErr(String),
-    #[error("no such service: {0}")]
-    NoSuchService(String),
-    #[error("failed to install local dns: {0}")]
-    LocalDNSInstall(String),
-    #[error("failed to uninstall local dns: {0}")]
-    LocalDNSUninstall(String),
-    #[error("failed to write file: {0}")]
-    WriteFile(String),
-    #[error("failed to reboot dnsmasq: {0}")]
-    RebootDNSMasq(String),
-    #[error("--no-tunnel does not work without `local-dns`")]
-    NoTunnelWithoutLocalDns,
-    #[error("could not get env var: {0}")]
-    GetEnvVar(String),
-    #[error("HTTP error: {0}")]
-    HttpErr(String),
-    #[error("could not parse: {0}. {1}")]
-    ParseErr(String, String),
-    #[error("{0}: {1}")]
-    FileErr(String, String),
-    #[error("{0}")]
-    IOError(#[from] std::io::Error),
-    #[error("{0}")]
-    WorkerClientErr(#[from] worker_client::Error),
-    #[error("{0}")]
-    DeployErr(#[from] commands::deploy::DeployError),
 }
 
 #[derive(Error, Debug)]
@@ -245,6 +190,7 @@ enum Commands {
     #[clap(about = "View linkup component and service status")]
     Status(commands::StatusArgs),
 
+    #[cfg(target_os = "macos")]
     #[clap(about = "Speed up your local environment by routing traffic locally when possible")]
     LocalDNS(commands::LocalDnsArgs),
 
@@ -273,7 +219,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let cli = Cli::parse();
@@ -283,13 +229,22 @@ async fn main() -> Result<()> {
     if !matches!(cli.command, Commands::Update(_))
         && commands::update::new_version_available().await
     {
-        let message = format!(
-            "⚠️ New version of linkup is available! Run `{}` to update it.",
-            commands::update::update_command()
-        )
-        .yellow();
+        match commands::update::update_command() {
+            Ok(update_command) => {
+                let message = format!(
+                    "⚠️ New version of linkup is available! Run `{update_command}` to update it."
+                )
+                .yellow();
 
-        println!("{}", message);
+                println!("{}", message);
+            }
+            Err(error) => {
+                // TODO(augustoccesar)[2025-03-26]: This should probably be an error log, but for now since the logs
+                //   are not behaving the way that we want them to, keep as a warning. Will revisit this once starts
+                //   looking into tracing.
+                log::warn!("Failed to resolve the update command to display to user: {error}");
+            }
+        }
     }
 
     match &cli.command {
@@ -300,13 +255,14 @@ async fn main() -> Result<()> {
         Commands::Local(args) => commands::local(args).await,
         Commands::Remote(args) => commands::remote(args).await,
         Commands::Status(args) => commands::status(args),
+        #[cfg(target_os = "macos")]
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
         Commands::Server(args) => commands::server(args).await,
-        Commands::Uninstall(args) => commands::uninstall(args),
+        Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,
         Commands::Update(args) => commands::update(args).await,
-        Commands::Deploy(args) => commands::deploy(args).await.map_err(CliError::from),
-        Commands::Destroy(args) => commands::destroy(args).await.map_err(CliError::from),
+        Commands::Deploy(args) => commands::deploy(args).await,
+        Commands::Destroy(args) => commands::destroy(args).await,
     }
 }

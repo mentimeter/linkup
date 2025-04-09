@@ -4,6 +4,7 @@ use std::{
     fs,
 };
 
+use anyhow::Context;
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -16,7 +17,7 @@ use linkup::{
 use crate::{
     linkup_file_path, services,
     worker_client::{self, WorkerClient},
-    CliError, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
+    Result, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
 };
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -27,41 +28,26 @@ pub struct LocalState {
 }
 
 impl LocalState {
-    pub fn load() -> Result<Self, CliError> {
-        if let Err(e) = fs::File::open(linkup_file_path(LINKUP_STATE_FILE)) {
-            return Err(CliError::NoState(e.to_string()));
-        }
+    pub fn load() -> anyhow::Result<Self> {
+        let state_file_path = linkup_file_path(LINKUP_STATE_FILE);
+        let content = fs::read_to_string(&state_file_path)
+            .with_context(|| format!("Failed to read state file on {:?}", &state_file_path))?;
 
-        let content = match fs::read_to_string(linkup_file_path(LINKUP_STATE_FILE)) {
-            Ok(content) => content,
-            Err(e) => return Err(CliError::NoState(e.to_string())),
-        };
-
-        match serde_yaml::from_str(&content) {
-            Ok(config) => Ok(config),
-            Err(e) => Err(CliError::NoState(e.to_string())),
-        }
+        serde_yaml::from_str(&content).context("Failed to parse state file")
     }
 
-    pub fn save(&mut self) -> Result<(), CliError> {
+    pub fn save(&mut self) -> Result<()> {
         if cfg!(test) {
             return Ok(());
         }
-        let yaml_string = match serde_yaml::to_string(self) {
-            Ok(yaml) => yaml,
-            Err(_) => {
-                return Err(CliError::SaveState(
-                    "Failed to serialize the state into YAML".to_string(),
-                ))
-            }
-        };
 
-        if fs::write(linkup_file_path(LINKUP_STATE_FILE), yaml_string).is_err() {
-            return Err(CliError::SaveState(format!(
-                "Failed to write the state file at {}",
-                linkup_file_path(LINKUP_STATE_FILE).display()
-            )));
-        }
+        let yaml_string =
+            serde_yaml::to_string(self).context("Failed to serialize the state into YAML")?;
+
+        let state_file_location = linkup_file_path(LINKUP_STATE_FILE);
+        fs::write(&state_file_location, yaml_string).with_context(|| {
+            format!("Failed to write the state file to {state_file_location:?}")
+        })?;
 
         Ok(())
     }
@@ -81,6 +67,7 @@ impl LocalState {
         }
     }
 
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn domain_strings(&self) -> Vec<String> {
         self.domains
             .iter()
@@ -134,19 +121,6 @@ pub struct YamlLocalConfig {
 }
 
 impl YamlLocalConfig {
-    pub fn top_level_domains(&self) -> Vec<String> {
-        self.domains
-            .iter()
-            .filter(|&d| {
-                !self
-                    .domains
-                    .iter()
-                    .any(|other| other.domain != d.domain && d.domain.ends_with(&other.domain))
-            })
-            .map(|d| d.domain.clone())
-            .collect::<Vec<String>>()
-    }
-
     pub fn create_preview_request(&self, services: &[(String, String)]) -> CreatePreviewRequest {
         let services = self
             .services
@@ -249,55 +223,38 @@ pub fn config_to_state(
     }
 }
 
-pub fn config_path(config_arg: &Option<String>) -> Result<String, CliError> {
+pub fn config_path(config_arg: &Option<String>) -> Result<String> {
     match config_arg {
         Some(path) => {
             let absolute_path = fs::canonicalize(path)
-                .map_err(|_| CliError::NoConfig("Unable to resolve absolute path".to_string()))?;
+                .with_context(|| format!("Unable to resolve absolute path for {path:?}"))?;
+
             Ok(absolute_path.to_string_lossy().into_owned())
         }
-        None => match env::var(LINKUP_CONFIG_ENV) {
-            Ok(val) => {
-                let absolute_path = fs::canonicalize(val).map_err(|_| {
-                    CliError::NoConfig("Unable to resolve absolute path".to_string())
-                })?;
-                Ok(absolute_path.to_string_lossy().into_owned())
-            }
-            Err(_) => Err(CliError::NoConfig(
-                "No config argument provided and LINKUP_CONFIG environment variable not set"
-                    .to_string(),
-            )),
-        },
+        None => {
+            let path = env::var(LINKUP_CONFIG_ENV).context(
+                "No config argument provided and LINKUP_CONFIG environment variable not set",
+            )?;
+
+            let absolute_path = fs::canonicalize(&path)
+                .with_context(|| format!("Unalbe to resolve absolute path for {path:?}"))?;
+
+            Ok(absolute_path.to_string_lossy().into_owned())
+        }
     }
 }
 
-pub fn get_config(config_path: &str) -> Result<YamlLocalConfig, CliError> {
-    let content = match fs::read_to_string(config_path) {
-        Ok(content) => content,
-        Err(_) => {
-            return Err(CliError::BadConfig(format!(
-                "Failed to read the config file at {}",
-                config_path
-            )))
-        }
-    };
+pub fn get_config(config_path: &str) -> Result<YamlLocalConfig> {
+    let content = fs::read_to_string(config_path)
+        .with_context(|| format!("Failed to read config file {config_path:?}"))?;
 
-    let yaml_config: YamlLocalConfig = match serde_yaml::from_str(&content) {
-        Ok(config) => config,
-        Err(_) => {
-            return Err(CliError::BadConfig(format!(
-                "Failed to deserialize the config file at {}",
-                config_path
-            )))
-        }
-    };
-
-    Ok(yaml_config)
+    serde_yaml::from_str(&content)
+        .with_context(|| "Failed to deserialize config file {config_path:?}")
 }
 
 // This method gets the local state and uploads it to both the local linkup server and
 // the remote linkup server (worker).
-pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::Error> {
+pub async fn upload_state(state: &LocalState) -> Result<String> {
     let local_url = services::LocalServer::url();
 
     let server_config = ServerConfig::from(state);
@@ -326,7 +283,7 @@ pub async fn upload_state(state: &LocalState) -> Result<String, worker_client::E
             &server_session_name
         );
 
-        return Err(worker_client::Error::InconsistentState);
+        return Err(worker_client::Error::InconsistentState.into());
     }
 
     Ok(server_session_name)
@@ -402,6 +359,50 @@ impl From<&LocalState> for ServerConfig {
             remote: remote_storable_session,
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+pub fn managed_domains(state: Option<&LocalState>, cfg_path: &Option<String>) -> Vec<String> {
+    let config_domains = match config_path(cfg_path).ok() {
+        Some(cfg_path) => match get_config(&cfg_path) {
+            Ok(config) => Some(
+                config
+                    .domains
+                    .iter()
+                    .map(|storable_domain| storable_domain.domain.clone())
+                    .collect::<Vec<String>>(),
+            ),
+            Err(_) => None,
+        },
+        None => None,
+    };
+
+    let state_domains = state.map(|state| state.domain_strings());
+
+    let mut domain_set = std::collections::HashSet::new();
+
+    if let Some(domains) = config_domains {
+        domain_set.extend(domains);
+    }
+
+    if let Some(domains) = state_domains {
+        domain_set.extend(domains);
+    }
+
+    domain_set.into_iter().collect()
+}
+
+#[cfg(target_os = "macos")]
+pub fn top_level_domains(domains: &[String]) -> Vec<String> {
+    domains
+        .iter()
+        .filter(|&domain| {
+            !domains
+                .iter()
+                .any(|other_domain| other_domain != domain && domain.ends_with(other_domain))
+        })
+        .cloned()
+        .collect::<Vec<String>>()
 }
 
 #[cfg(test)]
