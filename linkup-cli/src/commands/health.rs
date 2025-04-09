@@ -98,6 +98,7 @@ struct BackgroudServices {
 }
 
 #[derive(Debug, Serialize)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 enum BackgroundServiceHealth {
     Unknown,
     NotInstalled,
