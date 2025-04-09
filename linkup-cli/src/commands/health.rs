@@ -57,22 +57,27 @@ impl System {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 struct Session {
-    name: String,
-    tunnel_url: String,
+    name: Option<String>,
+    tunnel_url: Option<String>,
 }
 
 impl Session {
-    fn load(state: &LocalState) -> Self {
-        Self {
-            name: state.linkup.session_name.clone(),
-            tunnel_url: state
-                .linkup
-                .tunnel
-                .clone()
-                .map(|url| url.as_str().to_string())
-                .unwrap_or("None".to_string()),
+    fn load(state: &Option<LocalState>) -> Self {
+        match state {
+            Some(state) => Self {
+                name: Some(state.linkup.session_name.clone()),
+                tunnel_url: Some(
+                    state
+                        .linkup
+                        .tunnel
+                        .clone()
+                        .map(|url| url.as_str().to_string())
+                        .unwrap_or("None".to_string()),
+                ),
+            },
+            None => Session::default(),
         }
     }
 }
@@ -93,7 +98,9 @@ struct BackgroudServices {
 }
 
 #[derive(Debug, Serialize)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 enum BackgroundServiceHealth {
+    Unknown,
     NotInstalled,
     Stopped,
     Running(u32),
@@ -101,7 +108,7 @@ enum BackgroundServiceHealth {
 
 impl BackgroudServices {
     #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
-    fn load(state: &LocalState) -> Self {
+    fn load(state: &Option<LocalState>) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
         let linkup_server = match find_service_pid(services::LocalServer::ID) {
@@ -133,16 +140,21 @@ impl BackgroudServices {
 
                 BackgroundServiceHealth::Running(pid.as_u32())
             }
-            None => {
-                if local_dns::is_installed(&crate::local_config::managed_domains(
-                    Some(state),
-                    &None,
-                )) {
-                    BackgroundServiceHealth::Stopped
-                } else {
-                    BackgroundServiceHealth::NotInstalled
+            None => match state {
+                // If there is no state, we cannot know if local-dns is installed since we depend on
+                // the domains listed on it.
+                Some(state) => {
+                    if local_dns::is_installed(&crate::local_config::managed_domains(
+                        Some(state),
+                        &None,
+                    )) {
+                        BackgroundServiceHealth::Stopped
+                    } else {
+                        BackgroundServiceHealth::NotInstalled
+                    }
                 }
-            }
+                None => BackgroundServiceHealth::Unknown,
+            },
         };
 
         Self {
@@ -232,18 +244,21 @@ impl Linkup {
 #[cfg(target_os = "macos")]
 #[derive(Debug, Serialize)]
 struct LocalDNS {
-    is_installed: bool,
+    is_installed: Option<bool>,
     resolvers: Vec<String>,
 }
 
 #[cfg(target_os = "macos")]
 impl LocalDNS {
-    fn load(state: &LocalState) -> Result<Self> {
+    fn load(state: &Option<LocalState>) -> Result<Self> {
+        // If there is no state, we cannot know if local-dns is installed since we depend on
+        // the domains listed on it.
+        let is_installed = state.as_ref().map(|state| {
+            local_dns::is_installed(&crate::local_config::managed_domains(Some(state), &None))
+        });
+
         Ok(Self {
-            is_installed: local_dns::is_installed(&crate::local_config::managed_domains(
-                Some(state),
-                &None,
-            )),
+            is_installed,
             resolvers: local_dns::list_resolvers()?,
         })
     }
@@ -251,6 +266,7 @@ impl LocalDNS {
 
 #[derive(Debug, Serialize)]
 struct Health {
+    state_exists: bool,
     system: System,
     session: Session,
     background_services: BackgroudServices,
@@ -261,10 +277,11 @@ struct Health {
 
 impl Health {
     pub fn load() -> Result<Self> {
-        let state = LocalState::load()?;
+        let state = LocalState::load().ok();
         let session = Session::load(&state);
 
         Ok(Self {
+            state_exists: state.is_some(),
             system: System::load(),
             session,
             background_services: BackgroudServices::load(&state),
@@ -277,6 +294,15 @@ impl Health {
 
 impl Display for Health {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !self.state_exists {
+            writeln!(f, "\n{}", "It seems like you don't have a state file yet. This will cause some of the information to be UNKNOWN.".yellow())?;
+            writeln!(
+                f,
+                "{}\n",
+                "A state file is created after you run 'linkup start' once.".yellow()
+            )?;
+        }
+
         writeln!(f, "{}", "System info:".bold().italic())?;
         writeln!(
             f,
@@ -286,8 +312,16 @@ impl Display for Health {
         writeln!(f, "  Architecture: {}", self.system.arch)?;
 
         writeln!(f, "{}", "Session info:".bold().italic())?;
-        writeln!(f, "  Name:       {}", self.session.name.normal())?;
-        writeln!(f, "  Tunnel URL: {}", self.session.tunnel_url.normal())?;
+        write!(f, "  Name:       ")?;
+        match &self.session.name {
+            Some(name) => writeln!(f, "{}", name.normal())?,
+            None => writeln!(f, "{}", "NOT SET".yellow())?,
+        }
+        write!(f, "  Tunnel URL: ")?;
+        match &self.session.tunnel_url {
+            Some(tunnel_url) => writeln!(f, "{}", tunnel_url.normal())?,
+            None => writeln!(f, "{}", "NOT SET".yellow())?,
+        }
 
         writeln!(f, "{}", "Background sevices:".bold().italic())?;
         write!(f, "  - Linkup Server  ")?;
@@ -295,6 +329,7 @@ impl Display for Health {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
+            BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
         #[cfg(target_os = "macos")]
@@ -308,6 +343,7 @@ impl Display for Health {
                 BackgroundServiceHealth::Running(pid) => {
                     writeln!(f, "{} ({})", "RUNNING".blue(), pid)?
                 }
+                BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
             }
         }
 
@@ -316,6 +352,7 @@ impl Display for Health {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
+            BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
         writeln!(f, "{}", "Linkup:".bold().italic())?;
@@ -338,21 +375,27 @@ impl Display for Health {
 
         #[cfg(target_os = "macos")]
         {
-            writeln!(f, "{}", "Local DNS:".bold().italic())?;
-            write!(f, "  Installed: ",)?;
-            if self.local_dns.is_installed {
-                writeln!(f, "{}", "YES".green())?;
-            } else {
-                writeln!(f, "{}", "NO".yellow())?;
-            }
-            write!(f, "  Resolvers:")?;
-            if self.local_dns.resolvers.is_empty() {
-                writeln!(f, " {}", "EMPTY".yellow())?;
-            } else {
-                writeln!(f)?;
-                for file in &self.local_dns.resolvers {
-                    writeln!(f, "      - {}", file)?;
+            write!(f, "{}", "Local DNS: ".bold().italic())?;
+            match self.local_dns.is_installed {
+                Some(installed) => {
+                    write!(f, "\n  Installed: ",)?;
+                    if installed {
+                        writeln!(f, "{}", "YES".green())?;
+                    } else {
+                        writeln!(f, "{}", "NO".yellow())?
+                    }
+
+                    write!(f, "  Resolvers:")?;
+                    if self.local_dns.resolvers.is_empty() {
+                        writeln!(f, " {}", "EMPTY".yellow())?;
+                    } else {
+                        writeln!(f)?;
+                        for file in &self.local_dns.resolvers {
+                            writeln!(f, "      - {}", file)?;
+                        }
+                    }
                 }
+                None => writeln!(f, "{}", "UNKNOWN".yellow())?,
             }
         }
 

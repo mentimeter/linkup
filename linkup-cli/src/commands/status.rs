@@ -40,6 +40,19 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
         println!("{}", warning.yellow());
     }
 
+    if !LocalState::exists() {
+        println!(
+            "{}",
+            "\nSeems like you don't have any state yet, so there is no status to report.".yellow()
+        );
+        println!(
+            "{}",
+            "Have you run 'linkup start' at least once?\n".yellow()
+        );
+
+        return Ok(());
+    }
+
     let state = LocalState::load().context("Failed to load local state")?;
     let linkup_services = linkup_services(&state);
     let all_services = state.services.into_iter().chain(linkup_services);
