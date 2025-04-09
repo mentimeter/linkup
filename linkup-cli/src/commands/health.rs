@@ -395,7 +395,7 @@ impl Display for Health {
                         }
                     }
                 }
-                None => writeln!(f, "{}", "UNKOWN".yellow())?,
+                None => writeln!(f, "{}", "UNKNOWN".yellow())?,
             }
         }
 
