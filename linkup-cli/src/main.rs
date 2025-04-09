@@ -226,7 +226,7 @@ async fn main() -> anyhow::Result<()> {
 
     ensure_linkup_dir()?;
 
-    if !matches!(cli.command, Commands::Update(_))
+    if !matches!(cli.command, Commands::Update(_) | Commands::Uninstall(_))
         && commands::update::new_version_available().await
     {
         match commands::update::update_command() {
