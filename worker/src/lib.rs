@@ -23,8 +23,6 @@ use ws::handle_ws_resp;
 
 mod http_error;
 mod kv_store;
-mod libdns;
-mod routes;
 mod tunnel;
 mod ws;
 
@@ -99,8 +97,6 @@ pub fn linkup_router(state: LinkupState) -> Router {
         .route("/linkup/check", get(always_ok))
         .route("/linkup/no-tunnel", get(no_tunnel))
         .route("/linkup", any(deprecated_linkup_session_handler))
-        .merge(routes::certificate_dns::router())
-        .merge(routes::certificate_cache::router())
         .route_layer(from_fn_with_state(state.clone(), authenticate))
         // Fallback for all other requests
         .fallback(any(linkup_request_handler))
