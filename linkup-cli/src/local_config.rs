@@ -74,6 +74,10 @@ impl LocalState {
             .map(|storable_domain| storable_domain.domain.clone())
             .collect::<Vec<String>>()
     }
+
+    pub fn exists() -> bool {
+        linkup_file_path(LINKUP_STATE_FILE).exists()
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
