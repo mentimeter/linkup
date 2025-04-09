@@ -124,6 +124,7 @@ struct CachedLatestRelease {
 }
 
 pub struct Update {
+    pub version: Version,
     pub linkup: Asset,
 }
 
@@ -222,7 +223,10 @@ pub async fn available_update(
         .linkup_asset(os, arch)
         .expect("Linkup asset to be present on a release");
 
-    Some(Update { linkup })
+    Some(Update {
+        version: latest_version,
+        linkup,
+    })
 }
 
 async fn fetch_stable_release() -> Result<Option<Release>, reqwest::Error> {
