@@ -40,6 +40,7 @@ use std::{
 };
 use std::{path::Path, sync::Arc};
 use tokio::{net::UdpSocket, signal};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
@@ -228,10 +229,15 @@ async fn linkup_request_handler(
 
     match ws.0 {
         Some(upgrade) => {
-            let mut request = Request::builder()
-                .uri(target_service.url)
-                .body(())
-                .expect("Failed to build request");
+            let mut url = target_service.url;
+            if url.starts_with("http://") {
+                url = url.replace("http://", "ws://");
+            } else if url.starts_with("https://") {
+                url = url.replace("https://", "wss://");
+            }
+
+            let uri = url.parse::<Uri>().unwrap();
+            let mut request = uri.into_client_request().unwrap();
 
             let extra_http_headers: HeaderMap = extra_headers.into();
             for (key, value) in extra_http_headers.iter() {
@@ -239,7 +245,7 @@ async fn linkup_request_handler(
             }
 
             // TODO: Handle both connection errors here and failed responses.
-            let (ws_stream, _response) = tokio_tungstenite::connect_async(request)
+            let (ws_stream, _upstream_response) = tokio_tungstenite::connect_async(request)
                 .await
                 .expect("WebSocket connection failed");
 

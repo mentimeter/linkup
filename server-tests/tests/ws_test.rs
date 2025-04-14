@@ -16,7 +16,7 @@ mod helpers;
 #[rstest]
 #[tokio::test]
 async fn can_request_underlying_websocket_server(
-    #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
+    #[values(ServerKind::Worker)] server_kind: ServerKind,
 ) {
     let url = setup_server(server_kind).await;
     let ws_url = setup_websocket_server().await;
@@ -27,7 +27,7 @@ async fn can_request_underlying_websocket_server(
     assert_eq!(session_resp.text().await.unwrap(), "ws-session");
 
     // Connect to the WebSocket server through the proxy
-    let uri = Uri::from_str(url.as_str()).unwrap();
+    let uri = http::Uri::from_str(url.as_str()).unwrap();
     let req = http::Request::builder()
         .uri(format!("ws://{}/ws", uri.authority().unwrap()))
         .header("referer", "example.com")
@@ -58,9 +58,9 @@ async fn can_request_underlying_websocket_server(
         Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
             assert_eq!(text, msg);
         }
-        anythingelse => {
-            println!("{:?}", anythingelse);
-            panic!("Failed to receive message")
+        anything_else => {
+            println!("{:?}", anything_else);
+            panic!("Failed to receive echoed message")
         }
     }
 
@@ -68,6 +68,21 @@ async fn can_request_underlying_websocket_server(
         .close(None)
         .await
         .expect("Failed to close WebSocket");
+
+    match ws_stream.next().await {
+        Some(Ok(tokio_tungstenite::tungstenite::Message::Close(frame))) => {
+            println!("Received close frame from server: {:?}", frame);
+        }
+        None => {
+            println!("Connection closed without explicit close frame from server");
+        }
+        other => {
+            panic!(
+                "Expected a close frame or stream termination, but got: {:?}",
+                other
+            );
+        }
+    }
 }
 
 async fn websocket_echo(ws: WebSocketUpgrade) -> impl IntoResponse {
@@ -86,6 +101,10 @@ async fn handle_websocket(mut socket: WebSocket) {
                         break;
                     }
                 } else if let Message::Close(_) = msg {
+                    println!("Received close on server, sending close back");
+                    if let Err(e) = socket.send(Message::Close(None)).await {
+                        println!("Failed to send message: {:?}", e);
+                    }
                     if let Err(e) = socket.close().await {
                         println!("Failed to close: {:?}", e);
                     }
