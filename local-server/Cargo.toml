@@ -8,7 +8,7 @@ name = "linkup_local_server"
 path = "src/lib.rs"
 
 [dependencies]
-axum = { version = "0.8.1", features = ["http2", "json"] }
+axum = { version = "0.8.1", features = ["http2", "json", "ws"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 http = "1.2.0"
 hickory-server = { version = "0.25.1", features = ["resolver"] }

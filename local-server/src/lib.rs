@@ -1,6 +1,9 @@
 use axum::{
     body::Body,
-    extract::{DefaultBodyLimit, Json, Request},
+    extract::{
+        ws::{WebSocket, WebSocketUpgrade},
+        DefaultBodyLimit, FromRequestParts, Json, Request,
+    },
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{any, get, post},
@@ -23,7 +26,7 @@ use hickory_server::{
     },
     ServerFuture,
 };
-use http::{header::HeaderMap, Uri};
+use http::{header::HeaderMap, request::Parts, Uri};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
     client::legacy::{connect::HttpConnector, Client},
@@ -179,9 +182,31 @@ pub async fn start_dns_server(linkup_session_name: String, domains: Vec<String>)
     server.block_until_done().await.unwrap();
 }
 
+struct ExtractOptionalWebSocketUpgrade(Option<WebSocketUpgrade>);
+
+impl<S> FromRequestParts<S> for ExtractOptionalWebSocketUpgrade
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let upgrade = WebSocketUpgrade::from_request_parts(parts, state).await;
+
+        match upgrade {
+            Ok(upgrade) => Ok(ExtractOptionalWebSocketUpgrade(Some(upgrade))),
+            Err(_) => {
+                // TODO: Maybe log?
+                Ok(ExtractOptionalWebSocketUpgrade(None))
+            }
+        }
+    }
+}
+
 async fn linkup_request_handler(
     Extension(store): Extension<MemoryStringStore>,
     Extension(client): Extension<HttpsClient>,
+    ws: ExtractOptionalWebSocketUpgrade,
     req: Request,
 ) -> Response {
     let sessions = SessionAllocator::new(&store);
@@ -224,15 +249,9 @@ async fn linkup_request_handler(
 
     let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
-    if req
-        .headers()
-        .get("upgrade")
-        .map(|v| v == "websocket")
-        .unwrap_or(false)
-    {
-        handle_ws_req(req, target_service, extra_headers, client).await
-    } else {
-        handle_http_req(req, target_service, extra_headers, client).await
+    match ws.0 {
+        Some(_) => handle_ws_req(req, target_service, extra_headers, client).await,
+        None => handle_http_req(req, target_service, extra_headers, client).await,
     }
 }
 
