@@ -38,7 +38,9 @@ use linkup::{
 };
 use rustls::ServerConfig;
 use std::{
+    future::Future,
     net::{Ipv4Addr, SocketAddr},
+    pin::Pin,
     str::FromStr,
 };
 use std::{path::Path, sync::Arc};
@@ -251,7 +253,7 @@ async fn linkup_request_handler(
 
     match ws.0 {
         Some(upgrade) => {
-            let mut res = upgrade.on_upgrade(handle_socket);
+            let mut res = upgrade.on_upgrade(context_handle_socket(extra_headers));
 
             res.headers_mut().extend(allow_all_cors());
 
@@ -261,20 +263,29 @@ async fn linkup_request_handler(
     }
 }
 
-async fn handle_socket(mut socket: WebSocket) {
-    while let Some(msg) = socket.recv().await {
-        let msg = if let Ok(msg) = msg {
-            msg
-        } else {
-            // client disconnected
-            return;
-        };
+fn context_handle_socket(
+    header_map: linkup::HeaderMap,
+) -> Box<dyn FnOnce(WebSocket) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send> {
+    let header_map = Arc::new(header_map);
 
-        if socket.send(msg).await.is_err() {
-            // client disconnected
-            return;
-        }
-    }
+    Box::new(move |mut socket: WebSocket| {
+        let header_map = Arc::clone(&header_map);
+
+        Box::pin(async move {
+            println!("Got headers: {:?}", header_map);
+
+            while let Some(msg_result) = socket.recv().await {
+                let msg = match msg_result {
+                    Ok(msg) => msg,
+                    Err(_) => return,
+                };
+
+                if socket.send(msg).await.is_err() {
+                    return;
+                }
+            }
+        })
+    })
 }
 
 async fn handle_http_req(
