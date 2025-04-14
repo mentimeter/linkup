@@ -250,8 +250,30 @@ async fn linkup_request_handler(
     let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     match ws.0 {
-        Some(_) => handle_ws_req(req, target_service, extra_headers, client).await,
+        Some(upgrade) => {
+            let mut res = upgrade.on_upgrade(handle_socket);
+
+            res.headers_mut().extend(allow_all_cors());
+
+            res
+        }
         None => handle_http_req(req, target_service, extra_headers, client).await,
+    }
+}
+
+async fn handle_socket(mut socket: WebSocket) {
+    while let Some(msg) = socket.recv().await {
+        let msg = if let Ok(msg) = msg {
+            msg
+        } else {
+            // client disconnected
+            return;
+        };
+
+        if socket.send(msg).await.is_err() {
+            // client disconnected
+            return;
+        }
     }
 }
 
