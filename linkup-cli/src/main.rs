@@ -140,6 +140,42 @@ fn prompt(question: &str) -> String {
     input
 }
 
+async fn display_update_message(command: &Commands) {
+    // Cases where we don't want to display the update CLI message.
+    match command {
+        // We rely on completions output, so we don't want to interfere with it.
+        Commands::Completion(_) => return,
+        // If the output is json, we don't want to interfere with it.
+        Commands::Health(args) if args.json => return,
+        // If the output is json, we don't want to interfere with it.
+        Commands::Status(args) if args.json => return,
+        // Uninstalling, not interested in update.
+        Commands::Uninstall(_) => return,
+        // Already updating, no reason to show.
+        Commands::Update(_) => return,
+        _ => (),
+    };
+
+    if commands::update::new_version_available().await {
+        match commands::update::update_command() {
+            Ok(update_command) => {
+                let message = format!(
+                    "⚠️ New version of linkup is available! Run `{update_command}` to update it.\n"
+                )
+                .yellow();
+
+                println!("{}", message);
+            }
+            Err(error) => {
+                // TODO(augustoccesar)[2025-03-26]: This should probably be an error log, but for now since the logs
+                //   are not behaving the way that we want them to, keep as a warning. Will revisit this once starts
+                //   looking into tracing.
+                log::warn!("Failed to resolve the update command to display to user: {error}");
+            }
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum CheckErr {
     #[error("local server not started")]
@@ -226,26 +262,7 @@ async fn main() -> anyhow::Result<()> {
 
     ensure_linkup_dir()?;
 
-    if !matches!(cli.command, Commands::Update(_))
-        && commands::update::new_version_available().await
-    {
-        match commands::update::update_command() {
-            Ok(update_command) => {
-                let message = format!(
-                    "⚠️ New version of linkup is available! Run `{update_command}` to update it."
-                )
-                .yellow();
-
-                println!("{}", message);
-            }
-            Err(error) => {
-                // TODO(augustoccesar)[2025-03-26]: This should probably be an error log, but for now since the logs
-                //   are not behaving the way that we want them to, keep as a warning. Will revisit this once starts
-                //   looking into tracing.
-                log::warn!("Failed to resolve the update command to display to user: {error}");
-            }
-        }
-    }
+    display_update_message(&cli.command).await;
 
     match &cli.command {
         Commands::Health(args) => commands::health(args),
