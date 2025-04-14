@@ -1,7 +1,9 @@
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{future::Future, pin::Pin};
 
 use axum::extract::{ws::WebSocket, FromRequestParts, WebSocketUpgrade};
 use http::{request::Parts, StatusCode};
+use tokio::net::TcpStream;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 pub struct ExtractOptionalWebSocketUpgrade(pub Option<WebSocketUpgrade>);
 
@@ -25,16 +27,10 @@ where
 }
 
 pub fn context_handle_socket(
-    header_map: linkup::HeaderMap,
+    _upstream_ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
 ) -> Box<dyn FnOnce(WebSocket) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send> {
-    let header_map = Arc::new(header_map);
-
     Box::new(move |mut socket: WebSocket| {
-        let header_map = Arc::clone(&header_map);
-
         Box::pin(async move {
-            println!("Got headers: {:?}", header_map);
-
             while let Some(msg_result) = socket.recv().await {
                 let msg = match msg_result {
                     Ok(msg) => msg,

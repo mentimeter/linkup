@@ -228,7 +228,22 @@ async fn linkup_request_handler(
 
     match ws.0 {
         Some(upgrade) => {
-            let mut res = upgrade.on_upgrade(ws::context_handle_socket(extra_headers));
+            let mut request = Request::builder()
+                .uri(target_service.url)
+                .body(())
+                .expect("Failed to build request");
+
+            let extra_http_headers: HeaderMap = extra_headers.into();
+            for (key, value) in extra_http_headers.iter() {
+                request.headers_mut().insert(key, value.clone());
+            }
+
+            // TODO: Handle both connection errors here and failed responses.
+            let (ws_stream, _response) = tokio_tungstenite::connect_async(request)
+                .await
+                .expect("WebSocket connection failed");
+
+            let mut res = upgrade.on_upgrade(ws::context_handle_socket(ws_stream));
 
             res.headers_mut().extend(allow_all_cors());
 
