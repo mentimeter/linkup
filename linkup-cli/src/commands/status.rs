@@ -24,7 +24,7 @@ const MIN_WIDTH_FOR_KIND: usize = 50;
 pub struct Args {
     // Output status in JSON format
     #[arg(long)]
-    json: bool,
+    pub json: bool,
 
     #[arg(short, long)]
     all: bool,

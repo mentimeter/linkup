@@ -23,7 +23,7 @@ use super::local_dns;
 pub struct Args {
     // Output status in JSON format
     #[arg(long)]
-    json: bool,
+    pub json: bool,
 }
 
 pub fn health(args: &Args) -> Result<()> {
