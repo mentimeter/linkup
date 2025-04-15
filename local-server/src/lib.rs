@@ -245,15 +245,24 @@ async fn linkup_request_handler(
             }
 
             // TODO: Handle both connection errors here and failed responses.
-            let (ws_stream, _upstream_response) = tokio_tungstenite::connect_async(request)
+            let (ws_stream, upstream_response) = tokio_tungstenite::connect_async(request)
                 .await
                 .expect("WebSocket connection failed");
 
-            let mut res = upgrade.on_upgrade(ws::context_handle_socket(ws_stream));
+            let mut websocket_upgrade_response =
+                upgrade.on_upgrade(ws::context_handle_socket(ws_stream));
 
-            res.headers_mut().extend(allow_all_cors());
+            let websocket_upgrade_response_headers = websocket_upgrade_response.headers_mut();
+            for upstream_header in upstream_response.headers() {
+                if !websocket_upgrade_response_headers.contains_key(upstream_header.0) {
+                    websocket_upgrade_response_headers
+                        .append(upstream_header.0, upstream_header.1.clone());
+                }
+            }
 
-            res
+            websocket_upgrade_response_headers.extend(allow_all_cors());
+
+            websocket_upgrade_response
         }
         None => handle_http_req(req, target_service, extra_headers, client).await,
     }

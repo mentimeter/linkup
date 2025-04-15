@@ -68,9 +68,12 @@ pub fn axum_to_tungstenite(message: axum::extract::ws::Message) -> tungstenite::
     }
 }
 
+type WrappedSocketHandler =
+    Box<dyn FnOnce(WebSocket) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
+
 pub fn context_handle_socket(
     upstream_ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
-) -> Box<dyn FnOnce(WebSocket) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send> {
+) -> WrappedSocketHandler {
     Box::new(move |downstream: WebSocket| {
         Box::pin(async move {
             let (mut upstream_write, mut upstream_read) = upstream_ws.split();

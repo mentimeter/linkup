@@ -5,7 +5,7 @@ use axum::response::IntoResponse;
 use axum::Router;
 use futures::{SinkExt, StreamExt};
 use helpers::ServerKind;
-use http::Uri;
+use http::{HeaderName, HeaderValue};
 use rstest::rstest;
 use tokio::net::TcpListener;
 
@@ -16,7 +16,7 @@ mod helpers;
 #[rstest]
 #[tokio::test]
 async fn can_request_underlying_websocket_server(
-    #[values(ServerKind::Worker)] server_kind: ServerKind,
+    #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
 ) {
     let url = setup_server(server_kind).await;
     let ws_url = setup_websocket_server().await;
@@ -46,6 +46,10 @@ async fn can_request_underlying_websocket_server(
         .expect("Failed to connect to WebSocket server");
 
     assert_eq!(ws_resp.status(), 101);
+    assert_eq!(
+        ws_resp.headers().get("my-special-header"),
+        Some(&HeaderValue::from_str("special-value").unwrap())
+    );
 
     // Send a message
     let msg = "Hello, WebSocket!";
@@ -86,7 +90,13 @@ async fn can_request_underlying_websocket_server(
 }
 
 async fn websocket_echo(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(handle_websocket)
+    let mut response = ws.on_upgrade(handle_websocket);
+    response.headers_mut().append(
+        HeaderName::from_str("my-special-header").unwrap(),
+        HeaderValue::from_str("special-value").unwrap(),
+    );
+
+    response
 }
 
 async fn handle_websocket(mut socket: WebSocket) {
