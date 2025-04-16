@@ -242,8 +242,8 @@ impl Linkup {
     #[cfg(target_os = "linux")]
     pub fn is_cap_set(&self) -> bool {
         let output = std::process::Command::new("getcap")
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .stdin(std::process::Stdio::null())
             .args([crate::linkup_exe_path().unwrap().display().to_string()])
             .output();
