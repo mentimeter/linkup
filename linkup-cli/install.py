@@ -204,7 +204,7 @@ def download_and_extract(user_os: OS, user_arch: Arch, channel: Channel, release
 
     print(f"Decompressing {local_tar_path}")
     with tarfile.open(local_tar_path, "r:gz") as tar:
-        tar.extractall(path="/tmp")
+        tar.extractall(path="/tmp", filter="data")
 
     LINKUP_BIN_PATH.mkdir(parents=True, exist_ok=True)
     linkup_bin_path = LINKUP_BIN_PATH / "linkup"
