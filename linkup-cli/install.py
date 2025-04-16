@@ -212,7 +212,7 @@ def download_and_extract(user_os: OS, user_arch: Arch, channel: Channel, release
     os.chmod(linkup_bin_path, 0o755)
 
     if user_os.Linux:
-        subprocess.run(["sudo", "setcap", "'cap_net_bind_service=+ep'", linkup_bin_path])
+        subprocess.run(["sudo", "setcap", "'cap_net_bind_service=+ep'", f"{linkup_bin_path}"])
 
     print(f"Linkup installed at {LINKUP_BIN_PATH / 'linkup'}")
     local_tar_path.unlink()
