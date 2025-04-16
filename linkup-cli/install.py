@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tarfile
 import urllib.request
 from dataclasses import dataclass
@@ -206,8 +207,12 @@ def download_and_extract(user_os: OS, user_arch: Arch, channel: Channel, release
         tar.extractall(path="/tmp")
 
     LINKUP_BIN_PATH.mkdir(parents=True, exist_ok=True)
-    shutil.move("/tmp/linkup", LINKUP_BIN_PATH / "linkup")
-    os.chmod(LINKUP_BIN_PATH / "linkup", 0o755)
+    linkup_bin_path = LINKUP_BIN_PATH / "linkup"
+    shutil.move("/tmp/linkup", linkup_bin_path)
+    os.chmod(linkup_bin_path, 0o755)
+
+    if user_os.Linux:
+        subprocess.run(["sudo", "setcap", "'cap_net_bind_service=+ep'", linkup_bin_path])
 
     print(f"Linkup installed at {LINKUP_BIN_PATH / 'linkup'}")
     local_tar_path.unlink()
