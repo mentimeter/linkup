@@ -261,7 +261,7 @@ impl Linkup {
             }
             Err(error) => {
                 log::warn!("Failed to check capabilities: {}", error);
-                return false;
+                false
             }
         }
     }
