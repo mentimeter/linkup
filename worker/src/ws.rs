@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use axum::{http::StatusCode, response::IntoResponse};
-use http::{HeaderMap, HeaderName, HeaderValue};
+use http::{HeaderName, HeaderValue};
 use linkup::allow_all_cors;
 use worker::{console_log, Error, HttpResponse, WebSocket, WebSocketPair, WebsocketEvent};
 
