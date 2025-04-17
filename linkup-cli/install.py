@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+from tarfile import TarFile
 
 python_version = sys.version_info
 if python_version.major < 3 or python_version.minor < 2:
@@ -188,6 +189,17 @@ def get_latest_stable_release() -> GithubRelease:
         return GithubRelease.from_json(json.load(response))
 
 
+def tar_extract(tar: TarFile, path: str):
+    if python_version.major < 3 or (
+        python_version.major == 3 and python_version.minor < 12
+    ):
+        tar.extractall(path=path)
+    elif python_version.major > 3 or (
+        python_version.major == 3 and python_version.minor >= 12
+    ):
+        tar.extractall(path=path, filter="data")
+
+
 def download_and_extract(
     user_os: OS, user_arch: Arch, channel: Channel, release: GithubRelease
 ) -> None:
@@ -221,7 +233,7 @@ def download_and_extract(
 
     print(f"Decompressing {local_tar_path}")
     with tarfile.open(local_tar_path, "r:gz") as tar:
-        tar.extractall(path="/tmp", filter="data")
+        tar_extract(tar, "/tmp")
 
     LINKUP_BIN_PATH.mkdir(parents=True, exist_ok=True)
     linkup_bin_path = LINKUP_BIN_PATH / "linkup"
