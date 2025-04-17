@@ -230,7 +230,7 @@ def setup_path() -> None:
 
     print(f"Since you are using {shell.name}, you can run the following to add to your profile:")
     print(f"\n  {shell.add_to_profile_command()}")
-    print("\nThen restart your shell.");
+    print("\nThen restart your shell.")
 
 
 def parse_arguments(args: List[str]) -> Context:
