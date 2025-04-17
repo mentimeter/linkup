@@ -4,7 +4,9 @@ import sys
 
 python_version = sys.version_info
 if python_version.major < 3 or python_version.minor < 2:
-    print(f"Minimum required Python version is 3.2. Current one: {sys.version.split(' ')[0]}")
+    print(
+        f"Minimum required Python version is 3.2. Current one: {sys.version.split(' ')[0]}"
+    )
     exit(1)
 
 import argparse
@@ -22,11 +24,11 @@ from typing import Any, Optional, Tuple, List
 
 LINKUP_BIN_PATH = Path.home() / ".linkup" / "bin"
 
+
 class Shell(Enum):
     bash = "bash"
     zsh = "zsh"
     fish = "fish"
-
 
     @staticmethod
     def from_str(value: str) -> Optional["Shell"]:
@@ -41,10 +43,11 @@ class Shell(Enum):
         else:
             return None
 
-
     def add_to_profile_command(self) -> Optional[str]:
         if self == Shell.bash:
-            return f"echo 'export PATH=$PATH:{LINKUP_BIN_PATH}' >> {Path.home()}/.bashrc"
+            return (
+                f"echo 'export PATH=$PATH:{LINKUP_BIN_PATH}' >> {Path.home()}/.bashrc"
+            )
         elif self == Shell.zsh:
             return f"echo 'export PATH=$PATH:{LINKUP_BIN_PATH}' >> {Path.home()}/.zshrc"
         elif self == Shell.fish:
@@ -90,7 +93,9 @@ class GithubRelease:
             for asset in obj["assets"]
         ]
 
-        return GithubRelease(tag_name=obj["tag_name"], prerelease=obj["prerelease"], assets=assets)
+        return GithubRelease(
+            tag_name=obj["tag_name"], prerelease=obj["prerelease"], assets=assets
+        )
 
 
 @dataclass
@@ -107,8 +112,12 @@ def command_exists(cmd: str) -> bool:
 
 def check_dependencies() -> None:
     if not command_exists("cloudflared"):
-        print("WARN: 'cloudflared' is not installed. Please install it before installing Linkup.")
-        print("More info: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/")
+        print(
+            "WARN: 'cloudflared' is not installed. Please install it before installing Linkup."
+        )
+        print(
+            "More info: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
+        )
         sys.exit(1)
 
 
@@ -158,8 +167,8 @@ def list_releases() -> List[GithubRelease]:
         "https://api.github.com/repos/mentimeter/linkup/releases",
         headers={
             "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28"
-        }
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
     )
 
     with urllib.request.urlopen(req) as response:
@@ -171,23 +180,28 @@ def get_latest_stable_release() -> GithubRelease:
         "https://api.github.com/repos/mentimeter/linkup/releases/latest",
         headers={
             "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28"
-        }
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
     )
 
     with urllib.request.urlopen(req) as response:
         return GithubRelease.from_json(json.load(response))
 
 
-def download_and_extract(user_os: OS, user_arch: Arch, channel: Channel, release: GithubRelease) -> None:
+def download_and_extract(
+    user_os: OS, user_arch: Arch, channel: Channel, release: GithubRelease
+) -> None:
     print(f"Latest release on {channel.name} channel: {release.tag_name}.")
     print(f"Looking for asset for {user_os.value}/{user_arch.value}...")
-    asset_pattern = re.compile(rf"linkup-.+-{user_arch.value}-{user_os.value}\.tar\.gz$")
+    asset_pattern = re.compile(
+        rf"linkup-.+-{user_arch.value}-{user_os.value}\.tar\.gz$"
+    )
 
     download_url = next(
         (
             asset.browser_download_url
-            for asset in release.assets if asset_pattern.match(asset.name)
+            for asset in release.assets
+            if asset_pattern.match(asset.name)
         ),
         None,
     )
@@ -199,7 +213,10 @@ def download_and_extract(user_os: OS, user_arch: Arch, channel: Channel, release
     print(f"Downloading: {download_url}")
     local_tar_path = Path("/tmp") / Path(download_url).name
 
-    with urllib.request.urlopen(download_url) as response, open(local_tar_path, "wb") as out_file:
+    with (
+        urllib.request.urlopen(download_url) as response,
+        open(local_tar_path, "wb") as out_file,
+    ):
         shutil.copyfileobj(response, out_file)
 
     print(f"Decompressing {local_tar_path}")
@@ -212,7 +229,9 @@ def download_and_extract(user_os: OS, user_arch: Arch, channel: Channel, release
     os.chmod(linkup_bin_path, 0o755)
 
     if user_os == OS.Linux:
-        subprocess.run(["sudo", "setcap", "cap_net_bind_service=+ep", f"{linkup_bin_path}"])
+        subprocess.run(
+            ["sudo", "setcap", "cap_net_bind_service=+ep", f"{linkup_bin_path}"]
+        )
 
     print(f"Linkup installed at {LINKUP_BIN_PATH / 'linkup'}")
     local_tar_path.unlink()
@@ -228,7 +247,9 @@ def setup_path() -> None:
     if shell is None:
         return
 
-    print(f"Since you are using {shell.name}, you can run the following to add to your profile:")
+    print(
+        f"Since you are using {shell.name}, you can run the following to add to your profile:"
+    )
     print(f"\n  {shell.add_to_profile_command()}")
     print("\nThen restart your shell.")
 
@@ -240,7 +261,7 @@ def parse_arguments(args: List[str]) -> Context:
         "--channel",
         choices=["stable", "beta"],
         default="stable",
-        help="Release channel to use (default: stable)"
+        help="Release channel to use (default: stable)",
     )
 
     parsed = parser.parse_args(args)
