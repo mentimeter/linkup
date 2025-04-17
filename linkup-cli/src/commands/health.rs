@@ -1,13 +1,12 @@
+use clap::crate_version;
+use colored::Colorize;
+use regex::Regex;
+use serde::Serialize;
 use std::{
     env,
     fmt::Display,
     fs::{self},
 };
-
-use clap::crate_version;
-use colored::Colorize;
-use regex::Regex;
-use serde::Serialize;
 
 use crate::{
     linkup_dir_path,
@@ -239,6 +238,33 @@ impl Linkup {
             config_content: files,
         })
     }
+
+    #[cfg(target_os = "linux")]
+    pub fn is_cap_set(&self) -> bool {
+        let output = std::process::Command::new("getcap")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::null())
+            .args([crate::linkup_exe_path().unwrap().display().to_string()])
+            .output();
+
+        match output {
+            Ok(output) => {
+                if !output.status.success() {
+                    let error_message = String::from_utf8_lossy(&output.stderr).to_string();
+                    log::warn!("Failed to check capabilities: {}", error_message);
+                    return false;
+                }
+
+                let output_text = String::from_utf8_lossy(&output.stdout).to_string();
+                output_text.contains("cap_net_bind_service=ep")
+            }
+            Err(error) => {
+                log::warn!("Failed to check capabilities: {}", error);
+                false
+            }
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -357,6 +383,15 @@ impl Display for Health {
 
         writeln!(f, "{}", "Linkup:".bold().italic())?;
         writeln!(f, "  Version: {}", self.linkup.version)?;
+        #[cfg(target_os = "linux")]
+        {
+            write!(f, "  Capability set: ")?;
+            if self.linkup.is_cap_set() {
+                writeln!(f, "{}", "YES".blue())?;
+            } else {
+                writeln!(f, "{}", "NO".yellow())?;
+            }
+        }
         writeln!(
             f,
             "  Config folder location: {}",
