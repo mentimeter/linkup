@@ -211,7 +211,7 @@ def download_and_extract(user_os: OS, user_arch: Arch, channel: Channel, release
     shutil.move("/tmp/linkup", linkup_bin_path)
     os.chmod(linkup_bin_path, 0o755)
 
-    if user_os.Linux:
+    if user_os == OS.Linux:
         subprocess.run(["sudo", "setcap", "cap_net_bind_service=+ep", f"{linkup_bin_path}"])
 
     print(f"Linkup installed at {LINKUP_BIN_PATH / 'linkup'}")
