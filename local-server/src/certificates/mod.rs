@@ -313,42 +313,36 @@ fn firefox_profiles_cert_storages() -> Vec<String> {
     ];
 
     let home = env::var("HOME").expect("Failed to get HOME env var");
-    match profile_dirs
+    let mut storages: Vec<String> = Vec::new();
+
+    for dir in profile_dirs
         .iter()
-        .map(|dir| PathBuf::from(home.clone()).join(dir))
-        .find(|path| path.exists())
+        .map(|dir| PathBuf::from(&home).join(dir))
         .map(fs::read_dir)
     {
-        Some(Ok(dir)) => dir
-            .filter_map(|entry| {
-                let entry = entry.expect("Failed to read Firefox profile dir entry entry");
-                let path = entry.path();
-                if path.is_dir() {
-                    if path.join("cert9.db").exists() {
-                        Some(format!("{}{}", "sql:", path.to_str().unwrap()))
-                    } else if path.join("cert8.db").exists() {
-                        Some(format!("{}{}", "dmb:", path.to_str().unwrap()))
-                    } else {
-                        None
+        match dir {
+            Ok(dir) => {
+                for entry in dir.filter_map(|entry| entry.ok()) {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        if path.join("cert9.db").exists() {
+                            storages.push(format!("{}{}", "sql:", path.to_str().unwrap()));
+                        } else if path.join("cert8.db").exists() {
+                            storages.push(format!("{}{}", "dmb:", path.to_str().unwrap()));
+                        }
                     }
-                } else {
-                    None
                 }
-            })
-            .collect::<Vec<String>>(),
-        Some(Err(error)) => {
-            if !matches!(error.kind(), std::io::ErrorKind::NotFound) {
-                eprintln!("Failed to load Firefox profiles: {}", error);
             }
 
-            Vec::new()
-        }
-        _ => {
-            eprintln!("Failed to load Firefox profiles");
-
-            Vec::new()
+            Err(error) => {
+                if !matches!(error.kind(), std::io::ErrorKind::NotFound) {
+                    eprintln!("Failed to load Firefox profiles: {}", error);
+                }
+            }
         }
     }
+
+    storages
 }
 
 fn add_ca_to_nss(certs_dir: &Path, cert_storages: &[String]) {
