@@ -15,9 +15,10 @@ use std::{
 pub use wildcard_sni_resolver::WildcardSniResolver;
 
 const LINKUP_CA_COMMON_NAME: &str = "Linkup Local CA";
+const LINKUP_CA_PEM_NAME: &str = "linkup_ca.cert.pem";
 
 fn ca_cert_pem_path(certs_dir: &Path) -> PathBuf {
-    certs_dir.join("linkup_ca.cert.pem")
+    certs_dir.join(LINKUP_CA_PEM_NAME)
 }
 
 fn ca_key_pem_path(certs_dir: &Path) -> PathBuf {
@@ -177,6 +178,7 @@ fn upsert_ca_cert(certs_dir: &Path) {
     fs::write(ca_key_pem_path(certs_dir), key_pair.serialize_pem()).unwrap();
 }
 
+#[cfg(target_os = "macos")]
 fn ca_exists_in_keychain() -> bool {
     process::Command::new("sudo")
         .arg("security")
@@ -191,6 +193,21 @@ fn ca_exists_in_keychain() -> bool {
         .success()
 }
 
+#[cfg(target_os = "linux")]
+fn ca_exists_in_keychain() -> bool {
+    process::Command::new("find")
+        .arg("/etc/ssl/certs")
+        .arg("-iname")
+        .arg(LINKUP_CA_PEM_NAME)
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .expect("Failed to find linkup CA")
+        .success()
+}
+
+#[cfg(target_os = "macos")]
 fn add_ca_to_keychain(certs_dir: &Path) {
     process::Command::new("sudo")
         .arg("security")
@@ -208,6 +225,28 @@ fn add_ca_to_keychain(certs_dir: &Path) {
         .expect("Failed to add CA to keychain");
 }
 
+#[cfg(target_os = "linux")]
+fn add_ca_to_keychain(certs_dir: &Path) {
+    process::Command::new("sudo")
+        .arg("cp")
+        .arg(ca_cert_pem_path(certs_dir))
+        .arg("/usr/local/share/ca-certificates")
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .expect("Failed to copy CA to /usr/local/share/ca-certificates");
+
+    process::Command::new("sudo")
+        .arg("update-ca-certificates")
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .expect("Failed to update CA certificates");
+}
+
+#[cfg(target_os = "macos")]
 fn remove_ca_from_keychain() -> Result<(), UninstallError> {
     let status = process::Command::new("sudo")
         .arg("security")
@@ -230,11 +269,57 @@ fn remove_ca_from_keychain() -> Result<(), UninstallError> {
     Ok(())
 }
 
-fn firefox_profiles_cert_storages() -> Vec<String> {
-    let home = env::var("HOME").expect("Failed to get HOME env var");
+#[cfg(target_os = "linux")]
+fn remove_ca_from_keychain() -> Result<(), UninstallError> {
+    let status = process::Command::new("sudo")
+        .arg("rm")
+        .arg(format!(
+            "/usr/local/share/ca-certificates/{}",
+            LINKUP_CA_PEM_NAME
+        ))
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .map_err(|error| UninstallError::DeleteCaCertificate(error.to_string()))?;
 
-    match fs::read_dir(PathBuf::from(home).join("Library/Application Support/Firefox/Profiles")) {
-        Ok(dir) => dir
+    if !status.success() {
+        return Err(UninstallError::DeleteCaCertificate(
+            "rm command returned unsuccessful exit status".to_string(),
+        ));
+    }
+
+    process::Command::new("sudo")
+        .arg("update-ca-certificates")
+        .arg("--fresh")
+        .stdin(process::Stdio::null())
+        .stdout(process::Stdio::null())
+        .stderr(process::Stdio::null())
+        .status()
+        .expect("Failed to update CA certificates");
+
+    Ok(())
+}
+
+fn firefox_profiles_cert_storages() -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    let profile_dirs = ["Library/Application Support/Firefox/Profiles"];
+
+    #[cfg(target_os = "linux")]
+    let profile_dirs = [
+        ".mozilla/firefox",
+        "snap/firefox/common/.mozilla/firefox",
+        ".var/app/org.mozilla.firefox/.mozilla/firefox",
+    ];
+
+    let home = env::var("HOME").expect("Failed to get HOME env var");
+    match profile_dirs
+        .iter()
+        .map(|dir| PathBuf::from(home.clone()).join(dir))
+        .find(|path| path.exists())
+        .map(fs::read_dir)
+    {
+        Some(Ok(dir)) => dir
             .filter_map(|entry| {
                 let entry = entry.expect("Failed to read Firefox profile dir entry entry");
                 let path = entry.path();
@@ -251,10 +336,15 @@ fn firefox_profiles_cert_storages() -> Vec<String> {
                 }
             })
             .collect::<Vec<String>>(),
-        Err(error) => {
+        Some(Err(error)) => {
             if !matches!(error.kind(), std::io::ErrorKind::NotFound) {
                 eprintln!("Failed to load Firefox profiles: {}", error);
             }
+
+            Vec::new()
+        }
+        _ => {
+            eprintln!("Failed to load Firefox profiles");
 
             Vec::new()
         }
