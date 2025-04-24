@@ -133,8 +133,11 @@ fn install_resolvers(resolve_domains: &[String]) -> Result<()> {
         }
     }
 
-    flush_dns_cache()?;
-    kill_dns_responder()?;
+    #[cfg(target_os = "macos")]
+    {
+        flush_dns_cache()?;
+        kill_dns_responder()?;
+    }
 
     Ok(())
 }
@@ -150,8 +153,11 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
             .with_context(|| format!("Failed to delete /etc/resolver/{domain}",))?;
     }
 
-    flush_dns_cache()?;
-    kill_dns_responder()?;
+    #[cfg(target_os = "macos")]
+    {
+        flush_dns_cache()?;
+        kill_dns_responder()?;
+    }
 
     Ok(())
 }
@@ -173,6 +179,7 @@ pub fn list_resolvers() -> std::result::Result<Vec<String>, std::io::Error> {
     Ok(resolvers)
 }
 
+#[cfg(target_os = "macos")]
 fn flush_dns_cache() -> Result<()> {
     let status_flush = Command::new("dscacheutil")
         .args(["-flushcache"])
@@ -186,6 +193,7 @@ fn flush_dns_cache() -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn kill_dns_responder() -> Result<()> {
     let status_kill_responder = Command::new("sudo")
         .args(["killall", "-HUP", "mDNSResponder"])
