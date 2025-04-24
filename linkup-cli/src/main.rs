@@ -96,7 +96,6 @@ fn current_version() -> Version {
         .expect("current version on CARGO_PKG_VERSION should be a valid version")
 }
 
-#[cfg(target_os = "macos")]
 fn is_sudo() -> bool {
     let sudo_check = std::process::Command::new("sudo")
         .arg("-n")
@@ -112,7 +111,6 @@ fn is_sudo() -> bool {
     false
 }
 
-#[cfg(target_os = "macos")]
 fn sudo_su() -> Result<()> {
     let status = std::process::Command::new("sudo")
         .arg("su")
