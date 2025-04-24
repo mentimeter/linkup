@@ -1,6 +1,10 @@
 use std::{fs, process};
 
-use crate::{commands, linkup_dir_path, linkup_exe_path, prompt, InstallationMethod, Result};
+use crate::commands::local_dns;
+use crate::local_config::LocalState;
+use crate::{
+    commands, linkup_dir_path, linkup_exe_path, local_config, prompt, InstallationMethod, Result,
+};
 
 #[derive(clap::Args)]
 pub struct Args {}
@@ -19,19 +23,11 @@ pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<()> 
 
     commands::stop(&commands::StopArgs {}, true)?;
 
-    #[cfg(target_os = "macos")]
-    {
-        use crate::{
-            commands::local_dns,
-            local_config::{self, LocalState},
-        };
-
-        if local_dns::is_installed(&local_config::managed_domains(
-            LocalState::load().ok().as_ref(),
-            config_arg,
-        )) {
-            local_dns::uninstall(config_arg).await?;
-        }
+    if local_dns::is_installed(&local_config::managed_domains(
+        LocalState::load().ok().as_ref(),
+        config_arg,
+    )) {
+        local_dns::uninstall(config_arg).await?;
     }
 
     let exe_path = linkup_exe_path()?;

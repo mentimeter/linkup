@@ -36,7 +36,6 @@ pub async fn server(args: &Args) -> Result<()> {
                     .unwrap();
             });
 
-            #[cfg(target_os = "macos")]
             let handler_https = {
                 use std::path::PathBuf;
 

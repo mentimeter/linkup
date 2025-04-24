@@ -34,7 +34,6 @@ pub fn stop(_args: &Args, clear_env: bool) -> Result<()> {
 
     stop_service(services::LocalServer::ID);
     stop_service(services::CloudflareTunnel::ID);
-    #[cfg(target_os = "macos")]
     stop_service(services::LocalDnsServer::ID);
 
     println!("Stopped linkup");

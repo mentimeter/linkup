@@ -226,7 +226,6 @@ enum Commands {
     #[clap(about = "View linkup component and service status")]
     Status(commands::StatusArgs),
 
-    #[cfg(target_os = "macos")]
     #[clap(about = "Speed up your local environment by routing traffic locally when possible")]
     LocalDNS(commands::LocalDnsArgs),
 
@@ -272,7 +271,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::Local(args) => commands::local(args).await,
         Commands::Remote(args) => commands::remote(args).await,
         Commands::Status(args) => commands::status(args),
-        #[cfg(target_os = "macos")]
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
