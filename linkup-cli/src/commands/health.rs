@@ -173,16 +173,13 @@ fn is_child_of_current_process(process: &sysinfo::Process, current_pid: sysinfo:
     }
 }
 
-fn is_very_young(process: &sysinfo::Process) -> bool {
-    // Uptime is in seconds
-    process.run_time() < 2
-}
-
 fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<OrphanProcess> {
     let env_var_format = Regex::new(r"^[A-Z_][A-Z0-9_]*=.*$").unwrap();
 
     let current_pid = sysinfo::get_current_pid().unwrap();
     let mut orphans = Vec::new();
+
+    let mut seen_commands = std::collections::HashSet::new();
 
     for (pid, process) in services::system().processes() {
         if pid == &current_pid || managed_pids.contains(pid) {
@@ -190,10 +187,6 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
         }
 
         if is_child_of_current_process(process, current_pid) {
-            continue;
-        }
-
-        if is_very_young(process) {
             continue;
         }
 
@@ -213,6 +206,13 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
                     .map(|part| part.to_string_lossy())
                     .collect::<Vec<_>>()
                     .join(" ");
+
+                // If there are thread-duplicates, ignore them
+                if seen_commands.contains(&full_command) {
+                    continue;
+                }
+
+                seen_commands.insert(full_command.clone());
 
                 orphans.push(OrphanProcess {
                     cmd: truncate_with_ellipsis(&full_command, 120),
