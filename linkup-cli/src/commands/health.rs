@@ -166,6 +166,18 @@ impl BackgroudServices {
     }
 }
 
+fn is_child_of_current_process(process: &sysinfo::Process, current_pid: sysinfo::Pid) -> bool {
+    match process.parent() {
+        Some(ppid) => ppid == current_pid,
+        None => false,
+    }
+}
+
+fn is_very_young(process: &sysinfo::Process) -> bool {
+    // Uptime is in seconds
+    process.run_time() < 2
+}
+
 fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<OrphanProcess> {
     let env_var_format = Regex::new(r"^[A-Z_][A-Z0-9_]*=.*$").unwrap();
 
@@ -174,6 +186,14 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
 
     for (pid, process) in services::system().processes() {
         if pid == &current_pid || managed_pids.contains(pid) {
+            continue;
+        }
+
+        if is_child_of_current_process(process, current_pid) {
+            continue;
+        }
+
+        if is_very_young(process) {
             continue;
         }
 
