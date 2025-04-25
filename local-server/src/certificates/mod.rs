@@ -95,7 +95,7 @@ pub fn setup_self_signed_certificates(
             let nss_url = if cfg!(target_os = "macos") {
                 "https://formulae.brew.sh/formula/nss"
             } else {
-                "sudo apt install libnss3-tools"
+                "`sudo apt install libnss3-tools`"
             };
             println!("You can install it with {}.", nss_url);
             println!("Please install it and then try to install local-dns again.");
