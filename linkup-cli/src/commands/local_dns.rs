@@ -198,7 +198,7 @@ fn flush_dns_cache() -> Result<()> {
         .context("Failed to flush DNS cache")?;
 
     if !status_flush.success() {
-        return Err(anyhow!("Flushing DNS cache was unsuccessful"));
+        log::warn!("Flushing DNS cache was unsuccessful");
     }
 
     Ok(())
@@ -226,7 +226,7 @@ fn kill_dns_responder() -> Result<()> {
         .context("Failed to kill DNS responder")?;
 
     if !status_kill_responder.success() {
-        return Err(anyhow!("Killing DNS responder was unsuccessful"));
+        log::warn!("Killing DNS responder was unsuccessful");
     }
 
     Ok(())
