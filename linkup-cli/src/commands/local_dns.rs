@@ -133,11 +133,8 @@ fn install_resolvers(resolve_domains: &[String]) -> Result<()> {
         }
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        flush_dns_cache()?;
-        kill_dns_responder()?;
-    }
+    flush_dns_cache()?;
+    kill_dns_responder()?;
 
     Ok(())
 }
@@ -193,10 +190,38 @@ fn flush_dns_cache() -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn flush_dns_cache() -> Result<()> {
+    let status_flush = Command::new("sudo")
+        .args(["resolvectl", "flush-caches"])
+        .status()
+        .context("Failed to flush DNS cache")?;
+
+    if !status_flush.success() {
+        return Err(anyhow!("Flushing DNS cache was unsuccessful"));
+    }
+
+    Ok(())
+}
+
 #[cfg(target_os = "macos")]
 fn kill_dns_responder() -> Result<()> {
     let status_kill_responder = Command::new("sudo")
         .args(["killall", "-HUP", "mDNSResponder"])
+        .status()
+        .context("Failed to kill DNS responder")?;
+
+    if !status_kill_responder.success() {
+        return Err(anyhow!("Killing DNS responder was unsuccessful"));
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn kill_dns_responder() -> Result<()> {
+    let status_kill_responder = Command::new("sudo")
+        .args(["killall", "-USR2", "systemd-resolved"])
         .status()
         .context("Failed to kill DNS responder")?;
 
