@@ -119,6 +119,8 @@ pub enum UninstallError {
     RemoveCertsFolder(String),
     #[error("Failed to remove CA certificate from keychain: {0}")]
     DeleteCaCertificate(String),
+    #[error("Failed to update CA certificate registry from keychain: {0}")]
+    RefreshCaCertificateRegistry(String),
 }
 
 pub fn uninstall_self_signed_certificates(certs_dir: &Path) -> Result<(), UninstallError> {
@@ -301,11 +303,11 @@ fn remove_ca_from_keychain() -> Result<(), UninstallError> {
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
         .status()
-        .map_err(|error| UninstallError::DeleteCaCertificate(error.to_string()))?
+        .map_err(|error| UninstallError::RefreshCaCertificateRegistry(error.to_string()))?
         .success()
         .then_some(())
         .ok_or_else(|| {
-            UninstallError::DeleteCaCertificate(
+            UninstallError::RefreshCaCertificateRegistry(
                 "update-ca-certificates command returned unsuccessful exit status".to_string(),
             )
         })
