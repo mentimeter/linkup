@@ -301,9 +301,12 @@ fn remove_ca_from_keychain() -> Result<(), UninstallError> {
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
         .status()
-        .expect("Failed to update CA certificates");
-
-    Ok(())
+        .map_err(|error| UninstallError::UpdateCaCertificates(error.to_string()))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| UninstallError::UpdateCaCertificates(
+            "update-ca-certificates command returned unsuccessful exit status".to_string(),
+        ))?;
 }
 
 fn firefox_profiles_cert_storages() -> Vec<String> {
