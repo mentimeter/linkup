@@ -166,13 +166,6 @@ impl BackgroudServices {
     }
 }
 
-fn is_child_of_current_process(process: &sysinfo::Process, current_pid: sysinfo::Pid) -> bool {
-    match process.parent() {
-        Some(ppid) => ppid == current_pid,
-        None => false,
-    }
-}
-
 fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<OrphanProcess> {
     let env_var_format = Regex::new(r"^[A-Z_][A-Z0-9_]*=.*$").unwrap();
 
@@ -186,8 +179,11 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
             continue;
         }
 
-        if is_child_of_current_process(process, current_pid) {
-            continue;
+        // Check if the process is a child of the current process (health command).
+        if let Some(parent_pid) = process.parent() {
+            if parent_pid == current_pid {
+                continue;
+            }
         }
 
         let command = process.cmd();
@@ -207,7 +203,6 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
                     .collect::<Vec<_>>()
                     .join(" ");
 
-                // If there are thread-duplicates, ignore them
                 if seen_commands.contains(&full_command) {
                     continue;
                 }
