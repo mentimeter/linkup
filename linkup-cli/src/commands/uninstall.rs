@@ -1,9 +1,8 @@
 use std::{fs, process};
 
-use crate::commands::local_dns;
-use crate::local_config::LocalState;
 use crate::{
-    commands, linkup_dir_path, linkup_exe_path, local_config, prompt, InstallationMethod, Result,
+    commands, commands::local_dns, linkup_dir_path, linkup_exe_path, local_config::managed_domains,
+    local_config::LocalState, prompt, InstallationMethod, Result,
 };
 
 #[derive(clap::Args)]
@@ -23,7 +22,7 @@ pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<()> 
 
     commands::stop(&commands::StopArgs {}, true)?;
 
-    if local_dns::is_installed(&local_config::managed_domains(
+    if local_dns::is_installed(&managed_domains(
         LocalState::load().ok().as_ref(),
         config_arg,
     )) {

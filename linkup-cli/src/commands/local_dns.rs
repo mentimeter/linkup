@@ -150,11 +150,8 @@ fn uninstall_resolvers(resolve_domains: &[String]) -> Result<()> {
             .with_context(|| format!("Failed to delete /etc/resolver/{domain}",))?;
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        flush_dns_cache()?;
-        kill_dns_responder()?;
-    }
+    flush_dns_cache()?;
+    kill_dns_responder()?;
 
     Ok(())
 }

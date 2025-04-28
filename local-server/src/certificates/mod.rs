@@ -93,7 +93,7 @@ pub fn setup_self_signed_certificates(
             "For self-signed certificates to work with Firefox, you need to have nss installed."
         );
             let nss_url = if cfg!(target_os = "macos") {
-                "https://formulae.brew.sh/formula/nss"
+                "`brew install nss`"
             } else {
                 "`sudo apt install libnss3-tools`"
             };
@@ -119,7 +119,7 @@ pub enum UninstallError {
     RemoveCertsFolder(String),
     #[error("Failed to remove CA certificate from keychain: {0}")]
     DeleteCaCertificate(String),
-    #[error("Failed to update CA certificate registry from keychain: {0}")]
+    #[error("Failed to refresh CA certificate registry: {0}")]
     RefreshCaCertificateRegistry(String),
 }
 
