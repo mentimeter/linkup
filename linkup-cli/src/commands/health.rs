@@ -166,9 +166,18 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
     let current_pid = sysinfo::get_current_pid().unwrap();
     let mut orphans = Vec::new();
 
+    let mut seen_commands = std::collections::HashSet::new();
+
     for (pid, process) in services::system().processes() {
         if pid == &current_pid || managed_pids.contains(pid) {
             continue;
+        }
+
+        // Check if the process is a child of the current process (health command).
+        if let Some(parent_pid) = process.parent() {
+            if parent_pid == current_pid {
+                continue;
+            }
         }
 
         let command = process.cmd();
@@ -187,6 +196,12 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
                     .map(|part| part.to_string_lossy())
                     .collect::<Vec<_>>()
                     .join(" ");
+
+                if seen_commands.contains(&full_command) {
+                    continue;
+                }
+
+                seen_commands.insert(full_command.clone());
 
                 orphans.push(OrphanProcess {
                     cmd: truncate_with_ellipsis(&full_command, 120),
