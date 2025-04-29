@@ -1002,19 +1002,22 @@ impl TargetCfResources {
                 let dns_records_to_delete: Vec<String> =
                     dns_records.iter().map(|record| record.id.clone()).collect();
 
-                let batch_delete_dns_req = cloudflare::endpoints::dns::BatchDnsRecords {
-                    zone_identifier: &self.tunnel_zone_id,
-                    params: cloudflare::endpoints::dns::BatchDnsRecordsParams {
-                        deletes: Some(dns_records_to_delete),
-                    },
-                };
+                for record in dns_records_to_delete {
+                    let delete_req = cloudflare::endpoints::dns::DeleteDnsRecord {
+                        zone_identifier: &self.tunnel_zone_id,
+                        identifier: &record,
+                    };
 
-                match cloudflare_client.request(&batch_delete_dns_req).await {
-                    Ok(_) => {
-                        notifier.notify("DNS records deleted");
-                    }
-                    Err(error) => {
-                        notifier.notify(&format!("Failed to delete DNS records: {}", error));
+                    match cloudflare_client.request(&delete_req).await {
+                        Ok(_) => {
+                            notifier.notify(&format!("DNS record '{}' deleted", record));
+                        }
+                        Err(error) => {
+                            notifier.notify(&format!(
+                                "Failed to delete DNS record '{}': {}",
+                                record, error
+                            ));
+                        }
                     }
                 }
             }
