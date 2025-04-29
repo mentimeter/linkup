@@ -665,6 +665,23 @@ impl TargetCfResources {
                 }
             }
 
+            let worker_token = final_metadata
+                .bindings
+                .iter()
+                .find(|b| matches!(b, cloudflare::endpoints::workers::WorkersBinding::PlainText { name, .. } if name == "WORKER_TOKEN"));
+
+            if let Some(cloudflare::endpoints::workers::WorkersBinding::PlainText {
+                text, ..
+            }) = worker_token
+            {
+                println!("@@@@@@@");
+                println!(
+                    "The worker_token to add to your linkup config is: {:?}",
+                    text
+                );
+                println!("@@@@@@@");
+            }
+
             notifier.notify("Uploading worker script...");
             api.create_worker_script(script_name.clone(), final_metadata, parts.clone())
                 .await?;
