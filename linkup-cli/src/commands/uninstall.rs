@@ -8,7 +8,6 @@ use crate::{
 #[derive(clap::Args)]
 pub struct Args {}
 
-#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
 pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<()> {
     let response = prompt("Are you sure you want to uninstall linkup? [y/N]: ")
         .trim()
