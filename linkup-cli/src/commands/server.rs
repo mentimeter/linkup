@@ -25,7 +25,6 @@ pub enum ServerKind {
 
 pub async fn server(args: &Args) -> Result<()> {
     match &args.server_kind {
-        #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
         ServerKind::LocalWorker { certs_dir } => {
             let config_store = MemoryStringStore::default();
 
@@ -47,9 +46,6 @@ pub async fn server(args: &Args) -> Result<()> {
                         .await;
                 }))
             };
-
-            #[cfg(not(target_os = "macos"))]
-            let handler_https: Option<tokio::task::JoinHandle<()>> = None;
 
             match handler_https {
                 Some(handler_https) => {
