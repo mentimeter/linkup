@@ -58,6 +58,22 @@ pub async fn update(args: &Args) -> Result<()> {
             fs::rename(&new_linkup_path, &current_linkup_path)
                 .expect("failed to move the new exe as the current exe");
 
+            #[cfg(target_os = "linux")]
+            {
+                println!("Linkup needs sudo access to:");
+                println!("  - Add capability to bind to port 80/443");
+                std::process::Command::new("sudo")
+                    .stdout(std::process::Stdio::inherit())
+                    .stderr(std::process::Stdio::inherit())
+                    .stdin(std::process::Stdio::null())
+                    .args([
+                        "setcap",
+                        "cap_net_bind_service=+ep",
+                        &current_linkup_path.display().to_string(),
+                    ])
+                    .spawn()?;
+            }
+
             println!("Finished update!");
         }
         None => {

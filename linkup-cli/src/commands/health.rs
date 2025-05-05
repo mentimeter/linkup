@@ -1,13 +1,12 @@
+use clap::crate_version;
+use colored::Colorize;
+use regex::Regex;
+use serde::Serialize;
 use std::{
     env,
     fmt::Display,
     fs::{self},
 };
-
-use clap::crate_version;
-use colored::Colorize;
-use regex::Regex;
-use serde::Serialize;
 
 use crate::{
     linkup_dir_path,
@@ -16,7 +15,6 @@ use crate::{
     Result,
 };
 
-#[cfg(target_os = "macos")]
 use super::local_dns;
 
 #[derive(clap::Args)]
@@ -92,13 +90,11 @@ struct OrphanProcess {
 struct BackgroudServices {
     linkup_server: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
-    #[cfg(target_os = "macos")]
     dns_server: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
 }
 
 #[derive(Debug, Serialize)]
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 enum BackgroundServiceHealth {
     Unknown,
     NotInstalled,
@@ -107,7 +103,6 @@ enum BackgroundServiceHealth {
 }
 
 impl BackgroudServices {
-    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
     fn load(state: &Option<LocalState>) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
@@ -133,7 +128,6 @@ impl BackgroudServices {
             BackgroundServiceHealth::NotInstalled
         };
 
-        #[cfg(target_os = "macos")]
         let dns_server = match find_service_pid(services::LocalDnsServer::ID) {
             Some(pid) => {
                 managed_pids.push(pid);
@@ -160,7 +154,6 @@ impl BackgroudServices {
         Self {
             linkup_server,
             cloudflared,
-            #[cfg(target_os = "macos")]
             dns_server,
             possible_orphan_processes: find_potential_orphan_processes(managed_pids),
         }
@@ -173,9 +166,18 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
     let current_pid = sysinfo::get_current_pid().unwrap();
     let mut orphans = Vec::new();
 
+    let mut seen_commands = std::collections::HashSet::new();
+
     for (pid, process) in services::system().processes() {
         if pid == &current_pid || managed_pids.contains(pid) {
             continue;
+        }
+
+        // Check if the process is a child of the current process (health command).
+        if let Some(parent_pid) = process.parent() {
+            if parent_pid == current_pid {
+                continue;
+            }
         }
 
         let command = process.cmd();
@@ -194,6 +196,12 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
                     .map(|part| part.to_string_lossy())
                     .collect::<Vec<_>>()
                     .join(" ");
+
+                if seen_commands.contains(&full_command) {
+                    continue;
+                }
+
+                seen_commands.insert(full_command.clone());
 
                 orphans.push(OrphanProcess {
                     cmd: truncate_with_ellipsis(&full_command, 120),
@@ -239,16 +247,41 @@ impl Linkup {
             config_content: files,
         })
     }
+
+    #[cfg(target_os = "linux")]
+    pub fn is_cap_set(&self) -> bool {
+        let output = std::process::Command::new("getcap")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::null())
+            .args([crate::linkup_exe_path().unwrap().display().to_string()])
+            .output();
+
+        match output {
+            Ok(output) => {
+                if !output.status.success() {
+                    let error_message = String::from_utf8_lossy(&output.stderr).to_string();
+                    log::warn!("Failed to check capabilities: {}", error_message);
+                    return false;
+                }
+
+                let output_text = String::from_utf8_lossy(&output.stdout).to_string();
+                output_text.contains("cap_net_bind_service=ep")
+            }
+            Err(error) => {
+                log::warn!("Failed to check capabilities: {}", error);
+                false
+            }
+        }
+    }
 }
 
-#[cfg(target_os = "macos")]
 #[derive(Debug, Serialize)]
 struct LocalDNS {
     is_installed: Option<bool>,
     resolvers: Vec<String>,
 }
 
-#[cfg(target_os = "macos")]
 impl LocalDNS {
     fn load(state: &Option<LocalState>) -> Result<Self> {
         // If there is no state, we cannot know if local-dns is installed since we depend on
@@ -271,7 +304,6 @@ struct Health {
     session: Session,
     background_services: BackgroudServices,
     linkup: Linkup,
-    #[cfg(target_os = "macos")]
     local_dns: LocalDNS,
 }
 
@@ -286,7 +318,6 @@ impl Health {
             session,
             background_services: BackgroudServices::load(&state),
             linkup: Linkup::load()?,
-            #[cfg(target_os = "macos")]
             local_dns: LocalDNS::load(&state)?,
         })
     }
@@ -332,19 +363,12 @@ impl Display for Health {
             BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
-        #[cfg(target_os = "macos")]
-        {
-            write!(f, "  - DNS Server     ")?;
-            match &self.background_services.dns_server {
-                BackgroundServiceHealth::NotInstalled => {
-                    writeln!(f, "{}", "NOT INSTALLED".yellow())?
-                }
-                BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
-                BackgroundServiceHealth::Running(pid) => {
-                    writeln!(f, "{} ({})", "RUNNING".blue(), pid)?
-                }
-                BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
-            }
+        write!(f, "  - DNS Server     ")?;
+        match &self.background_services.dns_server {
+            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
+            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
+            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
+            BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
         write!(f, "  - Cloudflared    ")?;
@@ -357,6 +381,15 @@ impl Display for Health {
 
         writeln!(f, "{}", "Linkup:".bold().italic())?;
         writeln!(f, "  Version: {}", self.linkup.version)?;
+        #[cfg(target_os = "linux")]
+        {
+            write!(f, "  Capability set: ")?;
+            if self.linkup.is_cap_set() {
+                writeln!(f, "{}", "YES".blue())?;
+            } else {
+                writeln!(f, "{}", "NO".yellow())?;
+            }
+        }
         writeln!(
             f,
             "  Config folder location: {}",
@@ -373,30 +406,27 @@ impl Display for Health {
             }
         }
 
-        #[cfg(target_os = "macos")]
-        {
-            write!(f, "{}", "Local DNS: ".bold().italic())?;
-            match self.local_dns.is_installed {
-                Some(installed) => {
-                    write!(f, "\n  Installed: ",)?;
-                    if installed {
-                        writeln!(f, "{}", "YES".green())?;
-                    } else {
-                        writeln!(f, "{}", "NO".yellow())?
-                    }
+        write!(f, "{}", "Local DNS: ".bold().italic())?;
+        match self.local_dns.is_installed {
+            Some(installed) => {
+                write!(f, "\n  Installed: ",)?;
+                if installed {
+                    writeln!(f, "{}", "YES".green())?;
+                } else {
+                    writeln!(f, "{}", "NO".yellow())?
+                }
 
-                    write!(f, "  Resolvers:")?;
-                    if self.local_dns.resolvers.is_empty() {
-                        writeln!(f, " {}", "EMPTY".yellow())?;
-                    } else {
-                        writeln!(f)?;
-                        for file in &self.local_dns.resolvers {
-                            writeln!(f, "      - {}", file)?;
-                        }
+                write!(f, "  Resolvers:")?;
+                if self.local_dns.resolvers.is_empty() {
+                    writeln!(f, " {}", "EMPTY".yellow())?;
+                } else {
+                    writeln!(f)?;
+                    for file in &self.local_dns.resolvers {
+                        writeln!(f, "      - {}", file)?;
                     }
                 }
-                None => writeln!(f, "{}", "UNKNOWN".yellow())?,
             }
+            None => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
         write!(f, "{}", "Possible orphan processes:".bold().italic())?;
