@@ -336,7 +336,7 @@ async fn linkup_request_handler(
     req.headers_mut().extend(extra_http_headers);
     req.headers_mut().remove(http::header::HOST);
 
-    let worker_req: worker::Request = match req.try_into() {
+    let upstream_request: worker::Request = match req.try_into() {
         Ok(req) => req,
         Err(e) => {
             return HttpError::new(
@@ -347,11 +347,11 @@ async fn linkup_request_handler(
         }
     };
 
-    let cacheable_req = is_cacheable_request(&worker_req, &config);
-    let cache_key = get_cache_key(&worker_req, &session_name).unwrap_or_default();
+    let cacheable_req = is_cacheable_request(&upstream_request, &config);
+    let cache_key = get_cache_key(&upstream_request, &session_name).unwrap_or_default();
     if cacheable_req {
-        if let Some(worker_resp) = get_cached_req(cache_key.clone()).await {
-            let resp: HttpResponse = match worker_resp.try_into() {
+        if let Some(upstream_response) = get_cached_req(cache_key.clone()).await {
+            let resp: HttpResponse = match upstream_response.try_into() {
                 Ok(resp) => resp,
                 Err(e) => {
                     return HttpError::new(
@@ -365,7 +365,7 @@ async fn linkup_request_handler(
         }
     }
 
-    let mut worker_resp = match Fetch::Request(worker_req).send().await {
+    let mut upstream_response = match Fetch::Request(upstream_request).send().await {
         Ok(resp) => resp,
         Err(e) => {
             return HttpError::new(
@@ -377,10 +377,10 @@ async fn linkup_request_handler(
     };
 
     if is_websocket {
-        handle_ws_resp(worker_resp).await.into_response()
+        handle_ws_resp(upstream_response).await.into_response()
     } else {
         if cacheable_req {
-            let cache_clone = match worker_resp.cloned() {
+            let cache_clone = match upstream_response.cloned() {
                 Ok(resp) => resp,
                 Err(e) => {
                     return HttpError::new(
@@ -398,7 +398,7 @@ async fn linkup_request_handler(
                 .into_response();
             }
         }
-        handle_http_resp(worker_resp).await.into_response()
+        handle_http_resp(upstream_response).await.into_response()
     }
 }
 
