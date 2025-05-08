@@ -244,10 +244,24 @@ async fn linkup_request_handler(
                 request.headers_mut().insert(key, value.clone());
             }
 
-            // TODO: Handle both connection errors here and failed responses.
-            let (ws_stream, upstream_response) = tokio_tungstenite::connect_async(request)
-                .await
-                .expect("WebSocket connection failed");
+            let connect_result = tokio_tungstenite::connect_async(request).await;
+            let (ws_stream, upstream_response) = match connect_result {
+                Ok(connection) => connection,
+                Err(error) => match error {
+                    tokio_tungstenite::tungstenite::Error::Http(response) => {
+                        let (parts, body) = response.into_parts();
+                        let body = body.unwrap_or_default();
+
+                        return Response::from_parts(parts, Body::from(body));
+                    }
+                    error => {
+                        return Response::builder()
+                            .status(StatusCode::BAD_GATEWAY)
+                            .body(Body::from(error.to_string()))
+                            .unwrap()
+                    }
+                },
+            };
 
             let mut websocket_upgrade_response =
                 upgrade.on_upgrade(ws::context_handle_socket(ws_stream));
