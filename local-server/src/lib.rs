@@ -228,7 +228,7 @@ async fn linkup_request_handler(
     let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     match ws.0 {
-        Some(upgrade) => {
+        Some(upstream_upgrade) => {
             let mut url = target_service.url;
             if url.starts_with("http://") {
                 url = url.replace("http://", "ws://");
@@ -237,36 +237,36 @@ async fn linkup_request_handler(
             }
 
             let uri = url.parse::<Uri>().unwrap();
-            let mut request = uri.into_client_request().unwrap();
+            let mut upstream_request = uri.into_client_request().unwrap();
 
             let extra_http_headers: HeaderMap = extra_headers.into();
             for (key, value) in extra_http_headers.iter() {
-                request.headers_mut().insert(key, value.clone());
+                upstream_request.headers_mut().insert(key, value.clone());
             }
 
-            let connect_result = tokio_tungstenite::connect_async(request).await;
-            let (ws_stream, upstream_response) = match connect_result {
-                Ok(connection) => connection,
-                Err(error) => match error {
-                    tokio_tungstenite::tungstenite::Error::Http(response) => {
-                        let (parts, body) = response.into_parts();
-                        let body = body.unwrap_or_default();
+            let (upstream_ws_stream, upstream_response) =
+                match tokio_tungstenite::connect_async(upstream_request).await {
+                    Ok(connection) => connection,
+                    Err(error) => match error {
+                        tokio_tungstenite::tungstenite::Error::Http(response) => {
+                            let (parts, body) = response.into_parts();
+                            let body = body.unwrap_or_default();
 
-                        return Response::from_parts(parts, Body::from(body));
-                    }
-                    error => {
-                        return Response::builder()
-                            .status(StatusCode::BAD_GATEWAY)
-                            .body(Body::from(error.to_string()))
-                            .unwrap()
-                    }
-                },
-            };
+                            return Response::from_parts(parts, Body::from(body));
+                        }
+                        error => {
+                            return Response::builder()
+                                .status(StatusCode::BAD_GATEWAY)
+                                .body(Body::from(error.to_string()))
+                                .unwrap()
+                        }
+                    },
+                };
 
-            let mut websocket_upgrade_response =
-                upgrade.on_upgrade(ws::context_handle_socket(ws_stream));
+            let mut upstream_upgrade_response =
+                upstream_upgrade.on_upgrade(ws::context_handle_socket(upstream_ws_stream));
 
-            let websocket_upgrade_response_headers = websocket_upgrade_response.headers_mut();
+            let websocket_upgrade_response_headers = upstream_upgrade_response.headers_mut();
             for upstream_header in upstream_response.headers() {
                 if !websocket_upgrade_response_headers.contains_key(upstream_header.0) {
                     websocket_upgrade_response_headers
@@ -276,7 +276,7 @@ async fn linkup_request_handler(
 
             websocket_upgrade_response_headers.extend(allow_all_cors());
 
-            websocket_upgrade_response
+            upstream_upgrade_response
         }
         None => handle_http_req(req, target_service, extra_headers, client).await,
     }
