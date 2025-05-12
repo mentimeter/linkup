@@ -228,7 +228,7 @@ async fn linkup_request_handler(
     let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
 
     match ws.0 {
-        Some(upstream_upgrade) => {
+        Some(downstream_upgrade) => {
             let mut url = target_service.url;
             if url.starts_with("http://") {
                 url = url.replace("http://", "ws://");
@@ -264,7 +264,7 @@ async fn linkup_request_handler(
                 };
 
             let mut upstream_upgrade_response =
-                upstream_upgrade.on_upgrade(ws::context_handle_socket(upstream_ws_stream));
+                downstream_upgrade.on_upgrade(ws::context_handle_socket(upstream_ws_stream));
 
             let websocket_upgrade_response_headers = upstream_upgrade_response.headers_mut();
             for upstream_header in upstream_response.headers() {
