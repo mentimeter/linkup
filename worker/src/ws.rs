@@ -1,4 +1,7 @@
+use std::str::FromStr;
+
 use axum::{http::StatusCode, response::IntoResponse};
+use http::{HeaderName, HeaderValue};
 use linkup::allow_all_cors;
 use worker::{console_log, Error, HttpResponse, WebSocket, WebSocketPair, WebsocketEvent};
 
@@ -9,12 +12,13 @@ use futures::{
 
 use crate::http_error::HttpError;
 
-pub async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse {
-    let dest_ws_res = match worker_resp.websocket() {
+pub async fn handle_ws_resp(upstream_response: worker::Response) -> impl IntoResponse {
+    let upstream_response_headers = upstream_response.headers().clone();
+    let upstream_ws_result = match upstream_response.websocket() {
         Some(ws) => Ok(ws),
         None => Err(Error::RustError("server did not accept".into())),
     };
-    let dest_ws = match dest_ws_res {
+    let upstream_ws = match upstream_ws_result {
         Ok(ws) => ws,
         Err(e) => {
             return HttpError::new(
@@ -25,7 +29,7 @@ pub async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse 
         }
     };
 
-    let source_ws = match WebSocketPair::new() {
+    let downstream_ws = match WebSocketPair::new() {
         Ok(ws) => ws,
         Err(e) => {
             return HttpError::new(
@@ -35,38 +39,44 @@ pub async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse 
             .into_response()
         }
     };
-    let source_ws_server = source_ws.server;
+    let downstream_ws_server = downstream_ws.server;
 
     worker::wasm_bindgen_futures::spawn_local(async move {
-        let mut dest_events = dest_ws.events().expect("could not open dest event stream");
-        let mut source_events = source_ws_server
+        let mut upstream_events = upstream_ws
+            .events()
+            .expect("could not open dest event stream");
+        let mut downstream_events = downstream_ws_server
             .events()
             .expect("could not open source event stream");
 
-        dest_ws.accept().expect("could not accept dest ws");
-        source_ws_server
+        upstream_ws.accept().expect("could not accept dest ws");
+        downstream_ws_server
             .accept()
             .expect("could not accept source ws");
 
+        let mut is_closed = false;
+
         loop {
-            match future::select(source_events.next(), dest_events.next()).await {
-                Either::Left((Some(source_event), _)) => {
+            match future::select(downstream_events.next(), upstream_events.next()).await {
+                Either::Left((Some(downstream_event), _)) => {
                     if let Err(e) = forward_ws_event(
-                        source_event,
-                        &source_ws_server,
-                        &dest_ws,
+                        downstream_event,
+                        &downstream_ws_server,
+                        &upstream_ws,
                         "to destination".into(),
+                        &mut is_closed,
                     ) {
                         console_log!("Error forwarding source event: {:?}", e);
                         break;
                     }
                 }
-                Either::Right((Some(dest_event), _)) => {
+                Either::Right((Some(upstream_event), _)) => {
                     if let Err(e) = forward_ws_event(
-                        dest_event,
-                        &dest_ws,
-                        &source_ws_server,
+                        upstream_event,
+                        &upstream_ws,
+                        &downstream_ws_server,
                         "to source".into(),
+                        &mut is_closed,
                     ) {
                         console_log!("Error forwarding dest event: {:?}", e);
                         break;
@@ -76,8 +86,8 @@ pub async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse 
                     console_log!("No event received, error");
                     close_with_internal_error(
                         "Received something other than event from streams".to_string(),
-                        &source_ws_server,
-                        &dest_ws,
+                        &downstream_ws_server,
+                        &upstream_ws,
                     );
                     break;
                 }
@@ -85,7 +95,7 @@ pub async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse 
         }
     });
 
-    let worker_resp = match worker::Response::from_websocket(source_ws.client) {
+    let downstream_resp = match worker::Response::from_websocket(downstream_ws.client) {
         Ok(res) => res,
         Err(e) => {
             return HttpError::new(
@@ -95,7 +105,8 @@ pub async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse 
             .into_response()
         }
     };
-    let mut resp: HttpResponse = match worker_resp.try_into() {
+
+    let mut resp: HttpResponse = match downstream_resp.try_into() {
         Ok(resp) => resp,
         Err(e) => {
             return HttpError::new(
@@ -105,6 +116,15 @@ pub async fn handle_ws_resp(worker_resp: worker::Response) -> impl IntoResponse 
             .into_response()
         }
     };
+
+    for upstream_header in upstream_response_headers.entries() {
+        if !resp.headers().contains_key(&upstream_header.0) {
+            resp.headers_mut().append(
+                HeaderName::from_str(&upstream_header.0).unwrap(),
+                HeaderValue::from_str(&upstream_header.1).unwrap(),
+            );
+        }
+    }
 
     resp.headers_mut().extend(allow_all_cors());
 
@@ -116,6 +136,7 @@ fn forward_ws_event(
     from: &WebSocket,
     to: &WebSocket,
     description: String,
+    is_closed: &mut bool,
 ) -> Result<(), Error> {
     match event {
         Ok(WebsocketEvent::Message(msg)) => {
@@ -144,11 +165,14 @@ fn forward_ws_event(
             }
         }
         Ok(WebsocketEvent::Close(close)) => {
-            let close_res = to.close(Some(1000), Some(close.reason()));
-            if let Err(e) = close_res {
-                console_log!("Error closing {} with close event: {:?}", description, e);
+            let _ = to.close(Some(1000), Some(close.reason()));
+            if *is_closed {
+                return Err(Error::RustError("Closed!".into()));
+            } else {
+                *is_closed = true;
             }
-            Err(Error::RustError(format!("Close event: {}", close.reason())))
+
+            Ok(())
         }
         Err(e) => {
             let err_msg = format!("Other {} error: {:?}", description, e);
