@@ -28,6 +28,8 @@ impl From<&DesiredChannel> for linkup::VersionChannel {
 }
 
 pub async fn update(args: &Args) -> Result<()> {
+    let current_version = current_version();
+
     if args.skip_cache {
         log::debug!("Clearing cache to force a new check for the latest version.");
 
@@ -36,8 +38,16 @@ pub async fn update(args: &Args) -> Result<()> {
 
     let requested_channel = args.channel.as_ref().map(linkup::VersionChannel::from);
 
-    match release::available_update(&current_version(), requested_channel).await {
+    match release::available_update(&current_version, requested_channel).await {
         Some(update) => {
+            println!(
+                "Updating from version '{}' ({}) to '{}' ({})...",
+                &current_version,
+                &current_version.channel(),
+                &update.version,
+                &update.version.channel()
+            );
+
             let new_linkup_path = update.linkup.download_decompressed("linkup").await.unwrap();
 
             let current_linkup_path = linkup_exe_path()?;
@@ -47,6 +57,22 @@ pub async fn update(args: &Args) -> Result<()> {
                 .expect("failed to move the current exe into a backup");
             fs::rename(&new_linkup_path, &current_linkup_path)
                 .expect("failed to move the new exe as the current exe");
+
+            #[cfg(target_os = "linux")]
+            {
+                println!("Linkup needs sudo access to:");
+                println!("  - Add capability to bind to port 80/443");
+                std::process::Command::new("sudo")
+                    .stdout(std::process::Stdio::inherit())
+                    .stderr(std::process::Stdio::inherit())
+                    .stdin(std::process::Stdio::null())
+                    .args([
+                        "setcap",
+                        "cap_net_bind_service=+ep",
+                        &current_linkup_path.display().to_string(),
+                    ])
+                    .spawn()?;
+            }
 
             println!("Finished update!");
         }

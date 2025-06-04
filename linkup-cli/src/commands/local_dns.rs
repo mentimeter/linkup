@@ -173,6 +173,7 @@ pub fn list_resolvers() -> std::result::Result<Vec<String>, std::io::Error> {
     Ok(resolvers)
 }
 
+#[cfg(target_os = "macos")]
 fn flush_dns_cache() -> Result<()> {
     let status_flush = Command::new("dscacheutil")
         .args(["-flushcache"])
@@ -186,6 +187,21 @@ fn flush_dns_cache() -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn flush_dns_cache() -> Result<()> {
+    let status_flush = Command::new("sudo")
+        .args(["resolvectl", "flush-caches"])
+        .status()
+        .context("Failed to flush DNS cache")?;
+
+    if !status_flush.success() {
+        log::warn!("Flushing DNS cache was unsuccessful");
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 fn kill_dns_responder() -> Result<()> {
     let status_kill_responder = Command::new("sudo")
         .args(["killall", "-HUP", "mDNSResponder"])
@@ -194,6 +210,20 @@ fn kill_dns_responder() -> Result<()> {
 
     if !status_kill_responder.success() {
         return Err(anyhow!("Killing DNS responder was unsuccessful"));
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn kill_dns_responder() -> Result<()> {
+    let status_kill_responder = Command::new("sudo")
+        .args(["killall", "-USR2", "systemd-resolved"])
+        .status()
+        .context("Failed to kill DNS responder")?;
+
+    if !status_kill_responder.success() {
+        log::warn!("Killing DNS responder was unsuccessful");
     }
 
     Ok(())

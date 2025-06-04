@@ -1,7 +1,9 @@
 use anyhow::anyhow;
+use colored::Colorize;
 
 use crate::{
     local_config::{upload_state, LocalState, ServiceTarget},
+    services::{self, find_service_pid, BackgroundService},
     Result,
 };
 
@@ -21,6 +23,26 @@ pub struct Args {
 pub async fn local(args: &Args) -> Result<()> {
     if args.service_names.is_empty() && !args.all {
         return Err(anyhow!("No service names provided"));
+    }
+
+    if !LocalState::exists() {
+        println!(
+            "{}",
+            "Seems like you don't have any state yet to point to local.".yellow()
+        );
+        println!("{}", "Have you run 'linkup start' at least once?".yellow());
+
+        return Ok(());
+    }
+
+    if find_service_pid(services::LocalServer::ID).is_none() {
+        println!(
+            "{}",
+            "Seems like your local Linkup server is not running. Please run 'linkup start' first."
+                .yellow()
+        );
+
+        return Ok(());
     }
 
     let mut state = LocalState::load()?;

@@ -24,7 +24,7 @@ const MIN_WIDTH_FOR_KIND: usize = 50;
 pub struct Args {
     // Output status in JSON format
     #[arg(long)]
-    json: bool,
+    pub json: bool,
 
     #[arg(short, long)]
     all: bool,
@@ -38,6 +38,16 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
         let warning = "--all/-a is a noop now. All services statuses will always be shown. \
             This arg will be removed in a future release.\n";
         println!("{}", warning.yellow());
+    }
+
+    if !LocalState::exists() {
+        println!(
+            "{}",
+            "Seems like you don't have any state yet, so there is no status to report.".yellow()
+        );
+        println!("{}", "Have you run 'linkup start' at least once?".yellow());
+
+        return Ok(());
     }
 
     let state = LocalState::load().context("Failed to load local state")?;

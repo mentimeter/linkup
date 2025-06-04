@@ -96,7 +96,6 @@ fn current_version() -> Version {
         .expect("current version on CARGO_PKG_VERSION should be a valid version")
 }
 
-#[cfg(target_os = "macos")]
 fn is_sudo() -> bool {
     let sudo_check = std::process::Command::new("sudo")
         .arg("-n")
@@ -112,7 +111,6 @@ fn is_sudo() -> bool {
     false
 }
 
-#[cfg(target_os = "macos")]
 fn sudo_su() -> Result<()> {
     let status = std::process::Command::new("sudo")
         .arg("su")
@@ -140,6 +138,42 @@ fn prompt(question: &str) -> String {
     input
 }
 
+async fn display_update_message(command: &Commands) {
+    // Cases where we don't want to display the update CLI message.
+    match command {
+        // We rely on completions output, so we don't want to interfere with it.
+        Commands::Completion(_) => return,
+        // If the output is json, we don't want to interfere with it.
+        Commands::Health(args) if args.json => return,
+        // If the output is json, we don't want to interfere with it.
+        Commands::Status(args) if args.json => return,
+        // Uninstalling, not interested in update.
+        Commands::Uninstall(_) => return,
+        // Already updating, no reason to show.
+        Commands::Update(_) => return,
+        _ => (),
+    };
+
+    if commands::update::new_version_available().await {
+        match commands::update::update_command() {
+            Ok(update_command) => {
+                let message = format!(
+                    "⚠️ New version of linkup is available! Run `{update_command}` to update it.\n"
+                )
+                .yellow();
+
+                println!("{}", message);
+            }
+            Err(error) => {
+                // TODO(augustoccesar)[2025-03-26]: This should probably be an error log, but for now since the logs
+                //   are not behaving the way that we want them to, keep as a warning. Will revisit this once starts
+                //   looking into tracing.
+                log::warn!("Failed to resolve the update command to display to user: {error}");
+            }
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum CheckErr {
     #[error("local server not started")]
@@ -151,7 +185,7 @@ pub enum CheckErr {
 #[derive(Parser)]
 #[command(
     name = "linkup",
-    about = "Connect remote and local dev/preview environments\n\nIf you need help running linkup, start here:\nhttps://github.com/mentimeter/linkup/blob/main/docs/using-linkup.md",
+    about = "Connect remote and local dev/preview environments\n\nIf you need help running linkup, start here:\nhttps://mentimeter.github.io/linkup",
     version = env!("CARGO_PKG_VERSION"),
 )]
 struct Cli {
@@ -190,7 +224,6 @@ enum Commands {
     #[clap(about = "View linkup component and service status")]
     Status(commands::StatusArgs),
 
-    #[cfg(target_os = "macos")]
     #[clap(about = "Speed up your local environment by routing traffic locally when possible")]
     LocalDNS(commands::LocalDnsArgs),
 
@@ -226,26 +259,7 @@ async fn main() -> anyhow::Result<()> {
 
     ensure_linkup_dir()?;
 
-    if !matches!(cli.command, Commands::Update(_))
-        && commands::update::new_version_available().await
-    {
-        match commands::update::update_command() {
-            Ok(update_command) => {
-                let message = format!(
-                    "⚠️ New version of linkup is available! Run `{update_command}` to update it."
-                )
-                .yellow();
-
-                println!("{}", message);
-            }
-            Err(error) => {
-                // TODO(augustoccesar)[2025-03-26]: This should probably be an error log, but for now since the logs
-                //   are not behaving the way that we want them to, keep as a warning. Will revisit this once starts
-                //   looking into tracing.
-                log::warn!("Failed to resolve the update command to display to user: {error}");
-            }
-        }
-    }
+    display_update_message(&cli.command).await;
 
     match &cli.command {
         Commands::Health(args) => commands::health(args),
@@ -255,7 +269,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::Local(args) => commands::local(args).await,
         Commands::Remote(args) => commands::remote(args).await,
         Commands::Status(args) => commands::status(args),
-        #[cfg(target_os = "macos")]
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
