@@ -59,7 +59,10 @@ impl LocalServer {
         let mut command = process::Command::new(
             env::current_exe().context("Failed to get the current executable")?,
         );
-        command.env("RUST_LOG", "debug");
+        command.env(
+            "RUST_LOG",
+            "info,hickory_server=warn,hyper_util=warn,h2=warn,tower_http=info",
+        );
         command.env("LINKUP_SERVICE_ID", Self::ID);
         command.args([
             "server",
