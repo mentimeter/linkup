@@ -180,7 +180,6 @@ struct ServiceStatus {
     name: String,
     status: ServerStatus,
     component_kind: String,
-    location: String,
     service: LocalService,
     priority: i8,
 }
@@ -196,7 +195,7 @@ impl ServiceStatus {
 
         let mut status_name = ColoredString::from(self.name.clone());
         let mut status_component_kind = ColoredString::from(self.component_kind.clone());
-        let mut status_location = ColoredString::from(self.location.clone());
+        let mut status_location = ColoredString::from(self.service.current_url().to_string());
 
         if status_component_kind.deref() == "local" {
             status_name = status_name.bright_magenta();
@@ -404,7 +403,6 @@ where
 
             ServiceStatus {
                 name: service.name.clone(),
-                location: service.current_url().to_string(),
                 component_kind: service.current.to_string(),
                 status: ServerStatus::Loading,
                 service,
