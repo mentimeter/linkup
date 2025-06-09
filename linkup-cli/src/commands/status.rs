@@ -13,7 +13,7 @@ use std::{
 
 use crate::{
     local_config::{HealthConfig, LocalService, LocalState, ServiceTarget},
-    services, Result,
+    services,
 };
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -333,7 +333,7 @@ fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
 
     if let Some(health_config) = &service.health {
         if let Some(path) = &health_config.path {
-            url = url.join(&path).unwrap();
+            url = url.join(path).unwrap();
         }
 
         if let Some(statuses) = &health_config.statuses {
@@ -381,14 +381,12 @@ pub fn server_status(
                     );
 
                     if acceptable_statuses.contains(&res.status().as_u16()) {
-                        return ServerStatus::Ok;
+                        ServerStatus::Ok
                     } else {
-                        return ServerStatus::Error;
+                        ServerStatus::Error
                     }
                 }
-                Err(error) => {
-                    return ServerStatus::Error;
-                }
+                Err(_) => ServerStatus::Error,
             }
         }
         Err(_) => ServerStatus::Error,
