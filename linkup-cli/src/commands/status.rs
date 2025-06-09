@@ -12,7 +12,7 @@ use std::{
 };
 
 use crate::{
-    local_config::{LocalService, LocalState, ServiceTarget},
+    local_config::{HealthConfig, LocalService, LocalState, ServiceTarget},
     services, Result,
 };
 
@@ -242,16 +242,6 @@ impl ServerStatus {
     }
 }
 
-impl From<Result<reqwest::blocking::Response, reqwest::Error>> for ServerStatus {
-    fn from(res: Result<reqwest::blocking::Response, reqwest::Error>) -> Self {
-        match res {
-            Ok(res) if res.status().is_server_error() => ServerStatus::Error,
-            Ok(_) => ServerStatus::Ok,
-            Err(_) => ServerStatus::Timeout,
-        }
-    }
-}
-
 fn table_header(terminal_width: u16) -> String {
     let terminal_width = terminal_width as usize;
 
@@ -302,7 +292,10 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             current: ServiceTarget::Local,
             directory: None,
             rewrites: vec![],
-            health: None,
+            health: Some(HealthConfig {
+                path: None,
+                statuses: Some(vec![200, 404]),
+            }),
         },
         LocalService {
             name: "linkup_remote_server".to_string(),
@@ -311,7 +304,10 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             current: ServiceTarget::Remote,
             directory: None,
             rewrites: vec![],
-            health: None,
+            health: Some(HealthConfig {
+                path: None,
+                statuses: Some(vec![200, 404]),
+            }),
         },
         LocalService {
             name: "tunnel".to_string(),
@@ -320,16 +316,30 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             current: ServiceTarget::Remote,
             directory: None,
             rewrites: vec![],
-            health: None,
+            health: Some(HealthConfig {
+                path: None,
+                statuses: Some(vec![200, 404]),
+            }),
         },
     ]
 }
 
 fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
-    let url = match service.current {
+    let mut acceptable_statuses: Vec<u16> = vec![200];
+    let mut url = match service.current {
         ServiceTarget::Local => service.local.clone(),
         ServiceTarget::Remote => service.remote.clone(),
     };
+
+    if let Some(health_config) = &service.health {
+        if let Some(path) = &health_config.path {
+            url = url.join(&path).unwrap();
+        }
+
+        if let Some(statuses) = &health_config.statuses {
+            acceptable_statuses = statuses.clone();
+        }
+    }
 
     let headers = get_additional_headers(
         url.as_ref(),
@@ -341,23 +351,45 @@ fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
         },
     );
 
-    server_status(url.to_string(), Some(headers))
+    server_status(url.as_str(), &acceptable_statuses, Some(headers))
 }
 
-pub fn server_status(url: String, extra_headers: Option<HeaderMap>) -> ServerStatus {
+pub fn server_status(
+    url: &str,
+    acceptable_statuses: &[u16],
+    extra_headers: Option<HeaderMap>,
+) -> ServerStatus {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))
         .build();
 
     match client {
         Ok(client) => {
-            let mut request = client.get(url);
+            let mut req = client.get(url);
 
             if let Some(extra_headers) = extra_headers {
-                request = request.headers(extra_headers.into());
+                req = req.headers(extra_headers.into());
             }
 
-            request.send().into()
+            match req.send() {
+                Ok(res) => {
+                    log::debug!(
+                        "'{}' responded with status: {}. Acceptable statuses: {:?}",
+                        url,
+                        res.status().as_u16(),
+                        acceptable_statuses
+                    );
+
+                    if acceptable_statuses.contains(&res.status().as_u16()) {
+                        return ServerStatus::Ok;
+                    } else {
+                        return ServerStatus::Error;
+                    }
+                }
+                Err(error) => {
+                    return ServerStatus::Error;
+                }
+            }
         }
         Err(_) => ServerStatus::Error,
     }
