@@ -326,10 +326,7 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
 
 fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
     let mut acceptable_statuses: Vec<u16> = vec![200];
-    let mut url = match service.current {
-        ServiceTarget::Local => service.local.clone(),
-        ServiceTarget::Remote => service.remote.clone(),
-    };
+    let mut url = service.current_url();
 
     if let Some(health_config) = &service.health {
         if let Some(path) = &health_config.path {
@@ -403,16 +400,11 @@ where
     let services_statuses: Vec<ServiceStatus> = services
         .clone()
         .map(|service| {
-            let url = match service.current {
-                ServiceTarget::Local => service.local.clone(),
-                ServiceTarget::Remote => service.remote.clone(),
-            };
-
             let priority = service_priority(&service);
 
             ServiceStatus {
                 name: service.name.clone(),
-                location: url.to_string(),
+                location: service.current_url().to_string(),
                 component_kind: service.current.to_string(),
                 status: ServerStatus::Loading,
                 service,

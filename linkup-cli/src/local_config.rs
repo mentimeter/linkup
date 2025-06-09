@@ -108,6 +108,15 @@ pub struct LocalService {
     pub health: Option<HealthConfig>,
 }
 
+impl LocalService {
+    pub fn current_url(&self) -> Url {
+        match self.current {
+            ServiceTarget::Local => self.local.clone(),
+            ServiceTarget::Remote => self.remote.clone(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
 pub enum ServiceTarget {
     Local,
