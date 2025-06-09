@@ -92,6 +92,12 @@ pub struct LinkupState {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct HealthConfig {
+    pub path: Option<String>,
+    pub statuses: Option<Vec<u16>>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct LocalService {
     pub name: String,
     pub remote: Url,
@@ -99,6 +105,7 @@ pub struct LocalService {
     pub current: ServiceTarget,
     pub directory: Option<String>,
     pub rewrites: Vec<StorableRewrite>,
+    pub health: Option<HealthConfig>,
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
@@ -168,6 +175,7 @@ pub struct YamlLocalService {
     local: Url,
     directory: Option<String>,
     rewrites: Option<Vec<StorableRewrite>>,
+    health: Option<HealthConfig>,
 }
 
 #[derive(Debug)]
@@ -214,6 +222,7 @@ pub fn config_to_state(
             current: ServiceTarget::Remote,
             directory: yaml_service.directory,
             rewrites: yaml_service.rewrites.unwrap_or_default(),
+            health: yaml_service.health,
         })
         .collect::<Vec<LocalService>>();
 

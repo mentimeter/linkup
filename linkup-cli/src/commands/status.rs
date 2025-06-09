@@ -302,6 +302,7 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             current: ServiceTarget::Local,
             directory: None,
             rewrites: vec![],
+            health: None,
         },
         LocalService {
             name: "linkup_remote_server".to_string(),
@@ -310,6 +311,7 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             current: ServiceTarget::Remote,
             directory: None,
             rewrites: vec![],
+            health: None,
         },
         LocalService {
             name: "tunnel".to_string(),
@@ -318,6 +320,7 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             current: ServiceTarget::Remote,
             directory: None,
             rewrites: vec![],
+            health: None,
         },
     ]
 }
