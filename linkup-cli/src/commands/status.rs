@@ -294,7 +294,7 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             rewrites: vec![],
             health: Some(HealthConfig {
                 path: Some("/linkup/check".to_string()),
-                statuses: None,
+                ..Default::default()
             }),
         },
         LocalService {

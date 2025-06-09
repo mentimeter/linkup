@@ -91,7 +91,7 @@ pub struct LinkupState {
     pub cache_routes: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Default)]
 pub struct HealthConfig {
     pub path: Option<String>,
     pub statuses: Option<Vec<u16>>,
