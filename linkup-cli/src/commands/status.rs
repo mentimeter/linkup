@@ -293,8 +293,8 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             directory: None,
             rewrites: vec![],
             health: Some(HealthConfig {
-                path: None,
-                statuses: Some(vec![200, 404]),
+                path: Some("/linkup/check".to_string()),
+                statuses: None,
             }),
         },
         LocalService {
@@ -305,8 +305,8 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             directory: None,
             rewrites: vec![],
             health: Some(HealthConfig {
-                path: None,
-                statuses: Some(vec![200, 404]),
+                path: Some("/linkup/check".to_string()),
+                statuses: Some(vec![200, 401]),
             }),
         },
         LocalService {
@@ -317,8 +317,8 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             directory: None,
             rewrites: vec![],
             health: Some(HealthConfig {
-                path: None,
-                statuses: Some(vec![200, 404]),
+                path: Some("/linkup/check".to_string()),
+                statuses: Some(vec![200, 401]),
             }),
         },
     ]
