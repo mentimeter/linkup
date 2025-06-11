@@ -62,7 +62,7 @@ struct Session {
 }
 
 impl Session {
-    fn load(state: &Option<LocalState>) -> Self {
+    fn load(state: Option<&LocalState>) -> Self {
         match state {
             Some(state) => Self {
                 name: Some(state.linkup.session_name.clone()),
@@ -87,23 +87,23 @@ struct OrphanProcess {
 }
 
 #[derive(Debug, Serialize)]
-struct BackgroudServices {
-    linkup_server: BackgroundServiceHealth,
+pub struct BackgroundServices {
+    pub linkup_server: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
     dns_server: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
 }
 
 #[derive(Debug, Serialize)]
-enum BackgroundServiceHealth {
+pub enum BackgroundServiceHealth {
     Unknown,
     NotInstalled,
     Stopped,
     Running(u32),
 }
 
-impl BackgroudServices {
-    fn load(state: &Option<LocalState>) -> Self {
+impl BackgroundServices {
+    pub fn load(state: Option<&LocalState>) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
         let linkup_server = match find_service_pid(services::LocalServer::ID) {
@@ -283,7 +283,7 @@ struct LocalDNS {
 }
 
 impl LocalDNS {
-    fn load(state: &Option<LocalState>) -> Result<Self> {
+    fn load(state: Option<&LocalState>) -> Result<Self> {
         // If there is no state, we cannot know if local-dns is installed since we depend on
         // the domains listed on it.
         let is_installed = state.as_ref().map(|state| {
@@ -302,7 +302,7 @@ struct Health {
     state_exists: bool,
     system: System,
     session: Session,
-    background_services: BackgroudServices,
+    background_services: BackgroundServices,
     linkup: Linkup,
     local_dns: LocalDNS,
 }
@@ -310,15 +310,15 @@ struct Health {
 impl Health {
     pub fn load() -> Result<Self> {
         let state = LocalState::load().ok();
-        let session = Session::load(&state);
+        let session = Session::load(state.as_ref());
 
         Ok(Self {
             state_exists: state.is_some(),
             system: System::load(),
             session,
-            background_services: BackgroudServices::load(&state),
+            background_services: BackgroundServices::load(state.as_ref()),
             linkup: Linkup::load()?,
-            local_dns: LocalDNS::load(&state)?,
+            local_dns: LocalDNS::load(state.as_ref())?,
         })
     }
 }
