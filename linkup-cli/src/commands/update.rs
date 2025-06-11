@@ -1,4 +1,4 @@
-use crate::{current_version, linkup_exe_path, release, InstallationMethod, Result};
+use crate::{commands, current_version, linkup_exe_path, release, InstallationMethod, Result};
 use std::fs;
 
 #[derive(clap::Args)]
@@ -40,6 +40,8 @@ pub async fn update(args: &Args) -> Result<()> {
 
     match release::available_update(&current_version, requested_channel).await {
         Some(update) => {
+            commands::stop(&commands::StopArgs {}, false)?;
+
             println!(
                 "Updating from version '{}' ({}) to '{}' ({})...",
                 &current_version,
