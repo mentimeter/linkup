@@ -12,6 +12,7 @@ use std::{
 };
 
 use crate::{
+    commands,
     local_config::{LocalService, LocalState, ServiceTarget},
     services, Result,
 };
@@ -51,8 +52,9 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
     }
 
     let state = LocalState::load().context("Failed to load local state")?;
+
     let linkup_services = linkup_services(&state);
-    let all_services = state.services.into_iter().chain(linkup_services);
+    let all_services = state.clone().services.into_iter().chain(linkup_services);
 
     let (services_statuses, status_receiver) =
         prepare_services_statuses(&state.linkup.session_name, all_services);
@@ -88,6 +90,11 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
     } else {
         status.session.print();
         println!();
+
+        match commands::health::BackgroundServices::load(Some(&state)).linkup_server {
+            commands::health::BackgroundServiceHealth::Running(_) => (),
+            _ => println!("{}", "Linkup is not currently running.\n".yellow()),
+        }
 
         let mut stdout = stdout();
 
