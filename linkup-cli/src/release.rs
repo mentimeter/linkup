@@ -24,6 +24,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("File missing from downloaded compressed archive")]
     MissingBinary,
+    #[error("Hit a rate limit while checking for updates")]
+    RateLimit(u64),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,7 +122,8 @@ impl Release {
 #[derive(Serialize, Deserialize)]
 struct CachedLatestRelease {
     time: u64,
-    release: Release,
+    next_check: u64,
+    release: Option<Release>,
 }
 
 pub struct Update {
@@ -139,19 +142,26 @@ pub async fn available_update(
     log::debug!("Looking for available update on '{channel}' channel.");
 
     let latest_release = match cached_latest_release(&channel).await {
-        Some(cached_latest_release) => {
-            let release = cached_latest_release.release;
+        Some(cached_latest_release) if cached_latest_release.release.is_some() => {
+            let release = cached_latest_release
+                .release
+                .expect("release should have been checked for is_some before reaching here");
 
             log::debug!("Found cached release: {}", release.version);
 
             release
         }
-        None => {
+        _ => {
             log::debug!("No cached release found. Fetching from remote...");
 
             let release = match channel {
                 linkup::VersionChannel::Stable => fetch_stable_release().await,
                 linkup::VersionChannel::Beta => fetch_beta_release().await,
+            };
+
+            let cache_file = match channel {
+                VersionChannel::Stable => CACHED_LATEST_STABLE_RELEASE_FILE,
+                VersionChannel::Beta => CACHED_LATEST_BETA_RELEASE_FILE,
             };
 
             let release = match release {
@@ -165,6 +175,13 @@ pub async fn available_update(
 
                     return None;
                 }
+                Err(Error::RateLimit(retry_at)) => {
+                    log::error!("Hit rate limit while fetching latest release");
+
+                    write_rate_limited_cache_file(cache_file, retry_at);
+
+                    return None;
+                }
                 Err(error) => {
                     log::error!("Failed to fetch the latest release: {}", error);
 
@@ -172,23 +189,21 @@ pub async fn available_update(
                 }
             };
 
-            let cache_file = match channel {
-                VersionChannel::Stable => CACHED_LATEST_STABLE_RELEASE_FILE,
-                VersionChannel::Beta => CACHED_LATEST_BETA_RELEASE_FILE,
-            };
-
             match fs::File::create(linkup_file_path(cache_file)) {
                 Ok(new_file) => {
                     let release_cache = CachedLatestRelease {
                         time: now(),
-                        release,
+                        next_check: next_morning_utc_seconds(),
+                        release: Some(release),
                     };
 
                     if let Err(error) = serde_json::to_writer_pretty(new_file, &release_cache) {
                         log::error!("Failed to write the release data into cache: {}", error);
                     }
 
-                    release_cache.release
+                    release_cache
+                        .release
+                        .expect("release should have been set when creating the cache")
                 }
                 Err(error) => {
                     log::error!("Failed to create release cache file: {}", error);
@@ -229,7 +244,7 @@ pub async fn available_update(
     })
 }
 
-async fn fetch_stable_release() -> Result<Option<Release>, reqwest::Error> {
+async fn fetch_stable_release() -> Result<Option<Release>, Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases/latest"
         .parse()
         .unwrap();
@@ -251,12 +266,26 @@ async fn fetch_stable_release() -> Result<Option<Release>, reqwest::Error> {
         .build()
         .unwrap();
 
-    let release = client.execute(req).await?.json().await?;
+    let response = client.execute(req).await?;
+
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        // https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#checking-the-status-of-your-rate-limit
+        let retry_at = response
+            .headers()
+            .get("x-ratelimit-reset")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or_else(next_morning_utc_seconds);
+
+        return Err(Error::RateLimit(retry_at));
+    }
+
+    let release = response.json().await?;
 
     Ok(Some(release))
 }
 
-pub async fn fetch_beta_release() -> Result<Option<Release>, reqwest::Error> {
+pub async fn fetch_beta_release() -> Result<Option<Release>, Error> {
     let url: Url = "https://api.github.com/repos/mentimeter/linkup/releases"
         .parse()
         .unwrap();
@@ -278,7 +307,21 @@ pub async fn fetch_beta_release() -> Result<Option<Release>, reqwest::Error> {
         .build()
         .unwrap();
 
-    let releases: Vec<Release> = client.execute(req).await?.json().await?;
+    let response = client.execute(req).await?;
+
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        // https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#checking-the-status-of-your-rate-limit
+        let retry_at = response
+            .headers()
+            .get("x-ratelimit-reset")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or_else(next_morning_utc_seconds);
+
+        return Err(Error::RateLimit(retry_at));
+    }
+
+    let releases: Vec<Release> = response.json().await?;
 
     let beta_release = releases
         .into_iter()
@@ -320,10 +363,7 @@ async fn cached_latest_release(channel: &VersionChannel) -> Option<CachedLatestR
         }
     };
 
-    let cache_time = Duration::from_secs(cached_latest_release.time);
-    let time_now = Duration::from_secs(now());
-
-    if time_now - cache_time > Duration::from_secs(60 * 60 * 24) {
+    if now() > cached_latest_release.next_check {
         if let Err(error) = fs::remove_file(&path) {
             log::error!("Failed to delete cached latest release file: {}", error);
         }
@@ -332,6 +372,20 @@ async fn cached_latest_release(channel: &VersionChannel) -> Option<CachedLatestR
     }
 
     Some(cached_latest_release)
+}
+
+pub fn write_rate_limited_cache_file(cache_file: &str, retry_at: u64) {
+    if let Ok(file) = fs::File::create(linkup_file_path(cache_file)) {
+        let release_cache = CachedLatestRelease {
+            time: now(),
+            next_check: retry_at,
+            release: None,
+        };
+
+        if let Err(error) = serde_json::to_writer_pretty(file, &release_cache) {
+            log::error!("Failed to write rate-limited data into cache: {}", error);
+        }
+    }
 }
 
 pub fn clear_cache() {
@@ -348,9 +402,18 @@ pub fn clear_cache() {
 }
 
 fn now() -> u64 {
-    let start = time::SystemTime::now();
+    let now = time::SystemTime::now()
+        .duration_since(time::UNIX_EPOCH)
+        .expect("Time went backwards");
 
-    let since_the_epoch = start.duration_since(time::UNIX_EPOCH).unwrap();
+    now.as_secs()
+}
 
-    since_the_epoch.as_secs()
+fn next_morning_utc_seconds() -> u64 {
+    let seconds_in_day = 60 * 60 * 24;
+    let current_secs = now();
+
+    let secs_since_midnight = current_secs % seconds_in_day;
+
+    current_secs + (seconds_in_day - secs_since_midnight)
 }
