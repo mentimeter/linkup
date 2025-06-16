@@ -1,5 +1,7 @@
-use crate::{commands, current_version, linkup_exe_path, release, InstallationMethod, Result};
+use anyhow::anyhow;
 use std::fs;
+
+use crate::{commands, current_version, linkup_exe_path, release, InstallationMethod, Result};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -50,7 +52,9 @@ pub async fn update(args: &Args) -> Result<()> {
                 &update.version.channel()
             );
 
-            let new_linkup_path = update.binary.download().await.unwrap();
+            let new_linkup_path = update.binary.download().await.map_err(|error| {
+                anyhow!("Failed to download new version.").context(error.to_string())
+            })?;
 
             let current_linkup_path = linkup_exe_path()?;
             let bkp_linkup_path = current_linkup_path.with_extension("bkp");
