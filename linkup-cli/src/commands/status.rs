@@ -331,7 +331,7 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
 }
 
 fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
-    let mut acceptable_statuses: Vec<u16> = vec![200];
+    let mut acceptable_statuses_override: Option<Vec<u16>> = None;
     let mut url = service.current_url();
 
     if let Some(health_config) = &service.health {
@@ -340,7 +340,7 @@ fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
         }
 
         if let Some(statuses) = &health_config.statuses {
-            acceptable_statuses = statuses.clone();
+            acceptable_statuses_override = Some(statuses.clone());
         }
     }
 
@@ -354,12 +354,16 @@ fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
         },
     );
 
-    server_status(url.as_str(), &acceptable_statuses, Some(headers))
+    server_status(
+        url.as_str(),
+        acceptable_statuses_override.as_ref(),
+        Some(headers),
+    )
 }
 
 pub fn server_status(
     url: &str,
-    acceptable_statuses: &[u16],
+    acceptable_statuses_override: Option<&Vec<u16>>,
     extra_headers: Option<HeaderMap>,
 ) -> ServerStatus {
     let client = reqwest::blocking::Client::builder()
@@ -380,13 +384,24 @@ pub fn server_status(
                         "'{}' responded with status: {}. Acceptable statuses: {:?}",
                         url,
                         res.status().as_u16(),
-                        acceptable_statuses
+                        acceptable_statuses_override
                     );
 
-                    if acceptable_statuses.contains(&res.status().as_u16()) {
-                        ServerStatus::Ok
-                    } else {
-                        ServerStatus::Error
+                    match (acceptable_statuses_override, res.status()) {
+                        (None, status) => {
+                            if !status.is_server_error() {
+                                ServerStatus::Ok
+                            } else {
+                                ServerStatus::Error
+                            }
+                        }
+                        (Some(override_statuses), status) => {
+                            if override_statuses.contains(&status.as_u16()) {
+                                ServerStatus::Ok
+                            } else {
+                                ServerStatus::Error
+                            }
+                        }
                     }
                 }
                 Err(_) => ServerStatus::Error,
