@@ -328,7 +328,7 @@ pub async fn check_for_update(
     log::debug!("Looking for available update on '{channel}' channel.");
 
     let cached_releases = CachedReleases::load();
-    match cached_releases {
+    let release = match cached_releases {
         Some(cached_releases) => cached_releases.get_release(channel).cloned(),
         None => {
             let os = std::env::consts::OS;
@@ -362,7 +362,9 @@ pub async fn check_for_update(
 
             new_cache.get_release(channel).cloned()
         }
-    }
+    };
+
+    release.filter(|release| &release.version > current_version)
 }
 
 fn now() -> u64 {
