@@ -10,6 +10,8 @@ use std::{
     thread::{self, sleep},
     time::Duration,
 };
+use tracing::instrument;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
     commands,
@@ -31,6 +33,7 @@ pub struct Args {
     all: bool,
 }
 
+#[instrument(name = "cli.command.status", skip(args))]
 pub fn status(args: &Args) -> anyhow::Result<()> {
     // TODO(augustocesar)[2024-10-28]: Remove --all/-a in a future release.
     // Do not print the warning in case of JSON so it doesn't break any usage if the result of the command
@@ -330,7 +333,10 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
     ]
 }
 
+#[instrument(skip(service))]
 fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
+    tracing::Span::current().set_attribute("targe_service", service.name.clone());
+
     let mut acceptable_statuses_override: Option<Vec<u16>> = None;
     let mut url = service.current_url();
 
@@ -440,7 +446,10 @@ where
         let service_clone = service.clone();
         let session_name = session_name.to_string();
 
+        let parent_span = tracing::Span::current();
         thread::spawn(move || {
+            let _guard = parent_span.enter();
+
             let status = service_status(&service_clone, &session_name);
 
             tx.send((service_clone.name.clone(), status))

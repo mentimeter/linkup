@@ -7,6 +7,7 @@ use std::{
 use anyhow::Context;
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use url::Url;
 
 use linkup::{
@@ -28,6 +29,7 @@ pub struct LocalState {
 }
 
 impl LocalState {
+    #[instrument]
     pub fn load() -> anyhow::Result<Self> {
         let state_file_path = linkup_file_path(LINKUP_STATE_FILE);
         let content = fs::read_to_string(&state_file_path)

@@ -3,7 +3,6 @@ use std::{env, fs, io::ErrorKind, path::PathBuf};
 use anyhow::{anyhow, Context};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use opentelemetry::trace::Tracer;
 use thiserror::Error;
 
 pub use anyhow::Result;
@@ -257,10 +256,7 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let telemetry = telemetry::Telemetry::init();
 
-    let cli_result = opentelemetry::global::tracer("linkup::startup")
-        .in_span("parsing CLI", |_| Cli::try_parse());
-
-    let cli = match cli_result {
+    let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) => {
             e.print()?;
