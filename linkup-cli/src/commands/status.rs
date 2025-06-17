@@ -13,8 +13,8 @@ use std::{
 
 use crate::{
     commands,
-    local_config::{LocalService, LocalState, ServiceTarget},
-    services, Result,
+    local_config::{HealthConfig, LocalService, LocalState, ServiceTarget},
+    services,
 };
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -187,7 +187,6 @@ struct ServiceStatus {
     name: String,
     status: ServerStatus,
     component_kind: String,
-    location: String,
     service: LocalService,
     priority: i8,
 }
@@ -203,7 +202,7 @@ impl ServiceStatus {
 
         let mut status_name = ColoredString::from(self.name.clone());
         let mut status_component_kind = ColoredString::from(self.component_kind.clone());
-        let mut status_location = ColoredString::from(self.location.clone());
+        let mut status_location = ColoredString::from(self.service.current_url().to_string());
 
         if status_component_kind.deref() == "local" {
             status_name = status_name.bright_magenta();
@@ -245,16 +244,6 @@ impl ServerStatus {
             ServerStatus::Error => "error".yellow(),
             ServerStatus::Timeout => "timeout".yellow(),
             ServerStatus::Loading => "loading".normal(),
-        }
-    }
-}
-
-impl From<Result<reqwest::blocking::Response, reqwest::Error>> for ServerStatus {
-    fn from(res: Result<reqwest::blocking::Response, reqwest::Error>) -> Self {
-        match res {
-            Ok(res) if res.status().is_server_error() => ServerStatus::Error,
-            Ok(_) => ServerStatus::Ok,
-            Err(_) => ServerStatus::Timeout,
         }
     }
 }
@@ -309,6 +298,10 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             current: ServiceTarget::Local,
             directory: None,
             rewrites: vec![],
+            health: Some(HealthConfig {
+                path: Some("/linkup/check".to_string()),
+                ..Default::default()
+            }),
         },
         LocalService {
             name: "linkup_remote_server".to_string(),
@@ -317,6 +310,10 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             current: ServiceTarget::Remote,
             directory: None,
             rewrites: vec![],
+            health: Some(HealthConfig {
+                path: Some("/linkup/check".to_string()),
+                ..Default::default()
+            }),
         },
         LocalService {
             name: "tunnel".to_string(),
@@ -325,15 +322,27 @@ fn linkup_services(state: &LocalState) -> Vec<LocalService> {
             current: ServiceTarget::Remote,
             directory: None,
             rewrites: vec![],
+            health: Some(HealthConfig {
+                path: Some("/linkup/check".to_string()),
+                ..Default::default()
+            }),
         },
     ]
 }
 
 fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
-    let url = match service.current {
-        ServiceTarget::Local => service.local.clone(),
-        ServiceTarget::Remote => service.remote.clone(),
-    };
+    let mut acceptable_statuses_override: Option<Vec<u16>> = None;
+    let mut url = service.current_url();
+
+    if let Some(health_config) = &service.health {
+        if let Some(path) = &health_config.path {
+            url = url.join(path).unwrap();
+        }
+
+        if let Some(statuses) = &health_config.statuses {
+            acceptable_statuses_override = Some(statuses.clone());
+        }
+    }
 
     let headers = get_additional_headers(
         url.as_ref(),
@@ -345,23 +354,58 @@ fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
         },
     );
 
-    server_status(url.to_string(), Some(headers))
+    server_status(
+        url.as_str(),
+        acceptable_statuses_override.as_ref(),
+        Some(headers),
+    )
 }
 
-pub fn server_status(url: String, extra_headers: Option<HeaderMap>) -> ServerStatus {
+pub fn server_status(
+    url: &str,
+    acceptable_statuses_override: Option<&Vec<u16>>,
+    extra_headers: Option<HeaderMap>,
+) -> ServerStatus {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))
         .build();
 
     match client {
         Ok(client) => {
-            let mut request = client.get(url);
+            let mut req = client.get(url);
 
             if let Some(extra_headers) = extra_headers {
-                request = request.headers(extra_headers.into());
+                req = req.headers(extra_headers.into());
             }
 
-            request.send().into()
+            match req.send() {
+                Ok(res) => {
+                    log::debug!(
+                        "'{}' responded with status: {}. Acceptable statuses: {:?}",
+                        url,
+                        res.status().as_u16(),
+                        acceptable_statuses_override
+                    );
+
+                    match (acceptable_statuses_override, res.status()) {
+                        (None, status) => {
+                            if !status.is_server_error() {
+                                ServerStatus::Ok
+                            } else {
+                                ServerStatus::Error
+                            }
+                        }
+                        (Some(override_statuses), status) => {
+                            if override_statuses.contains(&status.as_u16()) {
+                                ServerStatus::Ok
+                            } else {
+                                ServerStatus::Error
+                            }
+                        }
+                    }
+                }
+                Err(_) => ServerStatus::Error,
+            }
         }
         Err(_) => ServerStatus::Error,
     }
@@ -377,16 +421,10 @@ where
     let services_statuses: Vec<ServiceStatus> = services
         .clone()
         .map(|service| {
-            let url = match service.current {
-                ServiceTarget::Local => service.local.clone(),
-                ServiceTarget::Remote => service.remote.clone(),
-            };
-
             let priority = service_priority(&service);
 
             ServiceStatus {
                 name: service.name.clone(),
-                location: url.to_string(),
                 component_kind: service.current.to_string(),
                 status: ServerStatus::Loading,
                 service,

@@ -90,6 +90,12 @@ pub struct LinkupState {
     pub cache_routes: Option<Vec<String>>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Default)]
+pub struct HealthConfig {
+    pub path: Option<String>,
+    pub statuses: Option<Vec<u16>>,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct LocalService {
     pub name: String,
@@ -98,6 +104,16 @@ pub struct LocalService {
     pub current: ServiceTarget,
     pub directory: Option<String>,
     pub rewrites: Vec<StorableRewrite>,
+    pub health: Option<HealthConfig>,
+}
+
+impl LocalService {
+    pub fn current_url(&self) -> Url {
+        match self.current {
+            ServiceTarget::Local => self.local.clone(),
+            ServiceTarget::Remote => self.remote.clone(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
@@ -167,6 +183,7 @@ pub struct YamlLocalService {
     local: Url,
     directory: Option<String>,
     rewrites: Option<Vec<StorableRewrite>>,
+    health: Option<HealthConfig>,
 }
 
 #[derive(Debug)]
@@ -211,6 +228,7 @@ pub fn config_to_state(
             current: ServiceTarget::Remote,
             directory: yaml_service.directory,
             rewrites: yaml_service.rewrites.unwrap_or_default(),
+            health: yaml_service.health,
         })
         .collect::<Vec<LocalService>>();
 
@@ -423,6 +441,9 @@ services:
     remote: http://remote-service2.example.com
     local: http://localhost:8001
     directory: ../backend
+    health:
+      path: /health
+      statuses: [200, 304]
 domains:
   - domain: example.com
     default_service: frontend
@@ -461,6 +482,7 @@ domains:
             Url::parse("http://localhost:8000").unwrap()
         );
         assert_eq!(local_state.services[0].current, ServiceTarget::Remote);
+        assert_eq!(local_state.services[0].health, None);
 
         assert_eq!(local_state.services[0].rewrites.len(), 1);
         assert_eq!(local_state.services[1].name, "backend");
@@ -476,6 +498,13 @@ domains:
         assert_eq!(
             local_state.services[1].directory,
             Some("../backend".to_string())
+        );
+        assert_eq!(
+            local_state.services[1].health,
+            Some(HealthConfig {
+                path: Some("/health".to_string()),
+                statuses: Some(vec![200, 304]),
+            })
         );
 
         assert_eq!(local_state.domains.len(), 2);
