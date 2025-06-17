@@ -3,6 +3,7 @@ use std::{env, fs, io::ErrorKind, path::PathBuf};
 use anyhow::{anyhow, Context};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use opentelemetry::trace::Tracer;
 use thiserror::Error;
 
 pub use anyhow::Result;
@@ -13,6 +14,7 @@ mod env_files;
 mod local_config;
 mod release;
 mod services;
+mod telemetry;
 mod worker_client;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -253,15 +255,25 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::init();
+    let telemetry = telemetry::Telemetry::init();
 
-    let cli = Cli::parse();
+    let cli_result = opentelemetry::global::tracer("linkup::startup")
+        .in_span("parsing CLI", |_| Cli::try_parse());
+
+    let cli = match cli_result {
+        Ok(cli) => cli,
+        Err(e) => {
+            e.print()?;
+            telemetry.shutdown();
+            std::process::exit(e.exit_code());
+        }
+    };
 
     ensure_linkup_dir()?;
 
     display_update_message(&cli.command).await;
 
-    match &cli.command {
+    let result = match &cli.command {
         Commands::Health(args) => commands::health(args),
         Commands::Start(args) => commands::start(args, true, &cli.config).await,
         Commands::Stop(args) => commands::stop(args, true),
@@ -277,5 +289,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Update(args) => commands::update(args).await,
         Commands::Deploy(args) => commands::deploy(args).await,
         Commands::Destroy(args) => commands::destroy(args).await,
-    }
+    };
+
+    telemetry.shutdown();
+
+    result
 }
