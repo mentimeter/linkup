@@ -23,7 +23,7 @@ use hickory_server::{
     },
     ServerFuture,
 };
-use http::{header::HeaderMap, Uri};
+use http::{header::HeaderMap, HeaderValue, Uri};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
     client::legacy::{connect::HttpConnector, Client},
@@ -237,12 +237,24 @@ async fn linkup_request_handler(
             }
 
             let uri = url.parse::<Uri>().unwrap();
+            let host = uri.host().unwrap().to_string();
             let mut upstream_request = uri.into_client_request().unwrap();
 
+            // Copy over all headers from the incoming request
+            for (key, value) in req.headers() {
+                upstream_request.headers_mut().insert(key, value.clone());
+            }
+
+            // add the extra headers that linkup wants
             let extra_http_headers: HeaderMap = extra_headers.into();
             for (key, value) in extra_http_headers.iter() {
                 upstream_request.headers_mut().insert(key, value.clone());
             }
+
+            // Overriding host header neccesary for tokio_tungstenite
+            upstream_request
+                .headers_mut()
+                .insert(http::header::HOST, HeaderValue::from_str(&host).unwrap());
 
             let (upstream_ws_stream, upstream_response) =
                 match tokio_tungstenite::connect_async(upstream_request).await {
@@ -258,25 +270,24 @@ async fn linkup_request_handler(
                             return Response::builder()
                                 .status(StatusCode::BAD_GATEWAY)
                                 .body(Body::from(error.to_string()))
-                                .unwrap()
+                                .unwrap();
                         }
                     },
                 };
 
-            let mut upstream_upgrade_response =
+            let mut downstream_upgrade_response =
                 downstream_upgrade.on_upgrade(ws::context_handle_socket(upstream_ws_stream));
 
-            let websocket_upgrade_response_headers = upstream_upgrade_response.headers_mut();
+            let downstream_response_headers = downstream_upgrade_response.headers_mut();
+
+            // The headers from the upstream response are more important - trust the upstream server
             for upstream_header in upstream_response.headers() {
-                if !websocket_upgrade_response_headers.contains_key(upstream_header.0) {
-                    websocket_upgrade_response_headers
-                        .append(upstream_header.0, upstream_header.1.clone());
-                }
+                downstream_response_headers.insert(upstream_header.0, upstream_header.1.clone());
             }
 
-            websocket_upgrade_response_headers.extend(allow_all_cors());
+            downstream_response_headers.extend(allow_all_cors());
 
-            upstream_upgrade_response
+            downstream_upgrade_response
         }
         None => handle_http_req(req, target_service, extra_headers, client).await,
     }
