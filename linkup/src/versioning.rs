@@ -1,12 +1,14 @@
 use std::fmt::Display;
 
+use serde::{Deserialize, Serialize};
+
 #[derive(thiserror::Error, Debug)]
 pub enum VersionError {
     #[error("Failed to parse version '{0}'")]
     Parsing(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VersionChannel {
     Stable,
     Beta,
@@ -21,7 +23,7 @@ impl Display for VersionChannel {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Version {
     pub major: u16,
     pub minor: u16,
