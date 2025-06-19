@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     env,
     fmt::{self, Display, Formatter},
     fs,
@@ -133,7 +134,7 @@ impl Display for ServiceTarget {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct YamlLocalConfig {
     pub linkup: LinkupConfig,
     pub services: Vec<YamlLocalService>,
@@ -171,14 +172,26 @@ impl YamlLocalConfig {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Clone, Debug, Deserialize)]
+pub struct OtelConfig {
+    pub exporter_otlp_endpoint: String,
+    pub exporter_otlp_headers: Option<HashMap<String, String>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TelemetryConfig {
+    pub otel: OtelConfig,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct LinkupConfig {
     pub worker_url: Url,
     pub worker_token: String,
+    pub telemetry: Option<TelemetryConfig>,
     cache_routes: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct YamlLocalService {
     name: String,
     remote: Url,

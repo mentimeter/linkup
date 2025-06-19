@@ -8,6 +8,8 @@ use thiserror::Error;
 pub use anyhow::Result;
 pub use linkup::Version;
 
+use crate::local_config::{config_path, get_config};
+
 mod commands;
 mod env_files;
 mod local_config;
@@ -254,16 +256,13 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let telemetry = telemetry::Telemetry::init();
+    let cli = Cli::parse();
 
-    let cli = match Cli::try_parse() {
-        Ok(cli) => cli,
-        Err(e) => {
-            e.print()?;
-            telemetry.shutdown();
-            std::process::exit(e.exit_code());
-        }
-    };
+    let config_path = config_path(&cli.config)?;
+    let config = get_config(&config_path)?;
+
+    let telemetry =
+        telemetry::Telemetry::init(config.linkup.telemetry.map(|telemetry| telemetry.otel));
 
     ensure_linkup_dir()?;
 
