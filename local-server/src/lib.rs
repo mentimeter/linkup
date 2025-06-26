@@ -23,7 +23,7 @@ use hickory_server::{
     },
     ServerFuture,
 };
-use http::{header::HeaderMap, HeaderValue, Uri};
+use http::{header::HeaderMap, HeaderName, HeaderValue, Uri};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
     client::legacy::{connect::HttpConnector, Client},
@@ -49,7 +49,10 @@ mod ws;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
-const DISALLOWED_HEADERS: [&str; 2] = ["content-encoding", "content-length"];
+const DISALLOWED_HEADERS: [HeaderName; 2] = [
+    HeaderName::from_static("content-encoding"),
+    HeaderName::from_static("content-length"),
+];
 
 #[derive(Debug)]
 struct ApiError {
@@ -283,11 +286,11 @@ async fn linkup_request_handler(
             let downstream_response_headers = downstream_upgrade_response.headers_mut();
 
             // The headers from the upstream response are more important - trust the upstream server
-            for upstream_header in upstream_response.headers() {
+            for (upstream_key, upstream_value) in upstream_response.headers() {
                 // Except for content encoding headers, cloudflare does _not_ like them..
-                if !DISALLOWED_HEADERS.contains(&upstream_header.0.to_string().as_str()) {
+                if !DISALLOWED_HEADERS.contains(upstream_key) {
                     downstream_response_headers
-                        .insert(upstream_header.0, upstream_header.1.clone());
+                        .insert(upstream_key.clone(), upstream_value.clone());
                 }
             }
 
