@@ -11,6 +11,7 @@ use std::{
 use anyhow::{anyhow, Context, Error};
 use colored::Colorize;
 use crossterm::{cursor, ExecutableCommand};
+use tracing::instrument;
 
 use crate::{
     commands::status::{format_state_domains, SessionStatus},
@@ -32,6 +33,7 @@ pub struct Args {
     pub no_tunnel: bool,
 }
 
+#[instrument(name = "cli.command.start", skip(args, fresh_state, config_arg))]
 pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) -> Result<()> {
     let mut state = if fresh_state {
         let state = load_and_save_state(config_arg, args.no_tunnel)?;
@@ -76,7 +78,14 @@ pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) 
         .await
     {
         Ok(_) => (),
-        Err(err) => exit_error = Some(err),
+        Err(err) => {
+            tracing::error!(
+                error_message = err.to_string(),
+                "Failed to start local server"
+            );
+
+            exit_error = Some(err)
+        }
     }
 
     if exit_error.is_none() {
@@ -85,7 +94,14 @@ pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) 
             .await
         {
             Ok(_) => (),
-            Err(err) => exit_error = Some(err),
+            Err(err) => {
+                tracing::error!(
+                    error_message = err.to_string(),
+                    "Failed to start Cloudflare tunnel"
+                );
+
+                exit_error = Some(err)
+            }
         }
     }
 
@@ -95,7 +111,13 @@ pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) 
             .await
         {
             Ok(_) => (),
-            Err(err) => exit_error = Some(err),
+            Err(err) => {
+                tracing::error!(
+                    error_message = err.to_string(),
+                    "Failed to start local DNS server"
+                );
+                exit_error = Some(err)
+            }
         }
     }
 

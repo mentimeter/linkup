@@ -14,6 +14,9 @@ CLOUDFLARE_TUNNEL_ZONE_ID = ""
 CLOUDLFLARE_ALL_ZONE_IDS = ""
 CLOUDFLARE_API_TOKEN = ""
 WORKER_TOKEN = "token123"
+OTLP_ENDPOINT = ""
+# Comma-separated headers; E.g. "header1=value1,header2=value2"
+OTLP_HEADERS = ""
 
 [triggers]
 crons = [ "0 12 * * 2-6" ]

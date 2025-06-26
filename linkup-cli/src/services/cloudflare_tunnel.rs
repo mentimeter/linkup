@@ -64,7 +64,7 @@ impl CloudflareTunnel {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
 
-        log::info!(
+        tracing::info!(
             "Trying to acquire tunnel with name: {}",
             linkup_session_name
         );
@@ -73,7 +73,15 @@ impl CloudflareTunnel {
         let tunnel_data = worker_client
             .get_tunnel(linkup_session_name)
             .await
-            .map_err(|e| Error::FailedToStart(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(
+                    session_name = linkup_session_name,
+                    error_message = e.to_string(),
+                    "Failed to get tunnel for session"
+                );
+
+                Error::FailedToStart(e.to_string())
+            })?;
         let tunnel_url = Url::parse(&tunnel_data.url).expect("tunnel_data url to be valid URL");
 
         save_tunnel_credentials(
@@ -83,8 +91,7 @@ impl CloudflareTunnel {
         )?;
         create_config_yml(&tunnel_data.id)?;
 
-        log::debug!("Starting tunnel with name: {}", self.pidfile_path.display());
-        log::debug!("Starting tunnel with name: {}", tunnel_data.name);
+        tracing::debug!("Starting tunnel with name: {}", tunnel_data.name);
 
         process::Command::new("cloudflared")
             .process_group(0)

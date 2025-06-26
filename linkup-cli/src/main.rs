@@ -286,6 +286,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Destroy(args) => commands::destroy(args).await,
     };
 
+    if let Err(error) = &result {
+        tracing::error!(error_message = error.to_string(), "Command failed");
+    }
+
     telemetry.shutdown();
 
     result

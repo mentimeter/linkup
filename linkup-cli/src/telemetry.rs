@@ -16,6 +16,7 @@ use crate::local_config::OtelConfig;
 
 fn get_resource() -> Resource {
     static RESOURCE: OnceLock<Resource> = OnceLock::new();
+
     RESOURCE
         .get_or_init(|| {
             Resource::builder()

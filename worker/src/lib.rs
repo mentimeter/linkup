@@ -1,3 +1,5 @@
+use std::{collections::HashMap, str::FromStr};
+
 use axum::{
     extract::{Json, Query, Request, State},
     http::StatusCode,
@@ -6,7 +8,7 @@ use axum::{
     routing::{any, get, post},
     Router,
 };
-use http::{HeaderMap, Uri};
+use http::{HeaderMap, HeaderName, HeaderValue, Uri};
 use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
@@ -17,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use tower_service::Service;
 use worker::{
     console_error, console_log, console_warn, event, kv::KvStore, Env, Fetch, HttpRequest,
-    HttpResponse,
+    HttpResponse, Url,
 };
 use ws::handle_ws_resp;
 
@@ -42,6 +44,12 @@ pub struct CloudflareEnvironemnt {
 }
 
 #[derive(Clone)]
+pub struct OtlpConfig {
+    endpoint: Url,
+    headers: HeaderMap,
+}
+
+#[derive(Clone)]
 pub struct LinkupState {
     pub min_supported_client_version: Version,
     pub sessions_kv: KvStore,
@@ -49,6 +57,7 @@ pub struct LinkupState {
     pub certs_kv: KvStore,
     pub cloudflare: CloudflareEnvironemnt,
     pub env: Env,
+    pub otlp: Option<OtlpConfig>,
 }
 
 impl TryFrom<Env> for LinkupState {
@@ -72,6 +81,38 @@ impl TryFrom<Env> for LinkupState {
         let cf_api_token = value.var("CLOUDFLARE_API_TOKEN")?;
         let worker_token = value.var("WORKER_TOKEN")?;
 
+        let mut otlp_config = None;
+        if let Ok(otlp_endpoint) = value
+            .var("OTLP_ENDPOINT")
+            .map(|endpoint| Url::parse(&endpoint.to_string()))?
+        {
+            let mut otlp_headers = HeaderMap::new();
+            if let Ok(otlp_headers_config) = value.var("OTLP_HEADERS") {
+                for header in otlp_headers_config
+                    .to_string()
+                    .split(',')
+                    .filter_map(|entry| {
+                        let mut parts = entry.splitn(2, '=');
+                        if let (Some(k), Some(v)) = (parts.next(), parts.next()) {
+                            Some((k.trim().to_string(), v.trim().to_string()))
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    otlp_headers.insert(
+                        HeaderName::from_str(&header.0)?,
+                        HeaderValue::from_str(&header.1)?,
+                    );
+                }
+            }
+
+            otlp_config = Some(OtlpConfig {
+                endpoint: otlp_endpoint,
+                headers: otlp_headers,
+            });
+        }
+
         let state = LinkupState {
             min_supported_client_version,
             sessions_kv,
@@ -85,6 +126,7 @@ impl TryFrom<Env> for LinkupState {
                 worker_token: worker_token.to_string(),
             },
             env: value,
+            otlp: otlp_config,
         };
 
         Ok(state)
@@ -101,6 +143,7 @@ pub fn linkup_router(state: LinkupState) -> Router {
         .route("/linkup", any(deprecated_linkup_session_handler))
         .merge(routes::certificate_dns::router())
         .merge(routes::certificate_cache::router())
+        .merge(routes::telemetry::router())
         .route_layer(from_fn_with_state(state.clone(), authenticate))
         // Fallback for all other requests
         .fallback(any(linkup_request_handler))
