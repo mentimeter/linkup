@@ -49,6 +49,8 @@ mod ws;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
+const DISALLOWED_HEADERS: [&str; 2] = ["content-encoding", "content-length"];
+
 #[derive(Debug)]
 struct ApiError {
     message: String,
@@ -282,7 +284,11 @@ async fn linkup_request_handler(
 
             // The headers from the upstream response are more important - trust the upstream server
             for upstream_header in upstream_response.headers() {
-                downstream_response_headers.insert(upstream_header.0, upstream_header.1.clone());
+                // Except for content encoding headers, cloudflare does _not_ like them..
+                if !DISALLOWED_HEADERS.contains(&upstream_header.0.to_string().as_str()) {
+                    downstream_response_headers
+                        .insert(upstream_header.0, upstream_header.1.clone());
+                }
             }
 
             downstream_response_headers.extend(allow_all_cors());
