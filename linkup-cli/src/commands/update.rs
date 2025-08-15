@@ -1,5 +1,7 @@
-use crate::{current_version, linkup_exe_path, release, InstallationMethod, Result};
+use anyhow::Context;
 use std::fs;
+
+use crate::{commands, current_version, linkup_exe_path, release, InstallationMethod, Result};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -33,13 +35,15 @@ pub async fn update(args: &Args) -> Result<()> {
     if args.skip_cache {
         log::debug!("Clearing cache to force a new check for the latest version.");
 
-        release::clear_cache();
+        release::CachedReleases::clear();
     }
 
     let requested_channel = args.channel.as_ref().map(linkup::VersionChannel::from);
 
-    match release::available_update(&current_version, requested_channel).await {
+    match release::check_for_update(&current_version, requested_channel).await {
         Some(update) => {
+            commands::stop(&commands::StopArgs {}, false)?;
+
             println!(
                 "Updating from version '{}' ({}) to '{}' ({})...",
                 &current_version,
@@ -48,7 +52,11 @@ pub async fn update(args: &Args) -> Result<()> {
                 &update.version.channel()
             );
 
-            let new_linkup_path = update.linkup.download_decompressed("linkup").await.unwrap();
+            let new_linkup_path = update
+                .binary
+                .download()
+                .await
+                .with_context(|| "Failed to download new version")?;
 
             let current_linkup_path = linkup_exe_path()?;
             let bkp_linkup_path = current_linkup_path.with_extension("bkp");
@@ -85,7 +93,7 @@ pub async fn update(args: &Args) -> Result<()> {
 }
 
 pub async fn new_version_available() -> bool {
-    release::available_update(&current_version(), None)
+    release::check_for_update(&current_version(), None)
         .await
         .is_some()
 }

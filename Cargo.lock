@@ -1725,7 +1725,7 @@ dependencies = [
 
 [[package]]
 name = "linkup-cli"
-version = "3.2.1"
+version = "3.4.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -3375,7 +3375,11 @@ checksum = "be4bf6fecd69fcdede0ec680aaf474cdab988f9de6bc73d3758f0160e3b7025a"
 dependencies = [
  "futures-util",
  "log",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
  "tokio",
+ "tokio-rustls",
  "tungstenite",
 ]
 
@@ -3549,6 +3553,8 @@ dependencies = [
  "httparse",
  "log",
  "rand 0.8.5",
+ "rustls",
+ "rustls-pki-types",
  "sha1",
  "thiserror 2.0.11",
  "utf-8",

@@ -101,14 +101,14 @@ pub fn context_handle_socket(
                                 }
                                 _ => {
                                     if let Err(e) = upstream_write.send(tungstenite_message).await {
-                                        eprintln!("Error sending message to upstream: {}", e);
+                                        println!("Error sending message to upstream: {}", e);
                                         break;
                                     }
                                 }
                             }
                         }
                         Err(e) => {
-                            eprint!("Got error on reading message from downstream: {}", e);
+                            println!("Got error on reading message from downstream: {}", e);
                             break;
                         }
                     },
@@ -128,14 +128,14 @@ pub fn context_handle_socket(
                                 }
                                 _ => {
                                     if let Err(e) = downstream_write.send(axum_message).await {
-                                        eprintln!("Error sending message to upstream: {}", e);
+                                        println!("Error sending message to upstream: {}", e);
                                         break;
                                     }
                                 }
                             }
                         }
                         Err(e) => {
-                            eprint!("Got error on reading message from upstream: {}", e);
+                            println!("Got error on reading message from upstream: {}", e);
                             break;
                         }
                     },
@@ -144,7 +144,7 @@ pub fn context_handle_socket(
                         // this might be better than panicking? Or do we want to "fail loudly" here?
                         //
                         // https://docs.rs/tokio/latest/tokio/macro.select.html#panics
-                        eprint!("Received unexpected message: {other:?}");
+                        println!("Received unexpected message: {other:?}");
 
                         break;
                     }

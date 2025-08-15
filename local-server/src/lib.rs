@@ -23,7 +23,7 @@ use hickory_server::{
     },
     ServerFuture,
 };
-use http::{header::HeaderMap, Uri};
+use http::{header::HeaderMap, HeaderName, HeaderValue, Uri};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
     client::legacy::{connect::HttpConnector, Client},
@@ -48,6 +48,11 @@ pub mod certificates;
 mod ws;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
+
+const DISALLOWED_HEADERS: [HeaderName; 2] = [
+    HeaderName::from_static("content-encoding"),
+    HeaderName::from_static("content-length"),
+];
 
 #[derive(Debug)]
 struct ApiError {
@@ -237,12 +242,24 @@ async fn linkup_request_handler(
             }
 
             let uri = url.parse::<Uri>().unwrap();
+            let host = uri.host().unwrap().to_string();
             let mut upstream_request = uri.into_client_request().unwrap();
 
+            // Copy over all headers from the incoming request
+            for (key, value) in req.headers() {
+                upstream_request.headers_mut().insert(key, value.clone());
+            }
+
+            // add the extra headers that linkup wants
             let extra_http_headers: HeaderMap = extra_headers.into();
             for (key, value) in extra_http_headers.iter() {
                 upstream_request.headers_mut().insert(key, value.clone());
             }
+
+            // Overriding host header neccesary for tokio_tungstenite
+            upstream_request
+                .headers_mut()
+                .insert(http::header::HOST, HeaderValue::from_str(&host).unwrap());
 
             let (upstream_ws_stream, upstream_response) =
                 match tokio_tungstenite::connect_async(upstream_request).await {
@@ -258,25 +275,28 @@ async fn linkup_request_handler(
                             return Response::builder()
                                 .status(StatusCode::BAD_GATEWAY)
                                 .body(Body::from(error.to_string()))
-                                .unwrap()
+                                .unwrap();
                         }
                     },
                 };
 
-            let mut upstream_upgrade_response =
+            let mut downstream_upgrade_response =
                 downstream_upgrade.on_upgrade(ws::context_handle_socket(upstream_ws_stream));
 
-            let websocket_upgrade_response_headers = upstream_upgrade_response.headers_mut();
-            for upstream_header in upstream_response.headers() {
-                if !websocket_upgrade_response_headers.contains_key(upstream_header.0) {
-                    websocket_upgrade_response_headers
-                        .append(upstream_header.0, upstream_header.1.clone());
+            let downstream_response_headers = downstream_upgrade_response.headers_mut();
+
+            // The headers from the upstream response are more important - trust the upstream server
+            for (upstream_key, upstream_value) in upstream_response.headers() {
+                // Except for content encoding headers, cloudflare does _not_ like them..
+                if !DISALLOWED_HEADERS.contains(upstream_key) {
+                    downstream_response_headers
+                        .insert(upstream_key.clone(), upstream_value.clone());
                 }
             }
 
-            websocket_upgrade_response_headers.extend(allow_all_cors());
+            downstream_response_headers.extend(allow_all_cors());
 
-            upstream_upgrade_response
+            downstream_upgrade_response
         }
         None => handle_http_req(req, target_service, extra_headers, client).await,
     }
