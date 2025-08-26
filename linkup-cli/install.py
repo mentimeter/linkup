@@ -23,8 +23,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional, Tuple, List
 
-LINKUP_BIN_PATH = Path.home() / ".linkup" / "bin"
-
 
 class Shell(Enum):
     bash = "bash"
@@ -44,15 +42,15 @@ class Shell(Enum):
         else:
             return None
 
-    def add_to_profile_command(self) -> Optional[str]:
+    def add_to_profile_command(self, bin_path: Path) -> Optional[str]:
         if self == Shell.bash:
             return (
-                f"echo 'export PATH=$PATH:{LINKUP_BIN_PATH}' >> {Path.home()}/.bashrc"
+                f"echo 'export PATH=$PATH:{bin_path}' >> {Path.home()}/.bashrc"
             )
         elif self == Shell.zsh:
-            return f"echo 'export PATH=$PATH:{LINKUP_BIN_PATH}' >> {Path.home()}/.zshrc"
+            return f"echo 'export PATH=$PATH:{bin_path}' >> {Path.home()}/.zshrc"
         elif self == Shell.fish:
-            return f"echo 'set -gx PATH $PATH {LINKUP_BIN_PATH}' >> {Path.home()}/.config/fish/config.fish"
+            return f"echo 'set -gx PATH $PATH {bin_path}' >> {Path.home()}/.config/fish/config.fish"
         else:
             return None
 
@@ -201,7 +199,11 @@ def tar_extract(tar: TarFile, path: str):
 
 
 def download_and_extract(
-    user_os: OS, user_arch: Arch, channel: Channel, release: GithubRelease
+    target_location: Path,
+    user_os: OS,
+    user_arch: Arch,
+    channel: Channel,
+    release: GithubRelease
 ) -> None:
     print(f"Latest release on {channel.name} channel: {release.tag_name}.")
     print(f"Looking for asset for {user_os.value}/{user_arch.value}...")
@@ -235,25 +237,30 @@ def download_and_extract(
     with tarfile.open(local_tar_path, "r:gz") as tar:
         tar_extract(tar, "/tmp")
 
-    LINKUP_BIN_PATH.mkdir(parents=True, exist_ok=True)
-    linkup_bin_path = LINKUP_BIN_PATH / "linkup"
-    shutil.move("/tmp/linkup", linkup_bin_path)
-    os.chmod(linkup_bin_path, 0o755)
+    if user_os == OS.MacOS:
+        target_location.mkdir(parents=True, exist_ok=True)
 
-    if user_os == OS.Linux:
+        linkup_bin_path = target_location / "linkup"
+        shutil.move("/tmp/linkup", linkup_bin_path)
+        os.chmod(linkup_bin_path, 0o755)
+    elif user_os == OS.Linux:
+        linkup_bin_path = target_location / "linkup"
+        subprocess.run(["sudo", "mv", "/tmp/linkup", str(linkup_bin_path)], check=True)
+        subprocess.run(["sudo", "chmod", "755", str(linkup_bin_path)], check=True)
         subprocess.run(
-            ["sudo", "setcap", "cap_net_bind_service=+ep", f"{linkup_bin_path}"]
+            ["sudo", "setcap", "cap_net_bind_service=+ep", str(linkup_bin_path)],
+            check=True
         )
 
-    print(f"Linkup installed at {LINKUP_BIN_PATH / 'linkup'}")
+    print(f"Linkup installed at {target_location / 'linkup'}")
     local_tar_path.unlink()
 
 
-def setup_path() -> None:
-    if str(LINKUP_BIN_PATH) in os.environ.get("PATH", "").split(":"):
+def setup_path(target_location: Path) -> None:
+    if str(target_location) in os.environ.get("PATH", "").split(":"):
         return
 
-    print(f"\nTo start using Linkup, add '{LINKUP_BIN_PATH}' to your PATH.")
+    print(f"\nTo start using Linkup, add '{target_location}' to your PATH.")
 
     shell = Shell.from_str(os.path.basename(os.environ.get("SHELL", "")))
     if shell is None:
@@ -262,7 +269,7 @@ def setup_path() -> None:
     print(
         f"Since you are using {shell.name}, you can run the following to add to your profile:"
     )
-    print(f"\n  {shell.add_to_profile_command()}")
+    print(f"\n  {shell.add_to_profile_command(target_location)}")
     print("\nThen restart your shell.")
 
 
@@ -293,9 +300,17 @@ def main() -> None:
 
     user_os, user_arch = detect_platform()
     release = get_release_data(context.channel)
-    download_and_extract(user_os, user_arch, context.channel, release)
 
-    setup_path()
+    if user_os == OS.MacOS:
+        target_location = Path.home() / ".linkup" / "bin"
+    elif user_os == OS.Linux:
+        target_location = Path("/") / "usr" / "local" / "bin"
+    else:
+        raise ValueError(f"Unsupported OS: {user_os}")
+
+    download_and_extract(target_location, user_os, user_arch, context.channel, release)
+
+    setup_path(target_location)
 
     print("Linkup installation complete! 🎉")
 
