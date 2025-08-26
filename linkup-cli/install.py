@@ -171,7 +171,7 @@ def list_releases() -> List[GithubRelease]:
         },
     )
 
-    with urllib.request.urlopen(req) as response:
+    with urllib.request.urlopen(req, timeout=30) as response:
         return [GithubRelease.from_json(release) for release in json.load(response)]
 
 
@@ -184,7 +184,7 @@ def get_latest_stable_release() -> GithubRelease:
         },
     )
 
-    with urllib.request.urlopen(req) as response:
+    with urllib.request.urlopen(req, timeout=30) as response:
         return GithubRelease.from_json(json.load(response))
 
 
@@ -232,7 +232,7 @@ def download_and_extract(
 
     try:
         with (
-            urllib.request.urlopen(download_url) as response,
+            urllib.request.urlopen(download_url, timeout=60) as response,
             open(local_tar_path, "wb") as out_file,
         ):
             shutil.copyfileobj(response, out_file)
