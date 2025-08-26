@@ -226,34 +226,39 @@ def download_and_extract(
 
     print(f"Downloading: {download_url}")
     local_tar_path = Path("/tmp") / Path(download_url).name
+    local_temp_bin_path = Path("/tmp") / "linkup"
 
-    with (
-        urllib.request.urlopen(download_url) as response,
-        open(local_tar_path, "wb") as out_file,
-    ):
-        shutil.copyfileobj(response, out_file)
+    try:
+        with (
+            urllib.request.urlopen(download_url) as response,
+            open(local_tar_path, "wb") as out_file,
+        ):
+            shutil.copyfileobj(response, out_file)
 
-    print(f"Decompressing {local_tar_path}")
-    with tarfile.open(local_tar_path, "r:gz") as tar:
-        tar_extract(tar, "/tmp")
+        print(f"Decompressing {local_tar_path}")
+        with tarfile.open(local_tar_path, "r:gz") as tar:
+            tar_extract(tar, "/tmp")
 
-    if user_os == OS.MacOS:
-        target_location.mkdir(parents=True, exist_ok=True)
+        installation_bin_path = target_location / "linkup"
 
-        linkup_bin_path = target_location / "linkup"
-        shutil.move("/tmp/linkup", linkup_bin_path)
-        os.chmod(linkup_bin_path, 0o755)
-    elif user_os == OS.Linux:
-        linkup_bin_path = target_location / "linkup"
-        subprocess.run(["sudo", "mv", "/tmp/linkup", str(linkup_bin_path)], check=True)
-        subprocess.run(["sudo", "chmod", "755", str(linkup_bin_path)], check=True)
-        subprocess.run(
-            ["sudo", "setcap", "cap_net_bind_service=+ep", str(linkup_bin_path)],
-            check=True
-        )
+        if user_os == OS.MacOS:
+            target_location.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(local_temp_bin_path), installation_bin_path)
+            os.chmod(installation_bin_path, 0o755)
+        elif user_os == OS.Linux:
+            subprocess.run(["sudo", "mv", str(local_temp_bin_path), str(installation_bin_path)], check=True)
+            subprocess.run(["sudo", "chmod", "755", str(installation_bin_path)], check=True)
+            subprocess.run(
+                ["sudo", "setcap", "cap_net_bind_service=+ep", str(installation_bin_path)], check=True
+            )
 
-    print(f"Linkup installed at {target_location / 'linkup'}")
-    local_tar_path.unlink()
+        print(f"Linkup installed at {installation_bin_path}")
+    finally:
+        if local_tar_path.exists():
+            local_tar_path.unlink()
+
+        if local_temp_bin_path.exists():
+            local_temp_bin_path.unlink()
 
 
 def setup_path(target_location: Path) -> None:
