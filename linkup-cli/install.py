@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import urllib.request
 from dataclasses import dataclass
 from enum import Enum
@@ -225,8 +226,9 @@ def download_and_extract(
         sys.exit(1)
 
     print(f"Downloading: {download_url}")
-    local_tar_path = Path("/tmp") / Path(download_url).name
-    local_temp_bin_path = Path("/tmp") / "linkup"
+    temp_dir = Path(tempfile.gettempdir())
+    local_tar_path = temp_dir / Path(download_url).name
+    local_temp_bin_path = temp_dir / "linkup"
 
     try:
         with (
@@ -237,7 +239,7 @@ def download_and_extract(
 
         print(f"Decompressing {local_tar_path}")
         with tarfile.open(local_tar_path, "r:gz") as tar:
-            tar_extract(tar, "/tmp")
+            tar_extract(tar, str(temp_dir))
 
         installation_bin_path = target_location / "linkup"
 
