@@ -1,4 +1,5 @@
 use anyhow::Context;
+#[cfg(not(target_os = "linux"))]
 use std::fs;
 
 use crate::{commands, current_version, linkup_exe_path, release, InstallationMethod, Result};
