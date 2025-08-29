@@ -1,7 +1,11 @@
 use anyhow::Context;
+#[cfg(not(target_os = "linux"))]
 use std::fs;
 
 use crate::{commands, current_version, linkup_exe_path, release, InstallationMethod, Result};
+
+#[cfg(target_os = "linux")]
+use crate::{is_sudo, sudo_su};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -61,15 +65,36 @@ pub async fn update(args: &Args) -> Result<()> {
             let current_linkup_path = linkup_exe_path()?;
             let bkp_linkup_path = current_linkup_path.with_extension("bkp");
 
-            fs::rename(&current_linkup_path, &bkp_linkup_path)
-                .expect("failed to move the current exe into a backup");
-            fs::rename(&new_linkup_path, &current_linkup_path)
-                .expect("failed to move the new exe as the current exe");
-
             #[cfg(target_os = "linux")]
             {
                 println!("Linkup needs sudo access to:");
+                println!("  - Update binary in {:?}", &current_linkup_path);
                 println!("  - Add capability to bind to port 80/443");
+
+                if !is_sudo() {
+                    sudo_su()?;
+                }
+
+                std::process::Command::new("sudo")
+                    .args(["mv"])
+                    .arg(&current_linkup_path)
+                    .arg(&bkp_linkup_path)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .expect("failed to move the current exe into a backup");
+
+                std::process::Command::new("sudo")
+                    .args(["mv"])
+                    .arg(&new_linkup_path)
+                    .arg(&current_linkup_path)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .expect("failed to move the new exe as the current exe");
+
                 std::process::Command::new("sudo")
                     .stdout(std::process::Stdio::inherit())
                     .stderr(std::process::Stdio::inherit())
@@ -80,6 +105,14 @@ pub async fn update(args: &Args) -> Result<()> {
                         &current_linkup_path.display().to_string(),
                     ])
                     .spawn()?;
+            }
+
+            #[cfg(not(target_os = "linux"))]
+            {
+                fs::rename(&current_linkup_path, &bkp_linkup_path)
+                    .expect("failed to move the current exe into a backup");
+                fs::rename(&new_linkup_path, &current_linkup_path)
+                    .expect("failed to move the new exe as the current exe");
             }
 
             println!("Finished update!");

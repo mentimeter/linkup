@@ -17,13 +17,12 @@ import re
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import urllib.request
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional, Tuple, List
-
-LINKUP_BIN_PATH = Path.home() / ".linkup" / "bin"
 
 
 class Shell(Enum):
@@ -44,15 +43,15 @@ class Shell(Enum):
         else:
             return None
 
-    def add_to_profile_command(self) -> Optional[str]:
+    def add_to_profile_command(self, bin_path: Path) -> Optional[str]:
         if self == Shell.bash:
             return (
-                f"echo 'export PATH=$PATH:{LINKUP_BIN_PATH}' >> {Path.home()}/.bashrc"
+                f"echo 'export PATH=$PATH:{bin_path}' >> {Path.home()}/.bashrc"
             )
         elif self == Shell.zsh:
-            return f"echo 'export PATH=$PATH:{LINKUP_BIN_PATH}' >> {Path.home()}/.zshrc"
+            return f"echo 'export PATH=$PATH:{bin_path}' >> {Path.home()}/.zshrc"
         elif self == Shell.fish:
-            return f"echo 'set -gx PATH $PATH {LINKUP_BIN_PATH}' >> {Path.home()}/.config/fish/config.fish"
+            return f"echo 'set -gx PATH $PATH {bin_path}' >> {Path.home()}/.config/fish/config.fish"
         else:
             return None
 
@@ -172,7 +171,7 @@ def list_releases() -> List[GithubRelease]:
         },
     )
 
-    with urllib.request.urlopen(req) as response:
+    with urllib.request.urlopen(req, timeout=30) as response:
         return [GithubRelease.from_json(release) for release in json.load(response)]
 
 
@@ -185,7 +184,7 @@ def get_latest_stable_release() -> GithubRelease:
         },
     )
 
-    with urllib.request.urlopen(req) as response:
+    with urllib.request.urlopen(req, timeout=30) as response:
         return GithubRelease.from_json(json.load(response))
 
 
@@ -201,7 +200,11 @@ def tar_extract(tar: TarFile, path: str):
 
 
 def download_and_extract(
-    user_os: OS, user_arch: Arch, channel: Channel, release: GithubRelease
+    target_location: Path,
+    user_os: OS,
+    user_arch: Arch,
+    channel: Channel,
+    release: GithubRelease
 ) -> None:
     print(f"Latest release on {channel.name} channel: {release.tag_name}.")
     print(f"Looking for asset for {user_os.value}/{user_arch.value}...")
@@ -223,37 +226,48 @@ def download_and_extract(
         sys.exit(1)
 
     print(f"Downloading: {download_url}")
-    local_tar_path = Path("/tmp") / Path(download_url).name
+    temp_dir = Path(tempfile.gettempdir())
+    local_tar_path = temp_dir / Path(download_url).name
+    local_temp_bin_path = temp_dir / "linkup"
 
-    with (
-        urllib.request.urlopen(download_url) as response,
-        open(local_tar_path, "wb") as out_file,
-    ):
-        shutil.copyfileobj(response, out_file)
+    try:
+        with (
+            urllib.request.urlopen(download_url, timeout=60) as response,
+            open(local_tar_path, "wb") as out_file,
+        ):
+            shutil.copyfileobj(response, out_file)
 
-    print(f"Decompressing {local_tar_path}")
-    with tarfile.open(local_tar_path, "r:gz") as tar:
-        tar_extract(tar, "/tmp")
+        print(f"Decompressing {local_tar_path}")
+        with tarfile.open(local_tar_path, "r:gz") as tar:
+            tar_extract(tar, str(temp_dir))
 
-    LINKUP_BIN_PATH.mkdir(parents=True, exist_ok=True)
-    linkup_bin_path = LINKUP_BIN_PATH / "linkup"
-    shutil.move("/tmp/linkup", linkup_bin_path)
-    os.chmod(linkup_bin_path, 0o755)
+        installation_bin_path = target_location / "linkup"
 
-    if user_os == OS.Linux:
-        subprocess.run(
-            ["sudo", "setcap", "cap_net_bind_service=+ep", f"{linkup_bin_path}"]
-        )
+        if user_os == OS.MacOS:
+            target_location.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(local_temp_bin_path), installation_bin_path)
+            os.chmod(installation_bin_path, 0o755)
+        elif user_os == OS.Linux:
+            subprocess.run(["sudo", "mv", str(local_temp_bin_path), str(installation_bin_path)], check=True)
+            subprocess.run(["sudo", "chmod", "755", str(installation_bin_path)], check=True)
+            subprocess.run(
+                ["sudo", "setcap", "cap_net_bind_service=+ep", str(installation_bin_path)], check=True
+            )
 
-    print(f"Linkup installed at {LINKUP_BIN_PATH / 'linkup'}")
-    local_tar_path.unlink()
+        print(f"Linkup installed at {installation_bin_path}")
+    finally:
+        if local_tar_path.exists():
+            local_tar_path.unlink()
+
+        if local_temp_bin_path.exists():
+            local_temp_bin_path.unlink()
 
 
-def setup_path() -> None:
-    if str(LINKUP_BIN_PATH) in os.environ.get("PATH", "").split(":"):
+def setup_path(target_location: Path) -> None:
+    if str(target_location) in os.environ.get("PATH", "").split(":"):
         return
 
-    print(f"\nTo start using Linkup, add '{LINKUP_BIN_PATH}' to your PATH.")
+    print(f"\nTo start using Linkup, add '{target_location}' to your PATH.")
 
     shell = Shell.from_str(os.path.basename(os.environ.get("SHELL", "")))
     if shell is None:
@@ -262,7 +276,7 @@ def setup_path() -> None:
     print(
         f"Since you are using {shell.name}, you can run the following to add to your profile:"
     )
-    print(f"\n  {shell.add_to_profile_command()}")
+    print(f"\n  {shell.add_to_profile_command(target_location)}")
     print("\nThen restart your shell.")
 
 
@@ -293,9 +307,17 @@ def main() -> None:
 
     user_os, user_arch = detect_platform()
     release = get_release_data(context.channel)
-    download_and_extract(user_os, user_arch, context.channel, release)
 
-    setup_path()
+    if user_os == OS.MacOS:
+        target_location = Path.home() / ".linkup" / "bin"
+    elif user_os == OS.Linux:
+        target_location = Path("/") / "usr" / "local" / "bin"
+    else:
+        raise ValueError(f"Unsupported OS: {user_os}")
+
+    download_and_extract(target_location, user_os, user_arch, context.channel, release)
+
+    setup_path(target_location)
 
     print("Linkup installation complete! 🎉")
 
