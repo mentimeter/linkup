@@ -5,6 +5,9 @@ use crate::{
     local_config::LocalState, prompt, InstallationMethod, Result,
 };
 
+#[cfg(target_os = "linux")]
+use crate::{is_sudo, sudo_su};
+
 #[derive(clap::Args)]
 pub struct Args {}
 
@@ -55,7 +58,28 @@ pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<()> 
         InstallationMethod::Manual => {
             log::debug!("Uninstalling linkup");
 
-            fs::remove_file(&exe_path)?;
+            #[cfg(target_os = "linux")]
+            {
+                println!("Linkup needs sudo access to:");
+                println!("  - Remove binary from {:?}", &exe_path);
+
+                if !is_sudo() {
+                    sudo_su()?;
+                }
+
+                process::Command::new("sudo")
+                    .args(["rm", "-f"])
+                    .arg(&exe_path)
+                    .stdin(process::Stdio::null())
+                    .stdout(process::Stdio::null())
+                    .stderr(process::Stdio::null())
+                    .status()?;
+            }
+
+            #[cfg(not(target_os = "linux"))]
+            {
+                fs::remove_file(&exe_path)?;
+            }
         }
     }
 
