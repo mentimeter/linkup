@@ -23,8 +23,6 @@ use ws::handle_ws_resp;
 
 mod http_error;
 mod kv_store;
-mod libdns;
-mod routes;
 mod tunnel;
 mod ws;
 
@@ -46,7 +44,6 @@ pub struct LinkupState {
     pub min_supported_client_version: Version,
     pub sessions_kv: KvStore,
     pub tunnels_kv: KvStore,
-    pub certs_kv: KvStore,
     pub cloudflare: CloudflareEnvironemnt,
     pub env: Env,
 }
@@ -60,7 +57,6 @@ impl TryFrom<Env> for LinkupState {
 
         let sessions_kv = value.kv("LINKUP_SESSIONS")?;
         let tunnels_kv = value.kv("LINKUP_TUNNELS")?;
-        let certs_kv = value.kv("LINKUP_CERTIFICATE_CACHE")?;
         let cf_account_id = value.var("CLOUDFLARE_ACCOUNT_ID")?;
         let cf_tunnel_zone_id = value.var("CLOUDFLARE_TUNNEL_ZONE_ID")?;
         let cf_all_zone_ids: Vec<String> = value
@@ -76,7 +72,6 @@ impl TryFrom<Env> for LinkupState {
             min_supported_client_version,
             sessions_kv,
             tunnels_kv,
-            certs_kv,
             cloudflare: CloudflareEnvironemnt {
                 account_id: cf_account_id.to_string(),
                 tunnel_zone_id: cf_tunnel_zone_id.to_string(),
@@ -99,8 +94,6 @@ pub fn linkup_router(state: LinkupState) -> Router {
         .route("/linkup/check", get(always_ok))
         .route("/linkup/no-tunnel", get(no_tunnel))
         .route("/linkup", any(deprecated_linkup_session_handler))
-        .merge(routes::certificate_dns::router())
-        .merge(routes::certificate_cache::router())
         .route_layer(from_fn_with_state(state.clone(), authenticate))
         // Fallback for all other requests
         .fallback(any(linkup_request_handler))

@@ -5,7 +5,6 @@ compatibility_date = "2024-05-30"
 kv_namespaces = [
   { binding = "LINKUP_SESSIONS", id = "xxx_sessions" },
   { binding = "LINKUP_TUNNELS", id = "xxx_tunnels" },
-  { binding = "LINKUP_CERTIFICATE_CACHE", id = "xxx_cache" },
 ]
 
 [vars]
@@ -17,13 +16,6 @@ WORKER_TOKEN = "token123"
 
 [triggers]
 crons = [ "0 12 * * 2-6" ]
-
-[durable_objects]
-bindings = [{ name = "CERTIFICATE_LOCKS", class_name = "CertificateStoreLock" }]
-
-[[migrations]]
-tag = "v1"
-new_classes = ["CertificateStoreLock"]
 
 [build]
 command = "cargo install -q worker-build && worker-build --release"
