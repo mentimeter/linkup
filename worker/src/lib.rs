@@ -328,6 +328,7 @@ async fn linkup_request_handler(
     let extra_http_headers: HeaderMap = extra_headers.into();
     req.headers_mut().extend(extra_http_headers);
     req.headers_mut().remove(http::header::HOST);
+    linkup::normalize_cookie_header(req.headers_mut());
 
     let upstream_request: worker::Request = match req.try_into() {
         Ok(req) => req,

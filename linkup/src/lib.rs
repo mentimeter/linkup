@@ -11,6 +11,7 @@ use http::{HeaderMap as HttpHeaderMap, HeaderValue as HttpHeaderValue};
 use rand::Rng;
 use thiserror::Error;
 
+pub use headers::normalize_cookie_header;
 pub use headers::{HeaderMap, HeaderName};
 pub use memory_session_store::*;
 pub use name_gen::{random_animal, random_six_char};
