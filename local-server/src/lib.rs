@@ -246,9 +246,30 @@ async fn linkup_request_handler(
             let mut upstream_request = uri.into_client_request().unwrap();
 
             // Copy over all headers from the incoming request
+            let mut cookie_values: Vec<String> = Vec::new();
             for (key, value) in req.headers() {
+                if key == http::header::COOKIE {
+                    if let Ok(cookie_value) = value.to_str().map(str::trim) {
+                        if !cookie_value.is_empty() {
+                            cookie_values.push(cookie_value.to_string());
+                        }
+                    }
+                    continue;
+                }
+
                 upstream_request.headers_mut().insert(key, value.clone());
             }
+
+            if !cookie_values.is_empty() {
+                let combined = cookie_values.join("; ");
+                if let Ok(cookie_header_value) = HeaderValue::from_str(&combined) {
+                    upstream_request
+                        .headers_mut()
+                        .insert(http::header::COOKIE, cookie_header_value);
+                }
+            }
+
+            linkup::normalize_cookie_header(upstream_request.headers_mut());
 
             // add the extra headers that linkup wants
             let extra_http_headers: HeaderMap = extra_headers.into();
@@ -313,6 +334,7 @@ async fn handle_http_req(
     req.headers_mut().extend(extra_http_headers);
     // Request uri and host headers should not conflict
     req.headers_mut().remove(http::header::HOST);
+    linkup::normalize_cookie_header(req.headers_mut());
 
     if target_service.url.starts_with("http://") {
         *req.version_mut() = http::Version::HTTP_11;
