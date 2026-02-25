@@ -263,10 +263,10 @@ async fn linkup_request_handler(
 
             if !cookie_values.is_empty() {
                 let combined = cookie_values.join("; ");
-                if let Ok(v) = HeaderValue::from_str(&combined) {
+                if let Ok(cookie_header_value) = HeaderValue::from_str(&combined) {
                     upstream_request
                         .headers_mut()
-                        .insert(http::header::COOKIE, v);
+                        .insert(http::header::COOKIE, cookie_header_value);
                 }
             }
 
