@@ -12,7 +12,7 @@ use hickory_resolver::{
     proto::rr::RecordType,
     TokioAsyncResolver,
 };
-use log::{debug, error};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use url::Url;
