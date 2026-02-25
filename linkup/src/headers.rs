@@ -150,6 +150,32 @@ pub fn normalize_cookie_header(http_headers: &mut HttpHeaderMap) {
     }
 }
 
+impl From<&HttpHeaderMap> for HeaderMap {
+    fn from(http_headers: &HttpHeaderMap) -> Self {
+        HeaderMap::from_http_headers(http_headers)
+    }
+}
+
+impl From<HttpHeaderMap> for HeaderMap {
+    fn from(http_headers: HttpHeaderMap) -> Self {
+        HeaderMap::from_http_headers(&http_headers)
+    }
+}
+
+impl From<HeaderMap> for HttpHeaderMap {
+    fn from(linkup_headers: HeaderMap) -> Self {
+        let mut http_headers = HttpHeaderMap::new();
+        for (key, value) in linkup_headers.into_iter() {
+            if let Ok(http_value) = HttpHeaderValue::from_str(&value) {
+                if let Ok(http_key) = http::header::HeaderName::from_bytes(key.as_bytes()) {
+                    http_headers.insert(http_key, http_value);
+                }
+            }
+        }
+        http_headers
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::normalize_cookie_header;
@@ -190,31 +216,5 @@ mod tests {
         let cookies: Vec<_> = headers.get_all(COOKIE).iter().collect();
         assert_eq!(cookies.len(), 1);
         assert_eq!(cookies[0].to_str().unwrap(), "a=b; c=d");
-    }
-}
-
-impl From<&HttpHeaderMap> for HeaderMap {
-    fn from(http_headers: &HttpHeaderMap) -> Self {
-        HeaderMap::from_http_headers(http_headers)
-    }
-}
-
-impl From<HttpHeaderMap> for HeaderMap {
-    fn from(http_headers: HttpHeaderMap) -> Self {
-        HeaderMap::from_http_headers(&http_headers)
-    }
-}
-
-impl From<HeaderMap> for HttpHeaderMap {
-    fn from(linkup_headers: HeaderMap) -> Self {
-        let mut http_headers = HttpHeaderMap::new();
-        for (key, value) in linkup_headers.into_iter() {
-            if let Ok(http_value) = HttpHeaderValue::from_str(&value) {
-                if let Ok(http_key) = http::header::HeaderName::from_bytes(key.as_bytes()) {
-                    http_headers.insert(http_key, http_value);
-                }
-            }
-        }
-        http_headers
     }
 }
