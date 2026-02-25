@@ -179,12 +179,6 @@ struct CfBinding {
     // Possibly other fields like namespace_id, secret text, etc.
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct CloudflareErrorInfo {
-    code: Option<u32>,
-    message: String,
-}
-
 #[derive(Deserialize, Debug)]
 struct KvNamespace {
     id: String,
