@@ -249,10 +249,9 @@ async fn linkup_request_handler(
             let mut cookie_values: Vec<String> = Vec::new();
             for (key, value) in req.headers() {
                 if key == http::header::COOKIE {
-                    if let Ok(v) = value.to_str() {
-                        let v = v.trim();
-                        if !v.is_empty() {
-                            cookie_values.push(v.to_string());
+                    if let Ok(cookie_value) = value.to_str().map(str::trim) {
+                        if !cookie_value.is_empty() {
+                            cookie_values.push(cookie_value.to_string());
                         }
                     }
                     continue;
