@@ -144,7 +144,6 @@ pub fn normalize_cookie_header(http_headers: &mut HttpHeaderMap) {
     }
 
     let combined = cookie_parts.join("; ");
-    http_headers.remove(http::header::COOKIE);
     if let Ok(value) = HttpHeaderValue::from_str(&combined) {
         http_headers.insert(http::header::COOKIE, value);
     }
