@@ -519,7 +519,7 @@ fn cloudflare_client(api_token: &str) -> cloudflare::framework::async_api::Clien
 
 pub fn generate_secret() -> String {
     let mut random_bytes = [0u8; 32];
-    getrandom::getrandom(&mut random_bytes).unwrap();
+    getrandom::fill(&mut random_bytes).unwrap();
 
     base64::Engine::encode(&base64::prelude::BASE64_STANDARD, random_bytes)
 }
