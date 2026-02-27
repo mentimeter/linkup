@@ -1,15 +1,20 @@
-use rand::distributions::Alphanumeric;
-use rand::Rng;
+use rand::{
+    distr::{Alphanumeric, SampleString},
+    seq::IndexedRandom,
+};
 use sha2::{Digest, Sha256};
 
 pub fn random_animal() -> String {
-    let adjective_index = rand::thread_rng().gen_range(0..SHORT_ADJECTIVES.len());
-    let animal_index = rand::thread_rng().gen_range(0..ANIMALS.len());
+    let mut rand = rand::rng();
 
-    format!(
-        "{}-{}",
-        SHORT_ADJECTIVES[adjective_index], ANIMALS[animal_index]
-    )
+    let adjective = SHORT_ADJECTIVES
+        .choose(&mut rand)
+        .expect("Adjectives slice should not be empty");
+    let animal = ANIMALS
+        .choose(&mut rand)
+        .expect("Animals slice should not be empty");
+
+    format!("{adjective}-{animal}",)
 }
 
 pub fn deterministic_six_char_hash(input: &str) -> String {
@@ -25,13 +30,9 @@ pub fn deterministic_six_char_hash(input: &str) -> String {
 }
 
 pub fn random_six_char() -> String {
-    let string: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(6)
-        .map(char::from)
-        .collect();
-
-    string.to_lowercase()
+    Alphanumeric
+        .sample_string(&mut rand::rng(), 6)
+        .to_lowercase()
 }
 
 const ANIMALS: [&str; 37] = [

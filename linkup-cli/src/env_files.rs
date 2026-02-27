@@ -85,11 +85,11 @@ pub fn clear_env_file(service: &str, env_path: &PathBuf) -> Result<()> {
 
 #[cfg(test)]
 mod test {
-    use rand::distributions::Alphanumeric;
-    use rand::Rng;
     use std::fs::{self, OpenOptions};
     use std::io::Write;
     use std::path::PathBuf;
+
+    use rand::distr::{Alphanumeric, SampleString};
 
     use crate::env_files::write_to_env_file;
 
@@ -264,11 +264,7 @@ mod test {
 
     impl TestFile {
         fn create(content: &str) -> Self {
-            let file_name: String = rand::thread_rng()
-                .sample_iter(&Alphanumeric)
-                .take(12)
-                .map(char::from)
-                .collect();
+            let file_name = Alphanumeric.sample_string(&mut rand::rng(), 12);
 
             let mut test_file = std::env::temp_dir();
             test_file.push(file_name);

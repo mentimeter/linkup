@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Context;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::distr::{Alphanumeric, SampleString};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -197,11 +197,7 @@ pub fn config_to_state(
     config_path: String,
     no_tunnel: bool,
 ) -> LocalState {
-    let random_token: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(16)
-        .map(char::from)
-        .collect();
+    let random_token = Alphanumeric.sample_string(&mut rand::rng(), 16);
 
     let tunnel = match no_tunnel {
         true => None,
