@@ -14,7 +14,7 @@ pub fn random_animal() -> String {
         .choose(&mut rand)
         .expect("Animals slice should not be empty");
 
-    format!("{adjective}-{animal}",)
+    format!("{adjective}-{animal}")
 }
 
 pub fn deterministic_six_char_hash(input: &str) -> String {
