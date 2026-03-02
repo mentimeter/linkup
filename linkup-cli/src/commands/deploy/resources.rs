@@ -1,6 +1,6 @@
 use std::fmt;
 
-use rand::Rng;
+use rand::RngExt;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1176,8 +1176,7 @@ pub fn cf_resources(
 }
 
 pub fn generate_secret() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: [u8; 32] = rng.gen();
+    let bytes: [u8; 32] = rand::rng().random();
 
     base64::Engine::encode(&base64::prelude::BASE64_STANDARD, bytes)
 }

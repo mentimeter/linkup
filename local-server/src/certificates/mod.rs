@@ -1,6 +1,6 @@
 mod wildcard_sni_resolver;
 
-use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, KeyPair};
+use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, Issuer, KeyPair};
 use rustls::crypto::ring::sign;
 use rustls::pki_types::CertificateDer;
 use rustls::sign::CertifiedKey;
@@ -141,9 +141,8 @@ pub fn create_domain_cert(certs_dir: &Path, domain: &str) -> (Certificate, KeyPa
     let cert_pem_str = fs::read_to_string(ca_cert_pem_path(certs_dir)).unwrap();
     let key_pem_str = fs::read_to_string(ca_key_pem_path(certs_dir)).unwrap();
 
-    let params = CertificateParams::from_ca_cert_pem(&cert_pem_str).unwrap();
     let ca_key = KeyPair::from_pem(&key_pem_str).unwrap();
-    let ca_cert = params.self_signed(&ca_key).unwrap();
+    let issuer = Issuer::from_ca_cert_pem(&cert_pem_str, &ca_key).unwrap();
 
     let mut params = CertificateParams::new(vec![domain.to_string()]).unwrap();
     params.distinguished_name = DistinguishedName::new();
@@ -151,7 +150,7 @@ pub fn create_domain_cert(certs_dir: &Path, domain: &str) -> (Certificate, KeyPa
     params.is_ca = rcgen::IsCa::NoCa;
 
     let key_pair = KeyPair::generate().unwrap();
-    let cert = params.signed_by(&key_pair, &ca_cert, &ca_key).unwrap();
+    let cert = params.signed_by(&key_pair, &issuer).unwrap();
 
     let escaped_domain = domain.replace("*", "wildcard_");
     let cert_path = certs_dir.join(format!("{}.cert.pem", &escaped_domain));

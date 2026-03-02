@@ -8,7 +8,7 @@ mod versioning;
 use std::future::Future;
 
 use http::{HeaderMap as HttpHeaderMap, HeaderValue as HttpHeaderValue};
-use rand::Rng;
+use rand::RngExt;
 use thiserror::Error;
 
 pub use headers::normalize_cookie_header;
@@ -57,9 +57,9 @@ pub fn get_additional_headers(
     let mut additional_headers = HeaderMap::new();
 
     if !headers.contains_key(HeaderName::TraceParent) {
-        let mut rng = rand::thread_rng();
-        let trace: [u8; 16] = rng.gen();
-        let parent: [u8; 8] = rng.gen();
+        let mut rng = rand::rng();
+        let trace: [u8; 16] = rng.random();
+        let parent: [u8; 8] = rng.random();
         let version: [u8; 1] = [0];
         let flags: [u8; 1] = [0];
 

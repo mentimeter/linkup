@@ -7,11 +7,7 @@ use std::{
     time::Duration,
 };
 
-use hickory_resolver::{
-    config::{ResolverConfig, ResolverOpts},
-    proto::rr::RecordType,
-    TokioAsyncResolver,
-};
+use hickory_resolver::{config::ResolverOpts, proto::rr::RecordType, TokioResolver};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
@@ -109,7 +105,10 @@ impl CloudflareTunnel {
         let mut opts = ResolverOpts::default();
         opts.cache_size = 0; // Disable caching
 
-        let resolver = TokioAsyncResolver::tokio(ResolverConfig::default(), opts);
+        let resolver = TokioResolver::builder_tokio()
+            .expect("TokioResolver to be buildable from resolver config")
+            .with_options(opts)
+            .build();
 
         let domain = tunnel_url.host_str().unwrap();
 
