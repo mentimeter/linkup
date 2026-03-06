@@ -1,5 +1,5 @@
 use helpers::ServerKind;
-use linkup::{CreatePreviewRequest, Domain, Service};
+use linkup::{CreatePreviewRequest, Domain, SessionService};
 use reqwest::Url;
 use rstest::rstest;
 
@@ -90,7 +90,7 @@ pub fn create_preview_request(fe_location: Option<String>) -> String {
             default_service: "frontend".to_string(),
             routes: None,
         }],
-        services: vec![Service {
+        services: vec![SessionService {
             name: "frontend".to_string(),
             location: Url::parse(&location).unwrap(),
             rewrites: None,

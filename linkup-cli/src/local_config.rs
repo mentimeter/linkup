@@ -10,7 +10,9 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{CreatePreviewRequest, Domain, Rewrite, Service, Session, UpdateSessionRequest};
+use linkup::{
+    CreatePreviewRequest, Domain, Rewrite, Session, SessionService, UpdateSessionRequest,
+};
 
 use crate::{
     linkup_file_path, services,
@@ -156,7 +158,7 @@ impl YamlLocalConfig {
                     }
                 }
 
-                Service {
+                SessionService {
                     name,
                     location,
                     rewrites: yaml_local_service.rewrites.clone(),
@@ -336,7 +338,7 @@ impl From<&LocalState> for ServerConfig {
         let local_server_services = state
             .services
             .iter()
-            .map(|service| Service {
+            .map(|service| SessionService {
                 name: service.name.clone(),
                 location: if service.current == ServiceTarget::Remote {
                     service.remote.clone()
@@ -345,12 +347,12 @@ impl From<&LocalState> for ServerConfig {
                 },
                 rewrites: Some(service.rewrites.clone()),
             })
-            .collect::<Vec<Service>>();
+            .collect::<Vec<SessionService>>();
 
         let remote_server_services = state
             .services
             .iter()
-            .map(|service| Service {
+            .map(|service| SessionService {
                 name: service.name.clone(),
                 location: if service.current == ServiceTarget::Remote {
                     service.remote.clone()
@@ -359,7 +361,7 @@ impl From<&LocalState> for ServerConfig {
                 },
                 rewrites: Some(service.rewrites.clone()),
             })
-            .collect::<Vec<Service>>();
+            .collect::<Vec<SessionService>>();
 
         let local_storable_session = Session {
             session_token: state.linkup.session_token.clone(),

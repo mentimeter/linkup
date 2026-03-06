@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use linkup::{Domain, MemoryStringStore, Service, UpdateSessionRequest};
+use linkup::{Domain, MemoryStringStore, SessionService, UpdateSessionRequest};
 use linkup_local_server::linkup_router;
 use reqwest::Url;
 use tokio::net::TcpListener;
@@ -62,7 +62,7 @@ pub fn create_session_request(name: String, fe_location: Option<String>) -> Stri
             default_service: "frontend".to_string(),
             routes: None,
         }],
-        services: vec![Service {
+        services: vec![SessionService {
             name: "frontend".to_string(),
             location: Url::parse(&location).unwrap(),
             rewrites: None,

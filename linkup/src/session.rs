@@ -28,7 +28,7 @@ pub struct Route {
 pub struct UpdateSessionRequest {
     pub desired_name: String,
     pub session_token: String,
-    pub services: Vec<Service>,
+    pub services: Vec<SessionService>,
     pub domains: Vec<Domain>,
     #[serde(
         default,
@@ -40,7 +40,7 @@ pub struct UpdateSessionRequest {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CreatePreviewRequest {
-    pub services: Vec<Service>,
+    pub services: Vec<SessionService>,
     pub domains: Vec<Domain>,
     #[serde(
         default,
@@ -53,7 +53,7 @@ pub struct CreatePreviewRequest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Session {
     pub session_token: String,
-    pub services: Vec<Service>,
+    pub services: Vec<SessionService>,
     pub domains: Vec<Domain>,
     #[serde(
         default,
@@ -64,7 +64,7 @@ pub struct Session {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Service {
+pub struct SessionService {
     pub name: String,
     pub location: Url,
     pub rewrites: Option<Vec<Rewrite>>,
@@ -97,7 +97,7 @@ pub enum ConfigError {
 }
 
 impl Session {
-    pub fn get_service(&self, service_name: &str) -> Option<&Service> {
+    pub fn get_service(&self, service_name: &str) -> Option<&SessionService> {
         self.services
             .iter()
             .find(|service| service.name == service_name)
