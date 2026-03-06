@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use thiserror::Error;
 
 use regex::Regex;
@@ -7,86 +7,77 @@ use url::Url;
 
 pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
 
-#[derive(Clone, Debug)]
-pub struct Session {
-    pub session_token: String,
-    pub services: HashMap<String, Service>,
-    pub domains: HashMap<String, Domain>,
-    pub cache_routes: Option<Vec<Regex>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Service {
-    pub origin: Url,
-    pub rewrites: Vec<Rewrite>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Rewrite {
-    pub source: Regex,
-    pub target: String,
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Domain {
+    pub domain: String,
     pub default_service: String,
-    pub routes: Vec<Route>,
+    pub routes: Option<Vec<Route>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Route {
+    #[serde(
+        serialize_with = "crate::serde_ext::serialize_regex",
+        deserialize_with = "crate::serde_ext::deserialize_regex"
+    )]
     pub path: Regex,
     pub service: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UpdateSessionRequest {
     pub desired_name: String,
     pub session_token: String,
-    pub services: Vec<StorableService>,
-    pub domains: Vec<StorableDomain>,
-    pub cache_routes: Option<Vec<String>>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct CreatePreviewRequest {
-    pub services: Vec<StorableService>,
-    pub domains: Vec<StorableDomain>,
-    pub cache_routes: Option<Vec<String>>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct StorableSession {
-    pub session_token: String,
-    pub services: Vec<StorableService>,
-    pub domains: Vec<StorableDomain>,
-    pub cache_routes: Option<Vec<String>>,
+    pub services: Vec<Service>,
+    pub domains: Vec<Domain>,
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ext::serialize_opt_vec_regex",
+        deserialize_with = "crate::serde_ext::deserialize_opt_vec_regex"
+    )]
+    pub cache_routes: Option<Vec<Regex>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct StorableService {
+pub struct CreatePreviewRequest {
+    pub services: Vec<Service>,
+    pub domains: Vec<Domain>,
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ext::serialize_opt_vec_regex",
+        deserialize_with = "crate::serde_ext::deserialize_opt_vec_regex"
+    )]
+    pub cache_routes: Option<Vec<Regex>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Session {
+    pub session_token: String,
+    pub services: Vec<Service>,
+    pub domains: Vec<Domain>,
+    #[serde(
+        default,
+        serialize_with = "crate::serde_ext::serialize_opt_vec_regex",
+        deserialize_with = "crate::serde_ext::deserialize_opt_vec_regex"
+    )]
+    pub cache_routes: Option<Vec<Regex>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Service {
     pub name: String,
     pub location: Url,
-    pub rewrites: Option<Vec<StorableRewrite>>,
+    pub rewrites: Option<Vec<Rewrite>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-pub struct StorableRewrite {
-    pub source: String,
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Rewrite {
+    #[serde(
+        serialize_with = "crate::serde_ext::serialize_regex",
+        deserialize_with = "crate::serde_ext::deserialize_regex"
+    )]
+    pub source: Regex,
     pub target: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-pub struct StorableDomain {
-    pub domain: String,
-    pub default_service: String,
-    pub routes: Option<Vec<StorableRoute>>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-pub struct StorableRoute {
-    pub path: String,
-    pub service: String,
 }
 
 #[derive(Error, Debug)]
@@ -105,132 +96,53 @@ pub enum ConfigError {
     Empty,
 }
 
-impl From<UpdateSessionRequest> for StorableSession {
-    fn from(req: UpdateSessionRequest) -> Self {
-        StorableSession {
-            session_token: req.session_token,
-            services: req.services,
-            domains: req.domains,
-            cache_routes: req.cache_routes,
-        }
+impl Session {
+    pub fn get_service(&self, service_name: &str) -> Option<&Service> {
+        self.services
+            .iter()
+            .find(|service| service.name == service_name)
+    }
+
+    pub fn get_domain(&self, domain: &str) -> Option<&Domain> {
+        self.domains
+            .iter()
+            .find(|domain_record| domain_record.domain == domain)
     }
 }
 
 impl TryFrom<UpdateSessionRequest> for Session {
     type Error = ConfigError;
 
-    fn try_from(value: UpdateSessionRequest) -> Result<Self, Self::Error> {
-        let storable: StorableSession = value.into();
-        storable.try_into()
-    }
-}
-
-impl From<CreatePreviewRequest> for StorableSession {
-    fn from(req: CreatePreviewRequest) -> Self {
-        StorableSession {
-            session_token: PREVIEW_SESSION_TOKEN.to_string(),
+    fn try_from(req: UpdateSessionRequest) -> Result<Self, Self::Error> {
+        let session = Self {
+            session_token: req.session_token,
             services: req.services,
             domains: req.domains,
             cache_routes: req.cache_routes,
-        }
+        };
+
+        validate_not_empty(&session)?;
+        validate_services(&session)?;
+
+        Ok(session)
     }
 }
 
 impl TryFrom<CreatePreviewRequest> for Session {
     type Error = ConfigError;
 
-    fn try_from(value: CreatePreviewRequest) -> Result<Self, Self::Error> {
-        let storable: StorableSession = value.into();
-        storable.try_into()
-    }
-}
-
-impl TryFrom<StorableRewrite> for Rewrite {
-    type Error = ConfigError;
-
-    fn try_from(value: StorableRewrite) -> Result<Self, Self::Error> {
-        let source: Result<Regex, regex::Error> = Regex::new(&value.source);
-        match source {
-            Err(e) => Err(ConfigError::InvalidRegex(value.source, e)),
-            Ok(s) => Ok(Rewrite {
-                source: s,
-                target: value.target,
-            }),
-        }
-    }
-}
-
-impl TryFrom<StorableRoute> for Route {
-    type Error = ConfigError;
-
-    fn try_from(value: StorableRoute) -> Result<Self, Self::Error> {
-        let path = Regex::new(&value.path);
-        match path {
-            Err(e) => Err(ConfigError::InvalidRegex(value.path, e)),
-            Ok(p) => Ok(Route {
-                path: p,
-                service: value.service,
-            }),
-        }
-    }
-}
-
-impl TryFrom<StorableSession> for Session {
-    type Error = ConfigError;
-
-    fn try_from(value: StorableSession) -> Result<Self, Self::Error> {
-        validate_not_empty(&value)?;
-        validate_service_references(&value)?;
-
-        let mut services: HashMap<String, Service> = HashMap::new();
-        let mut domains: HashMap<String, Domain> = HashMap::new();
-
-        for stored_service in value.services {
-            validate_url_origin(&stored_service.location)?;
-
-            let rewrites = match stored_service.rewrites {
-                Some(pm) => pm.into_iter().map(|r| r.try_into()).collect(),
-                None => Ok(Vec::new()),
-            }?;
-
-            let service = Service {
-                origin: stored_service.location,
-                rewrites,
-            };
-
-            services.insert(stored_service.name, service);
-        }
-
-        for stored_domain in value.domains {
-            let routes = match stored_domain.routes {
-                Some(dr) => dr.into_iter().map(|r| r.try_into()).collect(),
-                None => Ok(Vec::new()),
-            }?;
-
-            let domain = Domain {
-                default_service: stored_domain.default_service,
-                routes,
-            };
-
-            domains.insert(stored_domain.domain, domain);
-        }
-
-        let cache_routes = match value.cache_routes {
-            Some(cr) => Some(
-                cr.into_iter()
-                    .map(|r| Regex::new(&r))
-                    .collect::<Result<Vec<Regex>, regex::Error>>()
-                    .map_err(|e| ConfigError::InvalidRegex("cache route".to_string(), e))?,
-            ),
-            None => None,
+    fn try_from(req: CreatePreviewRequest) -> Result<Self, Self::Error> {
+        let session = Self {
+            session_token: PREVIEW_SESSION_TOKEN.to_string(),
+            services: req.services,
+            domains: req.domains,
+            cache_routes: req.cache_routes,
         };
 
-        Ok(Session {
-            session_token: value.session_token,
-            services,
-            domains,
-            cache_routes,
-        })
+        validate_not_empty(&session)?;
+        validate_services(&session)?;
+
+        Ok(session)
     }
 }
 
@@ -238,135 +150,42 @@ impl TryFrom<serde_json::Value> for Session {
     type Error = ConfigError;
 
     fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let session_yml_res: Result<StorableSession, serde_json::Error> =
-            serde_json::from_value(value);
+        let session = serde_json::from_value(value)?;
 
-        match session_yml_res {
-            Err(e) => Err(ConfigError::JsonFormat(e)),
-            Ok(c) => c.try_into(),
-        }
-    }
-}
+        validate_not_empty(&session)?;
+        validate_services(&session)?;
 
-impl From<Session> for StorableSession {
-    fn from(value: Session) -> Self {
-        let services: Vec<StorableService> = value
-            .services
-            .into_iter()
-            .map(|(name, service)| {
-                let rewrites = if service.rewrites.is_empty() {
-                    None
-                } else {
-                    Some(
-                        service
-                            .rewrites
-                            .into_iter()
-                            .map(|path_modifier| StorableRewrite {
-                                source: path_modifier.source.to_string(),
-                                target: path_modifier.target,
-                            })
-                            .collect(),
-                    )
-                };
-
-                StorableService {
-                    name,
-                    location: service.origin,
-                    rewrites,
-                }
-            })
-            .collect();
-
-        let domains: Vec<StorableDomain> = value
-            .domains
-            .into_iter()
-            .map(|(domain, domain_data)| {
-                let default_service = domain_data.default_service;
-                let routes = if domain_data.routes.is_empty() {
-                    None
-                } else {
-                    Some(
-                        domain_data
-                            .routes
-                            .into_iter()
-                            .map(|route| StorableRoute {
-                                path: route.path.to_string(),
-                                service: route.service,
-                            })
-                            .collect(),
-                    )
-                };
-
-                StorableDomain {
-                    domain,
-                    default_service,
-                    routes,
-                }
-            })
-            .collect();
-
-        let cache_routes = value.cache_routes.map(|cr| {
-            cr.into_iter()
-                .map(|r| r.to_string())
-                .collect::<Vec<String>>()
-        });
-
-        StorableSession {
-            session_token: value.session_token,
-            services,
-            domains,
-            cache_routes,
-        }
+        Ok(session)
     }
 }
 
 pub fn update_session_req_from_json(input_json: String) -> Result<(String, Session), ConfigError> {
-    let update_session_req_res: Result<UpdateSessionRequest, serde_json::Error> =
-        serde_json::from_str(&input_json);
+    let update_session_req_res: UpdateSessionRequest = serde_json::from_str(&input_json)?;
 
-    match update_session_req_res {
-        Err(e) => Err(ConfigError::JsonFormat(e)),
-        Ok(c) => {
-            let server_conf = StorableSession {
-                session_token: c.session_token,
-                services: c.services,
-                domains: c.domains,
-                cache_routes: c.cache_routes,
-            }
-            .try_into();
+    let session = Session {
+        session_token: update_session_req_res.session_token,
+        services: update_session_req_res.services,
+        domains: update_session_req_res.domains,
+        cache_routes: update_session_req_res.cache_routes,
+    };
 
-            match server_conf {
-                Err(e) => Err(e),
-                Ok(sc) => Ok((c.desired_name, sc)),
-            }
-        }
-    }
+    Ok((update_session_req_res.desired_name, session))
 }
 
 pub fn create_preview_req_from_json(input_json: String) -> Result<Session, ConfigError> {
-    let update_session_req_res: Result<CreatePreviewRequest, serde_json::Error> =
-        serde_json::from_str(&input_json);
+    let update_session_req_res: CreatePreviewRequest = serde_json::from_str(&input_json)?;
 
-    match update_session_req_res {
-        Err(e) => Err(ConfigError::JsonFormat(e)),
-        Ok(c) => {
-            let server_conf = StorableSession {
-                session_token: String::from(PREVIEW_SESSION_TOKEN),
-                services: c.services,
-                domains: c.domains,
-                cache_routes: None,
-            }
-            .try_into();
+    let session = Session {
+        session_token: String::from(PREVIEW_SESSION_TOKEN),
+        services: update_session_req_res.services,
+        domains: update_session_req_res.domains,
+        cache_routes: None,
+    };
 
-            match server_conf {
-                Err(e) => Err(e),
-                Ok(sc) => Ok(sc),
-            }
-        }
-    }
+    Ok(session)
 }
 
-fn validate_not_empty(server_config: &StorableSession) -> Result<(), ConfigError> {
+fn validate_not_empty(server_config: &Session) -> Result<(), ConfigError> {
     if server_config.services.is_empty() {
         return Err(ConfigError::Empty);
     }
@@ -377,12 +196,14 @@ fn validate_not_empty(server_config: &StorableSession) -> Result<(), ConfigError
     Ok(())
 }
 
-fn validate_service_references(server_config: &StorableSession) -> Result<(), ConfigError> {
-    let service_names: HashSet<&str> = server_config
-        .services
-        .iter()
-        .map(|s| s.name.as_str())
-        .collect();
+fn validate_services(server_config: &Session) -> Result<(), ConfigError> {
+    let mut service_names: HashSet<&str> = HashSet::new();
+
+    for service in &server_config.services {
+        validate_url_origin(&service.location)?;
+
+        service_names.insert(&service.name);
+    }
 
     for domain in &server_config.domains {
         if !service_names.contains(&domain.default_service.as_str()) {
@@ -414,13 +235,6 @@ fn validate_url_origin(url: &Url) -> Result<(), ConfigError> {
     }
 
     Ok(())
-}
-
-pub fn session_to_json(session: Session) -> String {
-    let storable_session: StorableSession = session.into();
-
-    // This should never fail, due to previous validation
-    serde_json::to_string(&storable_session).unwrap()
 }
 
 #[cfg(test)]
@@ -477,7 +291,7 @@ mod tests {
         check_means_same_as_input_conf(&server_config);
 
         // Inverse should mean the same thing
-        let output_conf = session_to_json(server_config);
+        let output_conf = serde_json::to_string(&server_config).unwrap();
         let output_conf_value = serde_json::from_str::<serde_json::Value>(&output_conf).unwrap();
         let second_server_conf: Session = output_conf_value.try_into().unwrap();
         check_means_same_as_input_conf(&second_server_conf);
@@ -486,69 +300,52 @@ mod tests {
     fn check_means_same_as_input_conf(server_config: &Session) {
         // Test services
         assert_eq!(server_config.services.len(), 2);
-        assert!(server_config.services.contains_key("frontend"));
-        assert!(server_config.services.contains_key("backend"));
+
+        let frontend_service = server_config.get_service("frontend").unwrap();
         assert_eq!(
-            server_config.services.get("frontend").unwrap().origin,
+            frontend_service.location,
             Url::parse("http://localhost:8000").unwrap()
         );
+
         assert_eq!(
-            server_config.services.get("frontend").unwrap().rewrites[0]
-                .source
-                .as_str(),
-            "/foo/(.*)"
+            Some(1),
+            frontend_service
+                .rewrites
+                .as_ref()
+                .map(|rewrites| rewrites.len())
         );
+
+        let frontend_service_rewrite = &frontend_service.rewrites.as_ref().unwrap()[0];
+        assert_eq!(frontend_service_rewrite.source.as_str(), "/foo/(.*)");
+        assert_eq!(frontend_service_rewrite.target, "/bar/$1");
+
+        let backend_service = server_config.get_service("backend").unwrap();
         assert_eq!(
-            server_config.services.get("frontend").unwrap().rewrites[0].target,
-            "/bar/$1"
-        );
-        assert_eq!(
-            server_config.services.get("backend").unwrap().origin,
+            backend_service.location,
             Url::parse("http://localhost:8001").unwrap()
         );
-        assert!(server_config
-            .services
-            .get("backend")
-            .unwrap()
-            .rewrites
-            .is_empty());
+        assert!(backend_service.rewrites.is_none());
 
         // Test domains
-        assert_eq!(server_config.domains.len(), 2);
-        assert!(server_config.domains.contains_key("example.com"));
-        assert!(server_config.domains.contains_key("api.example.com"));
+        assert_eq!(2, server_config.domains.len());
+
+        let example_domain = server_config.get_domain("example.com").unwrap();
+        assert_eq!(example_domain.default_service, "frontend");
+
         assert_eq!(
-            server_config
-                .domains
-                .get("example.com")
-                .unwrap()
-                .default_service,
-            "frontend"
+            Some(1),
+            example_domain.routes.as_ref().map(|routes| routes.len())
         );
-        assert_eq!(
-            server_config.domains.get("example.com").unwrap().routes[0]
-                .path
-                .as_str(),
-            "/api/v1/.*"
-        );
-        assert_eq!(
-            server_config.domains.get("example.com").unwrap().routes[0].service,
-            "backend"
-        );
-        assert_eq!(
-            server_config
-                .domains
-                .get("api.example.com")
-                .unwrap()
-                .default_service,
-            "backend"
-        );
-        assert!(server_config
-            .domains
-            .get("api.example.com")
-            .unwrap()
-            .routes
-            .is_empty());
+
+        let example_domain_route = &example_domain.routes.as_ref().unwrap()[0];
+        assert_eq!(example_domain_route.path.as_str(), "/api/v1/.*");
+        assert_eq!(example_domain_route.service, "backend");
+
+        let api_domain = server_config.get_domain("api.example.com").unwrap();
+        assert_eq!(api_domain.default_service, "backend");
+        assert!(api_domain.routes.is_none());
+
+        // Test cache routes
 
         assert_eq!(server_config.cache_routes.as_ref().unwrap().len(), 1);
         assert_eq!(
