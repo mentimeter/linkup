@@ -1,7 +1,4 @@
-use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 use regex::Regex;
@@ -15,7 +12,6 @@ pub struct Session {
     pub session_token: String,
     pub services: HashMap<String, Service>,
     pub domains: HashMap<String, Domain>,
-    pub domain_selection_order: Vec<String>,
     pub cache_routes: Option<Vec<Regex>>,
 }
 
@@ -219,8 +215,6 @@ impl TryFrom<StorableSession> for Session {
             domains.insert(stored_domain.domain, domain);
         }
 
-        let domain_names = domains.keys().cloned().collect();
-
         let cache_routes = match value.cache_routes {
             Some(cr) => Some(
                 cr.into_iter()
@@ -235,7 +229,6 @@ impl TryFrom<StorableSession> for Session {
             session_token: value.session_token,
             services,
             domains,
-            domain_selection_order: choose_domain_ordering(domain_names),
             cache_routes,
         })
     }
@@ -423,30 +416,6 @@ fn validate_url_origin(url: &Url) -> Result<(), ConfigError> {
     Ok(())
 }
 
-fn choose_domain_ordering(domains: Vec<String>) -> Vec<String> {
-    let mut sorted_domains = domains;
-    sorted_domains.sort_by(|a, b| {
-        let a_subdomains: Vec<&str> = a.split('.').collect();
-        let b_subdomains: Vec<&str> = b.split('.').collect();
-
-        let a_len = a_subdomains.len();
-        let b_len = b_subdomains.len();
-
-        if a_len != b_len {
-            b_len.cmp(&a_len)
-        } else {
-            a_subdomains
-                .iter()
-                .zip(b_subdomains.iter())
-                .map(|(a_sub, b_sub)| b_sub.len().cmp(&a_sub.len()))
-                .find(|&ord| ord != Ordering::Equal)
-                .unwrap_or(Ordering::Equal)
-        }
-    });
-
-    sorted_domains
-}
-
 pub fn session_to_json(session: Session) -> String {
     let storable_session: StorableSession = session.into();
 
@@ -586,41 +555,5 @@ mod tests {
             server_config.cache_routes.as_ref().unwrap()[0].as_str(),
             "/static/.*"
         );
-    }
-
-    #[test]
-    fn test_choose_domain_ordering() {
-        let input = vec![
-            "example.com".to_string(),
-            "api.example.com".to_string(),
-            "render-api.example.com".to_string(),
-            "another-example.com".to_string(),
-        ];
-
-        let expected_output = vec![
-            "render-api.example.com".to_string(),
-            "api.example.com".to_string(),
-            "another-example.com".to_string(),
-            "example.com".to_string(),
-        ];
-
-        assert_eq!(choose_domain_ordering(input), expected_output);
-    }
-
-    #[test]
-    fn test_choose_domain_ordering_with_same_length() {
-        let input = vec![
-            "a.domain.com".to_string(),
-            "b.domain.com".to_string(),
-            "c.domain.com".to_string(),
-        ];
-
-        let expected_output = vec![
-            "a.domain.com".to_string(),
-            "b.domain.com".to_string(),
-            "c.domain.com".to_string(),
-        ];
-
-        assert_eq!(choose_domain_ordering(input), expected_output);
     }
 }
