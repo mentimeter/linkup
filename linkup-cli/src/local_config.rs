@@ -10,7 +10,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{Domain, Rewrite, Session, SessionService, UpdateSessionRequest};
+use linkup::{Domain, Session, SessionService, UpdateSessionRequest};
 
 use crate::{
     linkup_file_path, services,
@@ -19,13 +19,13 @@ use crate::{
 };
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct LocalState {
+pub struct State {
     pub linkup: LinkupState,
     pub domains: Vec<Domain>,
     pub services: Vec<LocalService>,
 }
 
-impl LocalState {
+impl State {
     pub fn load() -> anyhow::Result<Self> {
         let state_file_path = linkup_file_path(LINKUP_STATE_FILE);
         let content = fs::read_to_string(&state_file_path)
@@ -95,20 +95,17 @@ pub struct LinkupState {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct LocalService {
-    pub name: String,
-    pub remote: Url,
-    pub local: Url,
     pub current: ServiceTarget,
-    pub directory: Option<String>,
-    pub rewrites: Vec<Rewrite>,
-    pub health: Option<linkup::config::HealthConfig>,
+
+    #[serde(flatten)]
+    pub config: linkup::config::ServiceConfig,
 }
 
 impl LocalService {
     pub fn current_url(&self) -> Url {
         match self.current {
-            ServiceTarget::Local => self.local.clone(),
-            ServiceTarget::Remote => self.remote.clone(),
+            ServiceTarget::Local => self.config.local.clone(),
+            ServiceTarget::Remote => self.config.remote.clone(),
         }
     }
 }
@@ -138,7 +135,7 @@ pub fn config_to_state(
     config: linkup::config::Config,
     config_path: String,
     no_tunnel: bool,
-) -> LocalState {
+) -> State {
     let random_token = Alphanumeric.sample_string(&mut rand::rng(), 16);
 
     let tunnel = match no_tunnel {
@@ -159,20 +156,15 @@ pub fn config_to_state(
     let services = config
         .services
         .into_iter()
-        .map(|yaml_service| LocalService {
-            name: yaml_service.name,
-            remote: yaml_service.remote,
-            local: yaml_service.local,
+        .map(|service_config| LocalService {
+            config: service_config.clone(),
             current: ServiceTarget::Remote,
-            directory: yaml_service.directory,
-            rewrites: yaml_service.rewrites.unwrap_or_default(),
-            health: yaml_service.health,
         })
         .collect::<Vec<LocalService>>();
 
     let domains = config.domains;
 
-    LocalState {
+    State {
         linkup,
         domains,
         services,
@@ -210,7 +202,7 @@ pub fn get_config(config_path: &str) -> Result<linkup::config::Config> {
 
 // This method gets the local state and uploads it to both the local linkup server and
 // the remote linkup server (worker).
-pub async fn upload_state(state: &LocalState) -> Result<String> {
+pub async fn upload_state(state: &State) -> Result<String> {
     let local_url = services::LocalServer::url();
 
     let server_config = ServerConfig::from(state);
@@ -266,19 +258,19 @@ async fn upload_config_to_server(
     Ok(session_name)
 }
 
-impl From<&LocalState> for ServerConfig {
-    fn from(state: &LocalState) -> Self {
+impl From<&State> for ServerConfig {
+    fn from(state: &State) -> Self {
         let local_server_services = state
             .services
             .iter()
             .map(|service| SessionService {
-                name: service.name.clone(),
+                name: service.config.name.clone(),
                 location: if service.current == ServiceTarget::Remote {
-                    service.remote.clone()
+                    service.config.remote.clone()
                 } else {
-                    service.local.clone()
+                    service.config.local.clone()
                 },
-                rewrites: Some(service.rewrites.clone()),
+                rewrites: service.config.rewrites.clone(),
             })
             .collect::<Vec<SessionService>>();
 
@@ -286,13 +278,13 @@ impl From<&LocalState> for ServerConfig {
             .services
             .iter()
             .map(|service| SessionService {
-                name: service.name.clone(),
+                name: service.config.name.clone(),
                 location: if service.current == ServiceTarget::Remote {
-                    service.remote.clone()
+                    service.config.remote.clone()
                 } else {
                     state.get_tunnel_url()
                 },
-                rewrites: Some(service.rewrites.clone()),
+                rewrites: service.config.rewrites.clone(),
             })
             .collect::<Vec<SessionService>>();
 
@@ -317,7 +309,7 @@ impl From<&LocalState> for ServerConfig {
     }
 }
 
-pub fn managed_domains(state: Option<&LocalState>, cfg_path: &Option<String>) -> Vec<String> {
+pub fn managed_domains(state: Option<&State>, cfg_path: &Option<String>) -> Vec<String> {
     let config_domains = match config_path(cfg_path).ok() {
         Some(cfg_path) => match get_config(&cfg_path) {
             Ok(config) => Some(
@@ -396,8 +388,8 @@ domains:
     #[test]
     fn test_config_to_state() {
         let input_str = String::from(CONF_STR);
-        let yaml_config = serde_yaml::from_str(&input_str).unwrap();
-        let local_state = config_to_state(yaml_config, "./path/to/config.yaml".to_string(), false);
+        let config = serde_yaml::from_str(&input_str).unwrap();
+        let local_state = config_to_state(config, "./path/to/config.yaml".to_string(), false);
 
         assert_eq!(local_state.linkup.config_path, "./path/to/config.yaml");
 
@@ -411,35 +403,51 @@ domains:
         );
 
         assert_eq!(local_state.services.len(), 2);
-        assert_eq!(local_state.services[0].name, "frontend");
+        assert_eq!(local_state.services[0].config.name, "frontend");
         assert_eq!(
-            local_state.services[0].remote,
+            local_state.services[0].config.remote,
             Url::parse("http://remote-service1.example.com").unwrap()
         );
         assert_eq!(
-            local_state.services[0].local,
+            local_state.services[0].config.local,
             Url::parse("http://localhost:8000").unwrap()
         );
         assert_eq!(local_state.services[0].current, ServiceTarget::Remote);
-        assert!(matches!(local_state.services[0].health, None));
+        assert!(matches!(local_state.services[0].config.health, None));
 
-        assert_eq!(local_state.services[0].rewrites.len(), 1);
-        assert_eq!(local_state.services[1].name, "backend");
         assert_eq!(
-            local_state.services[1].remote,
+            local_state.services[0]
+                .config
+                .rewrites
+                .as_ref()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(local_state.services[1].config.name, "backend");
+        assert_eq!(
+            local_state.services[1].config.remote,
             Url::parse("http://remote-service2.example.com").unwrap()
         );
         assert_eq!(
-            local_state.services[1].local,
+            local_state.services[1].config.local,
             Url::parse("http://localhost:8001").unwrap()
         );
-        assert_eq!(local_state.services[1].rewrites.len(), 0);
         assert_eq!(
-            local_state.services[1].directory,
+            local_state.services[1]
+                .config
+                .rewrites
+                .as_ref()
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            local_state.services[1].config.directory,
             Some("../backend".to_string())
         );
-        assert!(local_state.services[1].health.is_some());
-        let health = local_state.services[1].health.as_ref().unwrap();
+        assert!(local_state.services[1].config.health.is_some());
+        let health = local_state.services[1].config.health.as_ref().unwrap();
         assert_eq!(health.path, Some("/health".to_string()));
         assert_eq!(health.statuses, Some(vec![200, 304]));
 

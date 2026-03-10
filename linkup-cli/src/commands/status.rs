@@ -13,7 +13,7 @@ use std::{
 
 use crate::{
     commands,
-    local_config::{LocalService, LocalState, ServiceTarget},
+    local_config::{LocalService, ServiceTarget, State},
     services,
 };
 
@@ -41,7 +41,7 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
         println!("{}", warning.yellow());
     }
 
-    if !LocalState::exists() {
+    if !State::exists() {
         println!(
             "{}",
             "Seems like you don't have any state yet, so there is no status to report.".yellow()
@@ -51,7 +51,7 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let state = LocalState::load().context("Failed to load local state")?;
+    let state = State::load().context("Failed to load local state")?;
 
     let linkup_services = linkup_services(&state);
     let all_services = state.clone().services.into_iter().chain(linkup_services);
@@ -287,45 +287,51 @@ pub fn format_state_domains(session_name: &str, domains: &[Domain]) -> Vec<Strin
         .collect()
 }
 
-fn linkup_services(state: &LocalState) -> Vec<LocalService> {
+fn linkup_services(state: &State) -> Vec<LocalService> {
     let local_url = services::LocalServer::url();
 
     vec![
         LocalService {
-            name: "linkup_local_server".to_string(),
-            remote: local_url.clone(),
-            local: local_url.clone(),
             current: ServiceTarget::Local,
-            directory: None,
-            rewrites: vec![],
-            health: Some(HealthConfig {
-                path: Some("/linkup/check".to_string()),
-                ..Default::default()
-            }),
+            config: linkup::config::ServiceConfig {
+                name: "linkup_local_server".to_string(),
+                remote: local_url.clone(),
+                local: local_url.clone(),
+                directory: None,
+                rewrites: None,
+                health: Some(HealthConfig {
+                    path: Some("/linkup/check".to_string()),
+                    ..Default::default()
+                }),
+            },
         },
         LocalService {
-            name: "linkup_remote_server".to_string(),
-            remote: state.linkup.worker_url.clone(),
-            local: state.linkup.worker_url.clone(),
             current: ServiceTarget::Remote,
-            directory: None,
-            rewrites: vec![],
-            health: Some(HealthConfig {
-                path: Some("/linkup/check".to_string()),
-                ..Default::default()
-            }),
+            config: linkup::config::ServiceConfig {
+                name: "linkup_remote_server".to_string(),
+                remote: state.linkup.worker_url.clone(),
+                local: state.linkup.worker_url.clone(),
+                directory: None,
+                rewrites: None,
+                health: Some(HealthConfig {
+                    path: Some("/linkup/check".to_string()),
+                    ..Default::default()
+                }),
+            },
         },
         LocalService {
-            name: "tunnel".to_string(),
-            remote: state.get_tunnel_url(),
-            local: state.get_tunnel_url(),
             current: ServiceTarget::Remote,
-            directory: None,
-            rewrites: vec![],
-            health: Some(HealthConfig {
-                path: Some("/linkup/check".to_string()),
-                ..Default::default()
-            }),
+            config: linkup::config::ServiceConfig {
+                name: "tunnel".to_string(),
+                remote: state.get_tunnel_url(),
+                local: state.get_tunnel_url(),
+                directory: None,
+                rewrites: None,
+                health: Some(HealthConfig {
+                    path: Some("/linkup/check".to_string()),
+                    ..Default::default()
+                }),
+            },
         },
     ]
 }
@@ -334,7 +340,7 @@ fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
     let mut acceptable_statuses_override: Option<Vec<u16>> = None;
     let mut url = service.current_url();
 
-    if let Some(health_config) = &service.health {
+    if let Some(health_config) = &service.config.health {
         if let Some(path) = &health_config.path {
             url = url.join(path).unwrap();
         }
@@ -349,7 +355,7 @@ fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
         &HeaderMap::new(),
         session_name,
         &TargetService {
-            name: service.name.clone(),
+            name: service.config.name.clone(),
             url: url.to_string(),
         },
     );
@@ -424,7 +430,7 @@ where
             let priority = service_priority(&service);
 
             ServiceStatus {
-                name: service.name.clone(),
+                name: service.config.name.clone(),
                 component_kind: service.current.to_string(),
                 status: ServerStatus::Loading,
                 service,
@@ -443,7 +449,7 @@ where
         thread::spawn(move || {
             let status = service_status(&service_clone, &session_name);
 
-            tx.send((service_clone.name.clone(), status))
+            tx.send((service_clone.config.name.clone(), status))
                 .expect("Failed to send service status");
         });
     }
@@ -454,9 +460,11 @@ where
 }
 
 fn is_internal_service(service: &LocalService) -> bool {
-    service.name == "linkup_local_server"
-        || service.name == "linkup_remote_server"
-        || service.name == "tunnel"
+    let service_name = &service.config.name;
+
+    service_name == "linkup_local_server"
+        || service_name == "linkup_remote_server"
+        || service_name == "tunnel"
 }
 
 fn service_priority(service: &LocalService) -> i8 {

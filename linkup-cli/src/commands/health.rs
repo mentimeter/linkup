@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     linkup_dir_path,
-    local_config::LocalState,
+    local_config::State,
     services::{self, find_service_pid, BackgroundService},
     Result,
 };
@@ -62,7 +62,7 @@ struct Session {
 }
 
 impl Session {
-    fn load(state: Option<&LocalState>) -> Self {
+    fn load(state: Option<&State>) -> Self {
         match state {
             Some(state) => Self {
                 name: Some(state.linkup.session_name.clone()),
@@ -103,7 +103,7 @@ pub enum BackgroundServiceHealth {
 }
 
 impl BackgroundServices {
-    pub fn load(state: Option<&LocalState>) -> Self {
+    pub fn load(state: Option<&State>) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
         let linkup_server = match find_service_pid(services::LocalServer::ID) {
@@ -283,7 +283,7 @@ struct LocalDNS {
 }
 
 impl LocalDNS {
-    fn load(state: Option<&LocalState>) -> Result<Self> {
+    fn load(state: Option<&State>) -> Result<Self> {
         // If there is no state, we cannot know if local-dns is installed since we depend on
         // the domains listed on it.
         let is_installed = state.as_ref().map(|state| {
@@ -309,7 +309,7 @@ struct Health {
 
 impl Health {
     pub fn load() -> Result<Self> {
-        let state = LocalState::load().ok();
+        let state = State::load().ok();
         let session = Session::load(state.as_ref());
 
         Ok(Self {

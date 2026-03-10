@@ -14,7 +14,7 @@ use url::Url;
 
 use crate::{
     linkup_certs_dir_path, linkup_file_path,
-    local_config::{upload_state, LocalState},
+    local_config::{upload_state, State},
     worker_client, Result,
 };
 
@@ -93,7 +93,7 @@ impl LocalServer {
         matches!(response, Ok(res) if res.status() == StatusCode::OK)
     }
 
-    async fn update_state(&self, state: &mut LocalState) -> Result<()> {
+    async fn update_state(&self, state: &mut State) -> Result<()> {
         let session_name = upload_state(state).await?;
 
         state.linkup.session_name = session_name;
@@ -111,7 +111,7 @@ impl BackgroundService for LocalServer {
 
     async fn run_with_progress(
         &self,
-        state: &mut LocalState,
+        state: &mut State,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<()> {
         self.notify_update(&status_sender, super::RunStatus::Starting);

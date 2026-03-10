@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     commands, is_sudo, linkup_certs_dir_path,
-    local_config::{self, managed_domains, top_level_domains, LocalState},
+    local_config::{self, managed_domains, top_level_domains, State},
     sudo_su, Result,
 };
 use anyhow::{anyhow, Context};
@@ -50,7 +50,7 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
 
     ensure_resolver_dir()?;
 
-    let domains = managed_domains(LocalState::load().ok().as_ref(), config_arg);
+    let domains = managed_domains(State::load().ok().as_ref(), config_arg);
 
     install_resolvers(&top_level_domains(&domains))?;
 
@@ -77,7 +77,7 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
     commands::stop(&commands::StopArgs {}, false)?;
 
     let managed_top_level_domains = local_config::top_level_domains(
-        &local_config::managed_domains(LocalState::load().ok().as_ref(), config_arg),
+        &local_config::managed_domains(State::load().ok().as_ref(), config_arg),
     );
 
     uninstall_resolvers(&managed_top_level_domains)?;
