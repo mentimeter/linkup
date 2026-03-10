@@ -126,7 +126,7 @@ impl Display for ServiceTarget {
 }
 
 #[derive(Debug)]
-pub struct ServerConfig {
+pub struct ServersSessions {
     pub local: Session,
     pub remote: Session,
 }
@@ -205,14 +205,14 @@ pub fn get_config(config_path: &str) -> Result<linkup::config::Config> {
 pub async fn upload_state(state: &State) -> Result<String> {
     let local_url = services::LocalServer::url();
 
-    let server_config = ServerConfig::from(state);
+    let servers_sessions = ServersSessions::from(state);
     let session_name = &state.linkup.session_name;
 
     let server_session_name = upload_session_to_server(
         &state.linkup.worker_url,
         &state.linkup.worker_token,
         session_name,
-        server_config.remote,
+        servers_sessions.remote,
     )
     .await?;
 
@@ -220,7 +220,7 @@ pub async fn upload_state(state: &State) -> Result<String> {
         &local_url,
         &state.linkup.worker_token,
         &server_session_name,
-        server_config.local,
+        servers_sessions.local,
     )
     .await?;
 
@@ -258,7 +258,7 @@ async fn upload_session_to_server(
     Ok(session_name)
 }
 
-impl From<&State> for ServerConfig {
+impl From<&State> for ServersSessions {
     fn from(state: &State) -> Self {
         let local_server_services = state
             .services
@@ -302,7 +302,7 @@ impl From<&State> for ServerConfig {
             cache_routes: state.linkup.cache_routes.clone(),
         };
 
-        ServerConfig {
+        ServersSessions {
             local: local_storable_session,
             remote: remote_storable_session,
         }
