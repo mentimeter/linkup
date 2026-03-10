@@ -161,34 +161,6 @@ impl TryFrom<serde_json::Value> for Session {
     }
 }
 
-// TODO(augustoccesar)[2026-03-10]: The name of this function is not really what it does.
-pub fn update_session_req_from_json(input_json: String) -> Result<(String, Session), ConfigError> {
-    let update_session_req_res: UpdateSessionRequest = serde_json::from_str(&input_json)?;
-
-    let session = Session {
-        session_token: update_session_req_res.session_token,
-        services: update_session_req_res.services,
-        domains: update_session_req_res.domains,
-        cache_routes: update_session_req_res.cache_routes,
-    };
-
-    Ok((update_session_req_res.desired_name, session))
-}
-
-// TODO(augustoccesar)[2026-03-10]: The name of this function is not really what it does.
-pub fn create_preview_req_from_json(input_json: String) -> Result<Session, ConfigError> {
-    let update_session_req_res: CreatePreviewRequest = serde_json::from_str(&input_json)?;
-
-    let session = Session {
-        session_token: String::from(PREVIEW_SESSION_TOKEN),
-        services: update_session_req_res.services,
-        domains: update_session_req_res.domains,
-        cache_routes: None,
-    };
-
-    Ok(session)
-}
-
 pub fn create_preview_req_from_config(
     config: &Config,
     services_overwrite: &[(String, Url)],
