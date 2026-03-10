@@ -12,9 +12,8 @@ use std::{
 };
 
 use crate::{
-    commands,
-    local_config::{LocalService, ServiceTarget, State},
-    services,
+    commands, services,
+    state::{LocalService, ServiceTarget, State},
 };
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];

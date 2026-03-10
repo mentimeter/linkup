@@ -1,4 +1,4 @@
-use crate::{commands, local_config::State, Result};
+use crate::{commands, state::State, Result};
 
 #[derive(clap::Args)]
 pub struct Args {}

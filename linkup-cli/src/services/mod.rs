@@ -15,7 +15,7 @@ pub use {
     cloudflare_tunnel::CloudflareTunnel,
 };
 
-use crate::local_config::State;
+use crate::state::State;
 
 #[derive(Clone)]
 pub enum RunStatus {

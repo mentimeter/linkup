@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{linkup_file_path, local_config::State, worker_client::WorkerClient, Result};
+use crate::{linkup_file_path, state::State, worker_client::WorkerClient, Result};
 
 use super::{find_service_pid, BackgroundService, PidError};
 

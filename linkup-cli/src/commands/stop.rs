@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 use crate::env_files::clear_env_file;
-use crate::local_config::State;
 use crate::services::{stop_service, BackgroundService};
+use crate::state::State;
 use crate::{services, Result};
 
 #[derive(clap::Args)]

@@ -10,7 +10,7 @@ pub use linkup::Version;
 
 mod commands;
 mod env_files;
-mod local_config;
+mod state;
 mod release;
 mod services;
 mod worker_client;

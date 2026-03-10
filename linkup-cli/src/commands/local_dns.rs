@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     commands, is_sudo, linkup_certs_dir_path,
-    local_config::{self, managed_domains, top_level_domains, State},
+    state::{self, managed_domains, top_level_domains, State},
     sudo_su, Result,
 };
 use anyhow::{anyhow, Context};
@@ -76,9 +76,10 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
 
     commands::stop(&commands::StopArgs {}, false)?;
 
-    let managed_top_level_domains = local_config::top_level_domains(
-        &local_config::managed_domains(State::load().ok().as_ref(), config_arg),
-    );
+    let managed_top_level_domains = state::top_level_domains(&state::managed_domains(
+        State::load().ok().as_ref(),
+        config_arg,
+    ));
 
     uninstall_resolvers(&managed_top_level_domains)?;
     uninstall_self_signed_certificates(&linkup_certs_dir_path())

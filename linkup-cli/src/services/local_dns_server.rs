@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::Context;
 
-use crate::{commands::local_dns, linkup_file_path, local_config::State, Result};
+use crate::{commands::local_dns, linkup_file_path, state::State, Result};
 
 use super::BackgroundService;
 

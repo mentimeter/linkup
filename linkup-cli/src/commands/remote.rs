@@ -1,6 +1,6 @@
 use crate::{
-    local_config::{upload_state, ServiceTarget, State},
     services::{self, find_service_pid, BackgroundService},
+    state::{upload_state, ServiceTarget, State},
     Result,
 };
 

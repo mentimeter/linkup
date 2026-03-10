@@ -1,5 +1,5 @@
 use crate::commands::status::{format_state_domains, SessionStatus};
-use crate::local_config::{config_path, get_config};
+use crate::state::{config_path, get_config};
 use crate::worker_client::WorkerClient;
 use crate::Result;
 use anyhow::Context;

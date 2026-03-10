@@ -15,10 +15,10 @@ use crossterm::{cursor, ExecutableCommand};
 use crate::{
     commands::status::{format_state_domains, SessionStatus},
     env_files::write_to_env_file,
-    local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
+    state::{config_path, config_to_state, get_config},
 };
-use crate::{local_config::State, Result};
+use crate::{state::State, Result};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 

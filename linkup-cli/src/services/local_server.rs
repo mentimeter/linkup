@@ -14,7 +14,7 @@ use url::Url;
 
 use crate::{
     linkup_certs_dir_path, linkup_file_path,
-    local_config::{upload_state, State},
+    state::{upload_state, State},
     worker_client, Result,
 };
 

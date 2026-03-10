@@ -10,8 +10,8 @@ use std::{
 
 use crate::{
     linkup_dir_path,
-    local_config::State,
     services::{self, find_service_pid, BackgroundService},
+    state::State,
     Result,
 };
 
@@ -138,10 +138,7 @@ impl BackgroundServices {
                 // If there is no state, we cannot know if local-dns is installed since we depend on
                 // the domains listed on it.
                 Some(state) => {
-                    if local_dns::is_installed(&crate::local_config::managed_domains(
-                        Some(state),
-                        &None,
-                    )) {
+                    if local_dns::is_installed(&crate::state::managed_domains(Some(state), &None)) {
                         BackgroundServiceHealth::Stopped
                     } else {
                         BackgroundServiceHealth::NotInstalled
@@ -287,7 +284,7 @@ impl LocalDNS {
         // If there is no state, we cannot know if local-dns is installed since we depend on
         // the domains listed on it.
         let is_installed = state.as_ref().map(|state| {
-            local_dns::is_installed(&crate::local_config::managed_domains(Some(state), &None))
+            local_dns::is_installed(&crate::state::managed_domains(Some(state), &None))
         });
 
         Ok(Self {
