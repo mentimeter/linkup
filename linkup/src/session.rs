@@ -159,32 +159,6 @@ impl TryFrom<serde_json::Value> for Session {
     }
 }
 
-pub fn update_session_req_from_json(input_json: String) -> Result<(String, Session), ConfigError> {
-    let update_session_req_res: UpdateSessionRequest = serde_json::from_str(&input_json)?;
-
-    let session = Session {
-        session_token: update_session_req_res.session_token,
-        services: update_session_req_res.services,
-        domains: update_session_req_res.domains,
-        cache_routes: update_session_req_res.cache_routes,
-    };
-
-    Ok((update_session_req_res.desired_name, session))
-}
-
-pub fn create_preview_req_from_json(input_json: String) -> Result<Session, ConfigError> {
-    let update_session_req_res: CreatePreviewRequest = serde_json::from_str(&input_json)?;
-
-    let session = Session {
-        session_token: String::from(PREVIEW_SESSION_TOKEN),
-        services: update_session_req_res.services,
-        domains: update_session_req_res.domains,
-        cache_routes: None,
-    };
-
-    Ok(session)
-}
-
 fn validate_not_empty(server_config: &Session) -> Result<(), ConfigError> {
     if server_config.services.is_empty() {
         return Err(ConfigError::Empty);
