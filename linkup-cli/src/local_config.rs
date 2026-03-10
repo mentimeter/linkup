@@ -354,7 +354,6 @@ pub fn top_level_domains(domains: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use linkup::config::HealthConfig;
     use url::Url;
 
     const CONF_STR: &str = r#"
