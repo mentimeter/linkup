@@ -433,15 +433,7 @@ domains:
             local_state.services[1].config.local,
             Url::parse("http://localhost:8001").unwrap()
         );
-        assert_eq!(
-            local_state.services[1]
-                .config
-                .rewrites
-                .as_ref()
-                .unwrap()
-                .len(),
-            0
-        );
+        assert!(matches!(local_state.services[1].config.rewrites, None));
         assert_eq!(
             local_state.services[1].config.directory,
             Some("../backend".to_string())
