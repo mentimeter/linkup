@@ -5,6 +5,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::config::Config;
+
 pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -159,6 +161,7 @@ impl TryFrom<serde_json::Value> for Session {
     }
 }
 
+// TODO(augustoccesar)[2026-03-10]: The name of this function is not really what it does.
 pub fn update_session_req_from_json(input_json: String) -> Result<(String, Session), ConfigError> {
     let update_session_req_res: UpdateSessionRequest = serde_json::from_str(&input_json)?;
 
@@ -172,6 +175,7 @@ pub fn update_session_req_from_json(input_json: String) -> Result<(String, Sessi
     Ok((update_session_req_res.desired_name, session))
 }
 
+// TODO(augustoccesar)[2026-03-10]: The name of this function is not really what it does.
 pub fn create_preview_req_from_json(input_json: String) -> Result<Session, ConfigError> {
     let update_session_req_res: CreatePreviewRequest = serde_json::from_str(&input_json)?;
 
@@ -183,6 +187,36 @@ pub fn create_preview_req_from_json(input_json: String) -> Result<Session, Confi
     };
 
     Ok(session)
+}
+
+pub fn create_preview_req_from_config(
+    config: &Config,
+    services_overwrite: &[(String, Url)],
+) -> CreatePreviewRequest {
+    let mut session_services: Vec<SessionService> = Vec::with_capacity(config.services.len());
+
+    for service in &config.services {
+        let service_overwrite = services_overwrite
+            .iter()
+            .find(|overwrite| overwrite.0 == service.name);
+
+        let location = match service_overwrite {
+            Some((_, location_overwrite)) => location_overwrite.clone(),
+            None => service.remote.clone(),
+        };
+
+        session_services.push(SessionService {
+            name: service.name.clone(),
+            location,
+            rewrites: service.rewrites.clone(),
+        });
+    }
+
+    CreatePreviewRequest {
+        services: session_services,
+        domains: config.domains.clone(),
+        cache_routes: config.linkup.cache_routes.clone(),
+    }
 }
 
 fn validate_not_empty(server_config: &Session) -> Result<(), ConfigError> {

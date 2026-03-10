@@ -10,9 +10,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{
-    CreatePreviewRequest, Domain, Rewrite, Session, SessionService, UpdateSessionRequest,
-};
+use linkup::{Domain, Rewrite, Session, SessionService, UpdateSessionRequest};
 
 use crate::{
     linkup_file_path, services,
@@ -95,12 +93,6 @@ pub struct LinkupState {
     pub cache_routes: Option<Vec<Regex>>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Default)]
-pub struct HealthConfig {
-    pub path: Option<String>,
-    pub statuses: Option<Vec<u16>>,
-}
-
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct LocalService {
     pub name: String,
@@ -109,7 +101,7 @@ pub struct LocalService {
     pub current: ServiceTarget,
     pub directory: Option<String>,
     pub rewrites: Vec<Rewrite>,
-    pub health: Option<HealthConfig>,
+    pub health: Option<linkup::config::HealthConfig>,
 }
 
 impl LocalService {
@@ -136,65 +128,6 @@ impl Display for ServiceTarget {
     }
 }
 
-#[derive(Deserialize, Clone)]
-pub struct YamlLocalConfig {
-    pub linkup: LinkupConfig,
-    pub services: Vec<YamlLocalService>,
-    pub domains: Vec<Domain>,
-}
-
-impl YamlLocalConfig {
-    pub fn create_preview_request(&self, services: &[(String, String)]) -> CreatePreviewRequest {
-        let services = self
-            .services
-            .iter()
-            .map(|yaml_local_service: &YamlLocalService| {
-                let name = yaml_local_service.name.clone();
-                let mut location = yaml_local_service.remote.clone();
-
-                for (param_service_name, param_service_url) in services {
-                    if param_service_name == &name {
-                        location = Url::parse(param_service_url).unwrap();
-                    }
-                }
-
-                SessionService {
-                    name,
-                    location,
-                    rewrites: yaml_local_service.rewrites.clone(),
-                }
-            })
-            .collect();
-
-        CreatePreviewRequest {
-            services,
-            domains: self.domains.clone(),
-            cache_routes: self.linkup.cache_routes.clone(),
-        }
-    }
-}
-
-#[derive(Deserialize, Clone)]
-pub struct LinkupConfig {
-    pub worker_url: Url,
-    pub worker_token: String,
-    #[serde(
-        default,
-        deserialize_with = "linkup::serde_ext::deserialize_opt_vec_regex"
-    )]
-    cache_routes: Option<Vec<Regex>>,
-}
-
-#[derive(Deserialize, Clone)]
-pub struct YamlLocalService {
-    name: String,
-    remote: Url,
-    local: Url,
-    directory: Option<String>,
-    rewrites: Option<Vec<Rewrite>>,
-    health: Option<HealthConfig>,
-}
-
 #[derive(Debug)]
 pub struct ServerConfig {
     pub local: Session,
@@ -202,7 +135,7 @@ pub struct ServerConfig {
 }
 
 pub fn config_to_state(
-    yaml_config: YamlLocalConfig,
+    config: linkup::config::Config,
     config_path: String,
     no_tunnel: bool,
 ) -> LocalState {
@@ -216,14 +149,14 @@ pub fn config_to_state(
     let linkup = LinkupState {
         session_name: String::new(),
         session_token: random_token,
-        worker_token: yaml_config.linkup.worker_token,
+        worker_token: config.linkup.worker_token,
         config_path,
-        worker_url: yaml_config.linkup.worker_url,
+        worker_url: config.linkup.worker_url,
         tunnel,
-        cache_routes: yaml_config.linkup.cache_routes,
+        cache_routes: config.linkup.cache_routes,
     };
 
-    let services = yaml_config
+    let services = config
         .services
         .into_iter()
         .map(|yaml_service| LocalService {
@@ -237,7 +170,7 @@ pub fn config_to_state(
         })
         .collect::<Vec<LocalService>>();
 
-    let domains = yaml_config.domains;
+    let domains = config.domains;
 
     LocalState {
         linkup,
@@ -267,7 +200,7 @@ pub fn config_path(config_arg: &Option<String>) -> Result<String> {
     }
 }
 
-pub fn get_config(config_path: &str) -> Result<YamlLocalConfig> {
+pub fn get_config(config_path: &str) -> Result<linkup::config::Config> {
     let content = fs::read_to_string(config_path)
         .with_context(|| format!("Failed to read config file {config_path:?}"))?;
 
@@ -429,6 +362,7 @@ pub fn top_level_domains(domains: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use linkup::config::HealthConfig;
     use url::Url;
 
     const CONF_STR: &str = r#"
@@ -487,7 +421,7 @@ domains:
             Url::parse("http://localhost:8000").unwrap()
         );
         assert_eq!(local_state.services[0].current, ServiceTarget::Remote);
-        assert_eq!(local_state.services[0].health, None);
+        assert!(matches!(local_state.services[0].health, None));
 
         assert_eq!(local_state.services[0].rewrites.len(), 1);
         assert_eq!(local_state.services[1].name, "backend");
@@ -504,13 +438,10 @@ domains:
             local_state.services[1].directory,
             Some("../backend".to_string())
         );
-        assert_eq!(
-            local_state.services[1].health,
-            Some(HealthConfig {
-                path: Some("/health".to_string()),
-                statuses: Some(vec![200, 304]),
-            })
-        );
+        assert!(local_state.services[1].health.is_some());
+        let health = local_state.services[1].health.as_ref().unwrap();
+        assert_eq!(health.path, Some("/health".to_string()));
+        assert_eq!(health.statuses, Some(vec![200, 304]));
 
         assert_eq!(local_state.domains.len(), 2);
         assert_eq!(local_state.domains[0].domain, "example.com");

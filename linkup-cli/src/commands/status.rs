@@ -1,7 +1,7 @@
 use anyhow::Context;
 use colored::{ColoredString, Colorize};
 use crossterm::{cursor, execute, style::Print, terminal};
-use linkup::{get_additional_headers, Domain, HeaderMap, TargetService};
+use linkup::{config::HealthConfig, get_additional_headers, Domain, HeaderMap, TargetService};
 use serde::{Deserialize, Serialize};
 use std::{
     io::stdout,
@@ -13,7 +13,7 @@ use std::{
 
 use crate::{
     commands,
-    local_config::{HealthConfig, LocalService, LocalState, ServiceTarget},
+    local_config::{LocalService, LocalState, ServiceTarget},
     services,
 };
 
