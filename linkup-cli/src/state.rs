@@ -208,7 +208,7 @@ pub async fn upload_state(state: &State) -> Result<String> {
     let server_config = ServerConfig::from(state);
     let session_name = &state.linkup.session_name;
 
-    let server_session_name = upload_config_to_server(
+    let server_session_name = upload_session_to_server(
         &state.linkup.worker_url,
         &state.linkup.worker_token,
         session_name,
@@ -216,7 +216,7 @@ pub async fn upload_state(state: &State) -> Result<String> {
     )
     .await?;
 
-    let local_session_name = upload_config_to_server(
+    let local_session_name = upload_session_to_server(
         &local_url,
         &state.linkup.worker_token,
         &server_session_name,
@@ -237,18 +237,18 @@ pub async fn upload_state(state: &State) -> Result<String> {
     Ok(server_session_name)
 }
 
-async fn upload_config_to_server(
+async fn upload_session_to_server(
     linkup_url: &Url,
     worker_token: &str,
     desired_name: &str,
-    config: Session,
+    session: Session,
 ) -> Result<String, worker_client::Error> {
     let session_update_req = UpdateSessionRequest {
-        session_token: config.session_token,
+        session_token: session.session_token,
         desired_name: desired_name.to_string(),
-        services: config.services,
-        domains: config.domains,
-        cache_routes: config.cache_routes,
+        services: session.services,
+        domains: session.domains,
+        cache_routes: session.cache_routes,
     };
 
     let session_name = WorkerClient::new(linkup_url, worker_token)
