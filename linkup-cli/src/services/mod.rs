@@ -15,7 +15,7 @@ pub use {
     cloudflare_tunnel::CloudflareTunnel,
 };
 
-use crate::local_config::LocalState;
+use crate::state::State;
 
 #[derive(Clone)]
 pub enum RunStatus {
@@ -51,7 +51,7 @@ pub trait BackgroundService {
 
     async fn run_with_progress(
         &self,
-        local_state: &mut LocalState,
+        local_state: &mut State,
         status_sender: sync::mpsc::Sender<RunUpdate>,
     ) -> anyhow::Result<()>;
 
