@@ -1,10 +1,11 @@
 use crate::commands::status::{format_state_domains, SessionStatus};
-use crate::local_config::{config_path, get_config};
+use crate::state::{config_path, get_config};
 use crate::worker_client::WorkerClient;
 use crate::Result;
 use anyhow::Context;
 use clap::builder::ValueParser;
 use linkup::CreatePreviewRequest;
+use url::Url;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -14,7 +15,7 @@ pub struct Args {
         required = true,
         num_args = 1..,
     )]
-    services: Vec<(String, String)>,
+    services: Vec<(String, Url)>,
 
     #[arg(long, help = "Print the request body instead of sending it.")]
     print_request: bool,
@@ -24,7 +25,7 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
     let config_path = config_path(config)?;
     let input_config = get_config(&config_path)?;
     let create_preview_request: CreatePreviewRequest =
-        input_config.create_preview_request(&args.services);
+        linkup::create_preview_req_from_config(&input_config, &args.services);
     let url = input_config.linkup.worker_url.clone();
 
     if args.print_request {

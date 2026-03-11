@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{linkup_file_path, local_config::LocalState, worker_client::WorkerClient, Result};
+use crate::{linkup_file_path, state::State, worker_client::WorkerClient, Result};
 
 use super::{find_service_pid, BackgroundService, PidError};
 
@@ -129,7 +129,7 @@ impl CloudflareTunnel {
         false
     }
 
-    fn update_state(&self, tunnel_url: &Url, state: &mut LocalState) -> Result<()> {
+    fn update_state(&self, tunnel_url: &Url, state: &mut State) -> Result<()> {
         debug!("Adding tunnel url {} to the state", tunnel_url.as_str());
 
         state.linkup.tunnel = Some(tunnel_url.clone());
@@ -147,7 +147,7 @@ impl BackgroundService for CloudflareTunnel {
 
     async fn run_with_progress(
         &self,
-        state: &mut LocalState,
+        state: &mut State,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<()> {
         if !state.should_use_tunnel() {

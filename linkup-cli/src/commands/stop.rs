@@ -4,25 +4,28 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 use crate::env_files::clear_env_file;
-use crate::local_config::LocalState;
 use crate::services::{stop_service, BackgroundService};
+use crate::state::State;
 use crate::{services, Result};
 
 #[derive(clap::Args)]
 pub struct Args {}
 
 pub fn stop(_args: &Args, clear_env: bool) -> Result<()> {
-    match (LocalState::load(), clear_env) {
+    match (State::load(), clear_env) {
         (Ok(state), true) => {
             // Reset env vars back to what they were before
             for service in &state.services {
-                let remove_res = match &service.directory {
+                let remove_res = match &service.config.directory {
                     Some(d) => remove_service_env(d.clone(), state.linkup.config_path.clone()),
                     None => Ok(()),
                 };
 
                 if let Err(e) = remove_res {
-                    println!("Could not remove env for service {}: {}", service.name, e);
+                    println!(
+                        "Could not remove env for service {}: {}",
+                        service.config.name, e
+                    );
                 }
             }
         }

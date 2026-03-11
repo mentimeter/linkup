@@ -2,8 +2,8 @@ use anyhow::anyhow;
 use colored::Colorize;
 
 use crate::{
-    local_config::{upload_state, LocalState, ServiceTarget},
     services::{self, find_service_pid, BackgroundService},
+    state::{upload_state, ServiceTarget, State},
     Result,
 };
 
@@ -25,7 +25,7 @@ pub async fn local(args: &Args) -> Result<()> {
         return Err(anyhow!("No service names provided"));
     }
 
-    if !LocalState::exists() {
+    if !State::exists() {
         println!(
             "{}",
             "Seems like you don't have any state yet to point to local.".yellow()
@@ -45,7 +45,7 @@ pub async fn local(args: &Args) -> Result<()> {
         return Ok(());
     }
 
-    let mut state = LocalState::load()?;
+    let mut state = State::load()?;
 
     if args.all {
         for service in state.services.iter_mut() {
@@ -56,7 +56,7 @@ pub async fn local(args: &Args) -> Result<()> {
             let service = state
                 .services
                 .iter_mut()
-                .find(|s| s.name.as_str() == service_name)
+                .find(|s| s.config.name.as_str() == service_name)
                 .ok_or_else(|| anyhow!("Service with name '{}' does not exist", service_name))?;
 
             service.current = ServiceTarget::Local;

@@ -3,8 +3,6 @@ use reqwest::{header, StatusCode};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::local_config::YamlLocalConfig;
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("{0}")]
@@ -116,8 +114,8 @@ impl WorkerClient {
     }
 }
 
-impl From<&YamlLocalConfig> for WorkerClient {
-    fn from(config: &YamlLocalConfig) -> Self {
+impl From<&linkup::config::Config> for WorkerClient {
+    fn from(config: &linkup::config::Config) -> Self {
         Self::new(&config.linkup.worker_url, &config.linkup.worker_token)
     }
 }
