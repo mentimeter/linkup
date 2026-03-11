@@ -10,8 +10,8 @@ use std::{
 
 use crate::{
     linkup_dir_path,
-    local_config::LocalState,
     services::{self, find_service_pid, BackgroundService},
+    state::State,
     Result,
 };
 
@@ -62,7 +62,7 @@ struct Session {
 }
 
 impl Session {
-    fn load(state: Option<&LocalState>) -> Self {
+    fn load(state: Option<&State>) -> Self {
         match state {
             Some(state) => Self {
                 name: Some(state.linkup.session_name.clone()),
@@ -103,7 +103,7 @@ pub enum BackgroundServiceHealth {
 }
 
 impl BackgroundServices {
-    pub fn load(state: Option<&LocalState>) -> Self {
+    pub fn load(state: Option<&State>) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
         let linkup_server = match find_service_pid(services::LocalServer::ID) {
@@ -138,10 +138,7 @@ impl BackgroundServices {
                 // If there is no state, we cannot know if local-dns is installed since we depend on
                 // the domains listed on it.
                 Some(state) => {
-                    if local_dns::is_installed(&crate::local_config::managed_domains(
-                        Some(state),
-                        &None,
-                    )) {
+                    if local_dns::is_installed(&crate::state::managed_domains(Some(state), &None)) {
                         BackgroundServiceHealth::Stopped
                     } else {
                         BackgroundServiceHealth::NotInstalled
@@ -283,11 +280,11 @@ struct LocalDNS {
 }
 
 impl LocalDNS {
-    fn load(state: Option<&LocalState>) -> Result<Self> {
+    fn load(state: Option<&State>) -> Result<Self> {
         // If there is no state, we cannot know if local-dns is installed since we depend on
         // the domains listed on it.
         let is_installed = state.as_ref().map(|state| {
-            local_dns::is_installed(&crate::local_config::managed_domains(Some(state), &None))
+            local_dns::is_installed(&crate::state::managed_domains(Some(state), &None))
         });
 
         Ok(Self {
@@ -309,7 +306,7 @@ struct Health {
 
 impl Health {
     pub fn load() -> Result<Self> {
-        let state = LocalState::load().ok();
+        let state = State::load().ok();
         let session = Session::load(state.as_ref());
 
         Ok(Self {

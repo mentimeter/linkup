@@ -5,6 +5,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::config::Config;
+
 pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -159,27 +161,57 @@ impl TryFrom<serde_json::Value> for Session {
     }
 }
 
-fn validate_not_empty(server_config: &Session) -> Result<(), ConfigError> {
-    if server_config.services.is_empty() {
+pub fn create_preview_req_from_config(
+    config: &Config,
+    services_overwrite: &[(String, Url)],
+) -> CreatePreviewRequest {
+    let mut session_services: Vec<SessionService> = Vec::with_capacity(config.services.len());
+
+    for service in &config.services {
+        let service_overwrite = services_overwrite
+            .iter()
+            .find(|overwrite| overwrite.0 == service.name);
+
+        let location = match service_overwrite {
+            Some((_, location_overwrite)) => location_overwrite.clone(),
+            None => service.remote.clone(),
+        };
+
+        session_services.push(SessionService {
+            name: service.name.clone(),
+            location,
+            rewrites: service.rewrites.clone(),
+        });
+    }
+
+    CreatePreviewRequest {
+        services: session_services,
+        domains: config.domains.clone(),
+        cache_routes: config.linkup.cache_routes.clone(),
+    }
+}
+
+fn validate_not_empty(session: &Session) -> Result<(), ConfigError> {
+    if session.services.is_empty() {
         return Err(ConfigError::Empty);
     }
-    if server_config.domains.is_empty() {
+    if session.domains.is_empty() {
         return Err(ConfigError::Empty);
     }
 
     Ok(())
 }
 
-fn validate_services(server_config: &Session) -> Result<(), ConfigError> {
+fn validate_services(session: &Session) -> Result<(), ConfigError> {
     let mut service_names: HashSet<&str> = HashSet::new();
 
-    for service in &server_config.services {
+    for service in &session.services {
         validate_url_origin(&service.location)?;
 
         service_names.insert(&service.name);
     }
 
-    for domain in &server_config.domains {
+    for domain in &session.domains {
         if !service_names.contains(&domain.default_service.as_str()) {
             return Err(ConfigError::NoSuchService(
                 domain.default_service.to_string(),
@@ -257,25 +289,26 @@ mod tests {
     "#;
 
     #[test]
-    fn test_convert_server_config() {
+    fn test_convert_session() {
         let input_str = String::from(CONF_STR);
 
-        let server_config_value = serde_json::from_str::<serde_json::Value>(&input_str).unwrap();
-        let server_config: Session = server_config_value.try_into().unwrap();
-        check_means_same_as_input_conf(&server_config);
+        let session_value = serde_json::from_str::<serde_json::Value>(&input_str).unwrap();
+        let session: Session = session_value.try_into().unwrap();
+        check_means_same_as_input_conf(&session);
 
         // Inverse should mean the same thing
-        let output_conf = serde_json::to_string(&server_config).unwrap();
-        let output_conf_value = serde_json::from_str::<serde_json::Value>(&output_conf).unwrap();
-        let second_server_conf: Session = output_conf_value.try_into().unwrap();
-        check_means_same_as_input_conf(&second_server_conf);
+        let output_session = serde_json::to_string(&session).unwrap();
+        let output_session_value =
+            serde_json::from_str::<serde_json::Value>(&output_session).unwrap();
+        let second_session: Session = output_session_value.try_into().unwrap();
+        check_means_same_as_input_conf(&second_session);
     }
 
-    fn check_means_same_as_input_conf(server_config: &Session) {
+    fn check_means_same_as_input_conf(session: &Session) {
         // Test services
-        assert_eq!(server_config.services.len(), 2);
+        assert_eq!(session.services.len(), 2);
 
-        let frontend_service = server_config.get_service("frontend").unwrap();
+        let frontend_service = session.get_service("frontend").unwrap();
         assert_eq!(
             frontend_service.location,
             Url::parse("http://localhost:8000").unwrap()
@@ -293,7 +326,7 @@ mod tests {
         assert_eq!(frontend_service_rewrite.source.as_str(), "/foo/(.*)");
         assert_eq!(frontend_service_rewrite.target, "/bar/$1");
 
-        let backend_service = server_config.get_service("backend").unwrap();
+        let backend_service = session.get_service("backend").unwrap();
         assert_eq!(
             backend_service.location,
             Url::parse("http://localhost:8001").unwrap()
@@ -301,9 +334,9 @@ mod tests {
         assert!(backend_service.rewrites.is_none());
 
         // Test domains
-        assert_eq!(2, server_config.domains.len());
+        assert_eq!(2, session.domains.len());
 
-        let example_domain = server_config.get_domain("example.com").unwrap();
+        let example_domain = session.get_domain("example.com").unwrap();
         assert_eq!(example_domain.default_service, "frontend");
 
         assert_eq!(
@@ -315,15 +348,15 @@ mod tests {
         assert_eq!(example_domain_route.path.as_str(), "/api/v1/.*");
         assert_eq!(example_domain_route.service, "backend");
 
-        let api_domain = server_config.get_domain("api.example.com").unwrap();
+        let api_domain = session.get_domain("api.example.com").unwrap();
         assert_eq!(api_domain.default_service, "backend");
         assert!(api_domain.routes.is_none());
 
         // Test cache routes
 
-        assert_eq!(server_config.cache_routes.as_ref().unwrap().len(), 1);
+        assert_eq!(session.cache_routes.as_ref().unwrap().len(), 1);
         assert_eq!(
-            server_config.cache_routes.as_ref().unwrap()[0].as_str(),
+            session.cache_routes.as_ref().unwrap()[0].as_str(),
             "/static/.*"
         );
     }

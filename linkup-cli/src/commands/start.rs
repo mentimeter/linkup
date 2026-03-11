@@ -15,10 +15,10 @@ use crossterm::{cursor, ExecutableCommand};
 use crate::{
     commands::status::{format_state_domains, SessionStatus},
     env_files::write_to_env_file,
-    local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
+    state::{config_path, config_to_state, get_config},
 };
-use crate::{local_config::LocalState, Result};
+use crate::{state::State, Result};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -39,7 +39,7 @@ pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) 
 
         state
     } else {
-        LocalState::load()?
+        State::load()?
     };
 
     let status_update_channel = sync::mpsc::channel::<services::RunUpdate>();
@@ -217,18 +217,18 @@ fn spawn_display_thread(
     })
 }
 
-fn set_linkup_env(state: LocalState) -> Result<()> {
+fn set_linkup_env(state: State) -> Result<()> {
     // Set env vars to linkup
     for service in &state.services {
-        if let Some(d) = &service.directory {
+        if let Some(d) = &service.config.directory {
             set_service_env(d.clone(), state.linkup.config_path.clone())?
         }
     }
     Ok(())
 }
 
-fn load_and_save_state(config_arg: &Option<String>, no_tunnel: bool) -> Result<LocalState> {
-    let previous_state = LocalState::load();
+fn load_and_save_state(config_arg: &Option<String>, no_tunnel: bool) -> Result<State> {
+    let previous_state = State::load();
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
