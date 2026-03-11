@@ -70,7 +70,7 @@ impl LocalState {
     pub fn domain_strings(&self) -> Vec<String> {
         self.domains
             .iter()
-            .map(|storable_domain| storable_domain.domain.clone())
+            .map(|domain| domain.domain.clone())
             .collect::<Vec<String>>()
     }
 
@@ -363,14 +363,14 @@ impl From<&LocalState> for ServerConfig {
             })
             .collect::<Vec<SessionService>>();
 
-        let local_storable_session = Session {
+        let local_session = Session {
             session_token: state.linkup.session_token.clone(),
             services: local_server_services,
             domains: state.domains.clone(),
             cache_routes: state.linkup.cache_routes.clone(),
         };
 
-        let remote_storable_session = Session {
+        let remote_session = Session {
             session_token: state.linkup.session_token.clone(),
             services: remote_server_services,
             domains: state.domains.clone(),
@@ -378,8 +378,8 @@ impl From<&LocalState> for ServerConfig {
         };
 
         ServerConfig {
-            local: local_storable_session,
-            remote: remote_storable_session,
+            local: local_session,
+            remote: remote_session,
         }
     }
 }
@@ -391,7 +391,7 @@ pub fn managed_domains(state: Option<&LocalState>, cfg_path: &Option<String>) ->
                 config
                     .domains
                     .iter()
-                    .map(|storable_domain| storable_domain.domain.clone())
+                    .map(|domain| domain.domain.clone())
                     .collect::<Vec<String>>(),
             ),
             Err(_) => None,
