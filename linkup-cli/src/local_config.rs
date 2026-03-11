@@ -6,12 +6,12 @@ use std::{
 
 use anyhow::Context;
 use rand::distr::{Alphanumeric, SampleString};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use linkup::{
-    CreatePreviewRequest, StorableDomain, StorableRewrite, StorableService, StorableSession,
-    UpdateSessionRequest,
+    CreatePreviewRequest, Domain, Rewrite, Session, SessionService, UpdateSessionRequest,
 };
 
 use crate::{
@@ -20,10 +20,10 @@ use crate::{
     Result, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
 };
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct LocalState {
     pub linkup: LinkupState,
-    pub domains: Vec<StorableDomain>,
+    pub domains: Vec<Domain>,
     pub services: Vec<LocalService>,
 }
 
@@ -70,7 +70,7 @@ impl LocalState {
     pub fn domain_strings(&self) -> Vec<String> {
         self.domains
             .iter()
-            .map(|storable_domain| storable_domain.domain.clone())
+            .map(|domain| domain.domain.clone())
             .collect::<Vec<String>>()
     }
 
@@ -79,7 +79,7 @@ impl LocalState {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct LinkupState {
     pub session_name: String,
     pub session_token: String,
@@ -87,7 +87,12 @@ pub struct LinkupState {
     pub worker_token: String,
     pub config_path: String,
     pub tunnel: Option<Url>,
-    pub cache_routes: Option<Vec<String>>,
+    #[serde(
+        default,
+        serialize_with = "linkup::serde_ext::serialize_opt_vec_regex",
+        deserialize_with = "linkup::serde_ext::deserialize_opt_vec_regex"
+    )]
+    pub cache_routes: Option<Vec<Regex>>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Default)]
@@ -96,14 +101,14 @@ pub struct HealthConfig {
     pub statuses: Option<Vec<u16>>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct LocalService {
     pub name: String,
     pub remote: Url,
     pub local: Url,
     pub current: ServiceTarget,
     pub directory: Option<String>,
-    pub rewrites: Vec<StorableRewrite>,
+    pub rewrites: Vec<Rewrite>,
     pub health: Option<HealthConfig>,
 }
 
@@ -135,7 +140,7 @@ impl Display for ServiceTarget {
 pub struct YamlLocalConfig {
     pub linkup: LinkupConfig,
     pub services: Vec<YamlLocalService>,
-    pub domains: Vec<StorableDomain>,
+    pub domains: Vec<Domain>,
 }
 
 impl YamlLocalConfig {
@@ -153,7 +158,7 @@ impl YamlLocalConfig {
                     }
                 }
 
-                StorableService {
+                SessionService {
                     name,
                     location,
                     rewrites: yaml_local_service.rewrites.clone(),
@@ -173,7 +178,11 @@ impl YamlLocalConfig {
 pub struct LinkupConfig {
     pub worker_url: Url,
     pub worker_token: String,
-    cache_routes: Option<Vec<String>>,
+    #[serde(
+        default,
+        deserialize_with = "linkup::serde_ext::deserialize_opt_vec_regex"
+    )]
+    cache_routes: Option<Vec<Regex>>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -182,14 +191,14 @@ pub struct YamlLocalService {
     remote: Url,
     local: Url,
     directory: Option<String>,
-    rewrites: Option<Vec<StorableRewrite>>,
+    rewrites: Option<Vec<Rewrite>>,
     health: Option<HealthConfig>,
 }
 
 #[derive(Debug)]
 pub struct ServerConfig {
-    pub local: StorableSession,
-    pub remote: StorableSession,
+    pub local: Session,
+    pub remote: Session,
 }
 
 pub fn config_to_state(
@@ -307,7 +316,7 @@ async fn upload_config_to_server(
     linkup_url: &Url,
     worker_token: &str,
     desired_name: &str,
-    config: StorableSession,
+    config: Session,
 ) -> Result<String, worker_client::Error> {
     let session_update_req = UpdateSessionRequest {
         session_token: config.session_token,
@@ -329,7 +338,7 @@ impl From<&LocalState> for ServerConfig {
         let local_server_services = state
             .services
             .iter()
-            .map(|service| StorableService {
+            .map(|service| SessionService {
                 name: service.name.clone(),
                 location: if service.current == ServiceTarget::Remote {
                     service.remote.clone()
@@ -338,12 +347,12 @@ impl From<&LocalState> for ServerConfig {
                 },
                 rewrites: Some(service.rewrites.clone()),
             })
-            .collect::<Vec<StorableService>>();
+            .collect::<Vec<SessionService>>();
 
         let remote_server_services = state
             .services
             .iter()
-            .map(|service| StorableService {
+            .map(|service| SessionService {
                 name: service.name.clone(),
                 location: if service.current == ServiceTarget::Remote {
                     service.remote.clone()
@@ -352,16 +361,16 @@ impl From<&LocalState> for ServerConfig {
                 },
                 rewrites: Some(service.rewrites.clone()),
             })
-            .collect::<Vec<StorableService>>();
+            .collect::<Vec<SessionService>>();
 
-        let local_storable_session = StorableSession {
+        let local_session = Session {
             session_token: state.linkup.session_token.clone(),
             services: local_server_services,
             domains: state.domains.clone(),
             cache_routes: state.linkup.cache_routes.clone(),
         };
 
-        let remote_storable_session = StorableSession {
+        let remote_session = Session {
             session_token: state.linkup.session_token.clone(),
             services: remote_server_services,
             domains: state.domains.clone(),
@@ -369,8 +378,8 @@ impl From<&LocalState> for ServerConfig {
         };
 
         ServerConfig {
-            local: local_storable_session,
-            remote: remote_storable_session,
+            local: local_session,
+            remote: remote_session,
         }
     }
 }
@@ -382,7 +391,7 @@ pub fn managed_domains(state: Option<&LocalState>, cfg_path: &Option<String>) ->
                 config
                     .domains
                     .iter()
-                    .map(|storable_domain| storable_domain.domain.clone())
+                    .map(|domain| domain.domain.clone())
                     .collect::<Vec<String>>(),
             ),
             Err(_) => None,
