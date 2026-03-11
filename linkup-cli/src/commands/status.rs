@@ -1,7 +1,7 @@
 use anyhow::Context;
 use colored::{ColoredString, Colorize};
 use crossterm::{cursor, execute, style::Print, terminal};
-use linkup::{get_additional_headers, HeaderMap, StorableDomain, TargetService};
+use linkup::{get_additional_headers, Domain, HeaderMap, TargetService};
 use serde::{Deserialize, Serialize};
 use std::{
     io::stdout,
@@ -269,7 +269,7 @@ fn table_header(terminal_width: u16) -> String {
     output
 }
 
-pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> Vec<String> {
+pub fn format_state_domains(session_name: &str, domains: &[Domain]) -> Vec<String> {
     // Filter out domains that are subdomains of other domains
     let filtered_domains = domains
         .iter()

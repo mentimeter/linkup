@@ -1,7 +1,7 @@
 use crate::{
     extract_tracestate_session, first_subdomain, headers::HeaderName,
-    name_gen::deterministic_six_char_hash, random_animal, random_six_char, session_to_json,
-    ConfigError, HeaderMap, NameKind, Session, SessionError, StringStore,
+    name_gen::deterministic_six_char_hash, random_animal, random_six_char, ConfigError, HeaderMap,
+    NameKind, Session, SessionError, StringStore,
 };
 
 pub struct SessionAllocator<'a, S: StringStore> {
@@ -63,7 +63,8 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         name_kind: NameKind,
         desired_name: String,
     ) -> Result<String, SessionError> {
-        let config_str = session_to_json(config.clone());
+        let config_str = serde_json::to_string(&config)
+            .map_err(|error| SessionError::ConfigErr(error.to_string()))?;
 
         let name = self
             .choose_name(desired_name, config.session_token, name_kind, &config_str)
