@@ -19,6 +19,7 @@ Error: StartLinkupTimeout("https://xxx.trycloudflare.com/linkup-check took too l
 #### Diagnosis
 
 `cat ~/.linkup/cloudflared-stderr` will give you more logs from the cloudflared process that might point you in the right direction.
+If you are running a non-default instance (via `LINKUP_HOME` or `linkup instance-use`), the log file is at `$LINKUP_HOME/cloudflared-stderr` instead of `~/.linkup/cloudflared-stderr`. Run `linkup health` to see the active config location.
 Linkup runs `cloudflared tunnel --url http://localhost:9066` to start the tunnel. You can run this command manually to see if it gives you more information.
 
 #### Solution

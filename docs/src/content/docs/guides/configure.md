@@ -13,6 +13,11 @@ Here is an example:
 linkup:
   worker_url: https://where.linkup.is.deployed.com
   worker_token: worker_token_from_linkup_deploy
+  # Optional: bind the local server to a custom port (default: 80).
+  # The HTTPS port is derived as http_port + 363 (e.g. 9080 -> 9443).
+  # local_server_port: 9080
+  # Optional: request a specific session name instead of a random one.
+  # session_name: my-session
   # By default, linkup will ensure _nothing_ is cached for dev environments
   # to update on save, you can override this behaviour for specific paths
   # by adding them to the cache_routes list

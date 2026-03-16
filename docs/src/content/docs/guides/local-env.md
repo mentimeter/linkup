@@ -33,8 +33,12 @@ curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimete
 Once you have the cli installed you can start a linkup session by running:
 
 ```zsh
-linkup start      <--- Gives you your unique session name
-linkup status     <--- Shows how your session is configured
-linkup local web  <--- Routes traffic of the `web` service to your local machine
-linkup stop       <-- Stops your session
+linkup start                      <--- Gives you your unique session name
+linkup status                     <--- Shows how your session is configured
+linkup local web                  <--- Routes traffic of the `web` service to your local machine
+linkup stop                       <--- Stops your session
+linkup instance-use <N>           <--- Switch to a different instance
+linkup instance-use default       <--- Switch back to the default instance
+linkup instance-remove <N>        <--- Remove an instance, its tunnel, and stop its services
+linkup instance-remove-all        <--- Remove all instances and their tunnels
 ```
