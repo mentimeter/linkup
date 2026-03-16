@@ -99,7 +99,7 @@ pub fn linkup_router(config_store: MemoryStringStore) -> Router {
         )
 }
 
-pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Path) {
+pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Path, port: u16) {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     let sni = match certificates::WildcardSniResolver::load_dir(certs_dir) {
@@ -120,7 +120,7 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
 
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 443));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("listening on {}", &addr);
 
     axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
@@ -129,10 +129,10 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
         .expect("failed to start HTTPS server");
 }
 
-pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {
+pub async fn start_server_http(config_store: MemoryStringStore, port: u16) -> std::io::Result<()> {
     let app = linkup_router(config_store);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 80));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("listening on {}", &addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

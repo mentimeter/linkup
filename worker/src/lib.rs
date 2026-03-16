@@ -90,7 +90,10 @@ pub fn linkup_router(state: LinkupState) -> Router {
     Router::new()
         .route("/linkup/local-session", post(linkup_session_handler))
         .route("/linkup/preview-session", post(linkup_preview_handler))
-        .route("/linkup/tunnel", get(get_tunnel_handler))
+        .route(
+            "/linkup/tunnel",
+            get(get_tunnel_handler).delete(delete_tunnel_handler),
+        )
         .route("/linkup/check", get(always_ok))
         .route("/linkup/no-tunnel", get(no_tunnel))
         .route("/linkup", any(deprecated_linkup_session_handler))
@@ -192,6 +195,73 @@ async fn get_tunnel_handler(
             Json(tunnel_data).into_response()
         }
     }
+}
+
+#[worker::send]
+async fn delete_tunnel_handler(
+    State(state): State<LinkupState>,
+    Query(query): Query<GetTunnelParams>,
+) -> impl IntoResponse {
+    let kv = state.tunnels_kv;
+
+    let cf_client = cloudflare_client(&state.cloudflare.api_token);
+    let tunnel_prefix =
+        match cloudflare::linkup::tunnel_prefix(&cf_client, &state.cloudflare.tunnel_zone_id).await
+        {
+            Ok(prefix) => prefix,
+            Err(error) => {
+                console_error!("Failed to resolve tunnel prefix: {}", error);
+
+                return HttpError::new(
+                    "Failed to resolve tunnel prefix.".to_string(),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+                .into_response();
+            }
+        };
+
+    let tunnel_name = format!("{}{}", tunnel_prefix, query.session_name);
+    let tunnel_data: Option<TunnelData> = match kv.get(&tunnel_name).json().await {
+        Ok(data) => data,
+        Err(error) => {
+            console_error!("Failed to read tunnel from KV: {}", error);
+            return HttpError::new(
+                "Failed to read tunnel data.".to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response();
+        }
+    };
+
+    let tunnel_data = match tunnel_data {
+        Some(data) => data,
+        None => return StatusCode::NOT_FOUND.into_response(),
+    };
+
+    match tunnel::delete_tunnel(
+        &state.cloudflare.api_token,
+        &state.cloudflare.account_id,
+        &state.cloudflare.tunnel_zone_id,
+        &tunnel_data.id,
+    )
+    .await
+    {
+        Ok(_) => {
+            if let Err(error) = kv.delete(&tunnel_name).await {
+                console_error!("Failed to delete tunnel from KV: {}", error);
+            }
+        }
+        Err(error) => {
+            console_error!("Failed to delete tunnel from Cloudflare: {}", error);
+            return HttpError::new(
+                format!("Failed to delete tunnel: {}", error),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response();
+        }
+    }
+
+    StatusCode::OK.into_response()
 }
 
 #[worker::send]
