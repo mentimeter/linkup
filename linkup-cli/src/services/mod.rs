@@ -26,16 +26,12 @@ pub enum RunStatus {
     Error,
 }
 
-impl Display for RunStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Pending => write!(f, "pending"),
-            Self::Starting => write!(f, "starting"),
-            Self::Started => write!(f, "started"),
-            Self::Skipped => write!(f, "skipped"),
-            Self::Error => write!(f, "error"),
-        }
-    }
+#[derive(Error, Debug)]
+pub enum PidError {
+    #[error("no pid file: {0}")]
+    NoPidFile(String),
+    #[error("bad pid file: {0}")]
+    BadPidFile(String),
 }
 
 #[derive(Clone)]
@@ -103,12 +99,16 @@ pub trait BackgroundService {
     }
 }
 
-#[derive(Error, Debug)]
-pub enum PidError {
-    #[error("no pid file: {0}")]
-    NoPidFile(String),
-    #[error("bad pid file: {0}")]
-    BadPidFile(String),
+impl Display for RunStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pending => write!(f, "pending"),
+            Self::Starting => write!(f, "starting"),
+            Self::Started => write!(f, "started"),
+            Self::Skipped => write!(f, "skipped"),
+            Self::Error => write!(f, "error"),
+        }
+    }
 }
 
 pub fn system() -> System {
