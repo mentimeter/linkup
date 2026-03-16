@@ -55,6 +55,14 @@ pub trait BackgroundService {
         status_sender: sync::mpsc::Sender<RunUpdate>,
     ) -> anyhow::Result<()>;
 
+    fn stop() {
+        if let Some(pid) = Self::find_pid() {
+            system()
+                .process(pid)
+                .map(|process| process.kill_with(Signal::Interrupt));
+        }
+    }
+
     fn notify_update(&self, status_sender: &sync::mpsc::Sender<RunUpdate>, status: RunStatus) {
         status_sender
             .send(RunUpdate {
@@ -79,6 +87,20 @@ pub trait BackgroundService {
             })
             .unwrap();
     }
+
+    fn find_pid() -> Option<Pid> {
+        for (pid, process) in system().processes() {
+            if process
+                .environ()
+                .iter()
+                .any(|item| item.to_string_lossy() == format!("LINKUP_SERVICE_ID={}", Self::ID))
+            {
+                return Some(*pid);
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Error, Debug)]
@@ -87,28 +109,6 @@ pub enum PidError {
     NoPidFile(String),
     #[error("bad pid file: {0}")]
     BadPidFile(String),
-}
-
-pub fn find_service_pid(service_id: &str) -> Option<Pid> {
-    for (pid, process) in system().processes() {
-        if process
-            .environ()
-            .iter()
-            .any(|item| item.to_string_lossy() == format!("LINKUP_SERVICE_ID={service_id}"))
-        {
-            return Some(*pid);
-        }
-    }
-
-    None
-}
-
-pub fn stop_service(service_id: &str) {
-    if let Some(pid) = find_service_pid(service_id) {
-        system()
-            .process(pid)
-            .map(|process| process.kill_with(Signal::Interrupt));
-    }
 }
 
 pub fn system() -> System {
