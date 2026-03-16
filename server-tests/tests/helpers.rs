@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use linkup::{MemoryStringStore, StorableDomain, StorableService, UpdateSessionRequest};
+use linkup::{Domain, MemoryStringStore, SessionService, UpdateSessionRequest};
 use linkup_local_server::linkup_router;
 use reqwest::Url;
 use tokio::net::TcpListener;
@@ -57,12 +57,12 @@ pub fn create_session_request(name: String, fe_location: Option<String>) -> Stri
     let req = UpdateSessionRequest {
         desired_name: name,
         session_token: "token".to_string(),
-        domains: vec![StorableDomain {
+        domains: vec![Domain {
             domain: "example.com".to_string(),
             default_service: "frontend".to_string(),
             routes: None,
         }],
-        services: vec![StorableService {
+        services: vec![SessionService {
             name: "frontend".to_string(),
             location: Url::parse(&location).unwrap(),
             rewrites: None,
