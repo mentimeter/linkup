@@ -15,10 +15,10 @@ use crossterm::{cursor, ExecutableCommand};
 use crate::{
     commands::status::{format_state_domains, SessionStatus},
     env_files::write_to_env_file,
-    local_config::{config_path, config_to_state, get_config},
     services::{self, BackgroundService},
+    state::{config_path, config_to_state, get_config},
 };
-use crate::{local_config::LocalState, Result};
+use crate::{state::State, Result};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -39,12 +39,13 @@ pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) 
 
         state
     } else {
-        LocalState::load()?
+        State::load()?
     };
 
     let status_update_channel = sync::mpsc::channel::<services::RunUpdate>();
 
-    let local_server = services::LocalServer::new();
+    let http_port = state.linkup.local_server_port.unwrap_or(80);
+    let local_server = services::LocalServer::new(http_port);
     let cloudflare_tunnel = services::CloudflareTunnel::new();
     let local_dns_server = services::LocalDnsServer::new();
 
@@ -217,26 +218,28 @@ fn spawn_display_thread(
     })
 }
 
-fn set_linkup_env(state: LocalState) -> Result<()> {
+fn set_linkup_env(state: State) -> Result<()> {
     // Set env vars to linkup
     for service in &state.services {
-        if let Some(d) = &service.directory {
+        if let Some(d) = &service.config.directory {
             set_service_env(d.clone(), state.linkup.config_path.clone())?
         }
     }
     Ok(())
 }
 
-fn load_and_save_state(config_arg: &Option<String>, no_tunnel: bool) -> Result<LocalState> {
-    let previous_state = LocalState::load();
+fn load_and_save_state(config_arg: &Option<String>, no_tunnel: bool) -> Result<State> {
+    let previous_state = State::load();
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
     let mut state = config_to_state(input_config.clone(), config_path, no_tunnel);
 
-    // Reuse previous session name if possible
     if let Ok(ps) = previous_state {
-        state.linkup.session_name = ps.linkup.session_name;
+        // Config-specified session_name takes priority; otherwise reuse previous
+        if state.linkup.session_name.is_empty() {
+            state.linkup.session_name = ps.linkup.session_name;
+        }
         state.linkup.session_token = ps.linkup.session_token;
 
         // Maintain tunnel state until it is rewritten

@@ -3,8 +3,6 @@ use reqwest::{header, StatusCode};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::local_config::YamlLocalConfig;
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("{0}")]
@@ -72,6 +70,25 @@ impl WorkerClient {
         self.post("/linkup/local-session", params).await
     }
 
+    /// Asks the worker to delete the Cloudflare tunnel and its DNS record for the given session.
+    /// Returns Ok(()) on success or if the tunnel was already gone (404).
+    pub async fn delete_tunnel(&self, session_name: &str) -> Result<(), Error> {
+        let query = GetTunnelParams {
+            session_name: String::from(session_name),
+        };
+
+        let endpoint = self.url.join("/linkup/tunnel")?;
+        let response = self.inner.delete(endpoint).query(&query).send().await?;
+
+        match response.status() {
+            StatusCode::OK | StatusCode::NOT_FOUND => Ok(()),
+            _ => Err(Error::Response(
+                response.status(),
+                response.text().await.unwrap_or_else(|_| "".to_string()),
+            )),
+        }
+    }
+
     pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {
         let query = GetTunnelParams {
             session_name: String::from(session_name),
@@ -116,8 +133,8 @@ impl WorkerClient {
     }
 }
 
-impl From<&YamlLocalConfig> for WorkerClient {
-    fn from(config: &YamlLocalConfig) -> Self {
+impl From<&linkup::config::Config> for WorkerClient {
+    fn from(config: &linkup::config::Config) -> Self {
         Self::new(&config.linkup.worker_url, &config.linkup.worker_token)
     }
 }

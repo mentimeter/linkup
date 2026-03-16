@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::Context;
 
-use crate::{commands::local_dns, linkup_file_path, local_config::LocalState, Result};
+use crate::{commands::local_dns, linkup_file_path, state::State, Result};
 
 use super::BackgroundService;
 
@@ -35,7 +35,7 @@ impl LocalDnsServer {
             env::current_exe().context("Failed to get the current executable")?,
         );
         command.env("RUST_LOG", "debug");
-        command.env("LINKUP_SERVICE_ID", Self::ID);
+        command.env("LINKUP_SERVICE_ID", super::service_id(Self::ID));
         command.args([
             "server",
             "dns",
@@ -62,7 +62,7 @@ impl BackgroundService for LocalDnsServer {
 
     async fn run_with_progress(
         &self,
-        state: &mut LocalState,
+        state: &mut State,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<()> {
         self.notify_update(&status_sender, super::RunStatus::Starting);

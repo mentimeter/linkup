@@ -13,6 +13,10 @@ pub enum ServerKind {
     LocalWorker {
         #[arg(long)]
         certs_dir: String,
+        #[arg(long, default_value_t = 80)]
+        http_port: u16,
+        #[arg(long, default_value_t = 443)]
+        https_port: u16,
     },
 
     Dns {
@@ -25,12 +29,17 @@ pub enum ServerKind {
 
 pub async fn server(args: &Args) -> Result<()> {
     match &args.server_kind {
-        ServerKind::LocalWorker { certs_dir } => {
+        ServerKind::LocalWorker {
+            certs_dir,
+            http_port,
+            https_port,
+        } => {
             let config_store = MemoryStringStore::default();
 
             let http_config_store = config_store.clone();
+            let http_port = *http_port;
             let handler_http = tokio::spawn(async move {
-                linkup_local_server::start_server_http(http_config_store)
+                linkup_local_server::start_server_http(http_config_store, http_port)
                     .await
                     .unwrap();
             });
@@ -40,10 +49,15 @@ pub async fn server(args: &Args) -> Result<()> {
 
                 let https_config_store = config_store.clone();
                 let https_certs_dir = PathBuf::from(certs_dir);
+                let https_port = *https_port;
 
                 Some(tokio::spawn(async move {
-                    linkup_local_server::start_server_https(https_config_store, &https_certs_dir)
-                        .await;
+                    linkup_local_server::start_server_https(
+                        https_config_store,
+                        &https_certs_dir,
+                        https_port,
+                    )
+                    .await;
                 }))
             };
 

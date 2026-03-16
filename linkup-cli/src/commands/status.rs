@@ -1,7 +1,7 @@
 use anyhow::Context;
 use colored::{ColoredString, Colorize};
 use crossterm::{cursor, execute, style::Print, terminal};
-use linkup::{get_additional_headers, HeaderMap, StorableDomain, TargetService};
+use linkup::{config::HealthConfig, get_additional_headers, Domain, HeaderMap, TargetService};
 use serde::{Deserialize, Serialize};
 use std::{
     io::stdout,
@@ -12,9 +12,9 @@ use std::{
 };
 
 use crate::{
-    commands,
-    local_config::{HealthConfig, LocalService, LocalState, ServiceTarget},
-    services,
+    commands, default_linkup_dir_path, linkup_dir_path, services,
+    state::{LocalService, ServiceTarget, State},
+    LINKUP_STATE_FILE,
 };
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -41,7 +41,7 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
         println!("{}", warning.yellow());
     }
 
-    if !LocalState::exists() {
+    if !State::exists() {
         println!(
             "{}",
             "Seems like you don't have any state yet, so there is no status to report.".yellow()
@@ -51,7 +51,7 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let state = LocalState::load().context("Failed to load local state")?;
+    let state = State::load().context("Failed to load local state")?;
 
     let linkup_services = linkup_services(&state);
     let all_services = state.clone().services.into_iter().chain(linkup_services);
@@ -88,6 +88,8 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
             serde_json::to_string_pretty(&status).expect("Failed to serialize status")
         );
     } else {
+        print_instance_summary();
+        println!();
         status.session.print();
         println!();
 
@@ -269,63 +271,70 @@ fn table_header(terminal_width: u16) -> String {
     output
 }
 
-pub fn format_state_domains(session_name: &str, domains: &[StorableDomain]) -> Vec<String> {
-    // Filter out domains that are subdomains of other domains
-    let filtered_domains = domains
+pub fn primary_domains(domains: &[Domain]) -> Vec<&Domain> {
+    domains
         .iter()
-        .filter(|&d| {
+        .filter(|d| {
             !domains
                 .iter()
                 .any(|other| other.domain != d.domain && d.domain.ends_with(&other.domain))
         })
-        .map(|d| d.domain.clone())
-        .collect::<Vec<String>>();
-
-    filtered_domains
-        .iter()
-        .map(|domain| format!("https://{}.{}", session_name, domain.clone()))
         .collect()
 }
 
-fn linkup_services(state: &LocalState) -> Vec<LocalService> {
-    let local_url = services::LocalServer::url();
+pub fn format_state_domains(session_name: &str, domains: &[Domain]) -> Vec<String> {
+    primary_domains(domains)
+        .iter()
+        .map(|d| format!("https://{}.{}", session_name, d.domain))
+        .collect()
+}
+
+fn linkup_services(state: &State) -> Vec<LocalService> {
+    let port = state.linkup.local_server_port.unwrap_or(80);
+    let local_url = services::LocalServer::url(port);
 
     vec![
         LocalService {
-            name: "linkup_local_server".to_string(),
-            remote: local_url.clone(),
-            local: local_url.clone(),
             current: ServiceTarget::Local,
-            directory: None,
-            rewrites: vec![],
-            health: Some(HealthConfig {
-                path: Some("/linkup/check".to_string()),
-                ..Default::default()
-            }),
+            config: linkup::config::ServiceConfig {
+                name: "linkup_local_server".to_string(),
+                remote: local_url.clone(),
+                local: local_url.clone(),
+                directory: None,
+                rewrites: None,
+                health: Some(HealthConfig {
+                    path: Some("/linkup/check".to_string()),
+                    ..Default::default()
+                }),
+            },
         },
         LocalService {
-            name: "linkup_remote_server".to_string(),
-            remote: state.linkup.worker_url.clone(),
-            local: state.linkup.worker_url.clone(),
             current: ServiceTarget::Remote,
-            directory: None,
-            rewrites: vec![],
-            health: Some(HealthConfig {
-                path: Some("/linkup/check".to_string()),
-                ..Default::default()
-            }),
+            config: linkup::config::ServiceConfig {
+                name: "linkup_remote_server".to_string(),
+                remote: state.linkup.worker_url.clone(),
+                local: state.linkup.worker_url.clone(),
+                directory: None,
+                rewrites: None,
+                health: Some(HealthConfig {
+                    path: Some("/linkup/check".to_string()),
+                    ..Default::default()
+                }),
+            },
         },
         LocalService {
-            name: "tunnel".to_string(),
-            remote: state.get_tunnel_url(),
-            local: state.get_tunnel_url(),
             current: ServiceTarget::Remote,
-            directory: None,
-            rewrites: vec![],
-            health: Some(HealthConfig {
-                path: Some("/linkup/check".to_string()),
-                ..Default::default()
-            }),
+            config: linkup::config::ServiceConfig {
+                name: "tunnel".to_string(),
+                remote: state.get_tunnel_url(),
+                local: state.get_tunnel_url(),
+                directory: None,
+                rewrites: None,
+                health: Some(HealthConfig {
+                    path: Some("/linkup/check".to_string()),
+                    ..Default::default()
+                }),
+            },
         },
     ]
 }
@@ -334,7 +343,7 @@ fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
     let mut acceptable_statuses_override: Option<Vec<u16>> = None;
     let mut url = service.current_url();
 
-    if let Some(health_config) = &service.health {
+    if let Some(health_config) = &service.config.health {
         if let Some(path) = &health_config.path {
             url = url.join(path).unwrap();
         }
@@ -349,7 +358,7 @@ fn service_status(service: &LocalService, session_name: &str) -> ServerStatus {
         &HeaderMap::new(),
         session_name,
         &TargetService {
-            name: service.name.clone(),
+            name: service.config.name.clone(),
             url: url.to_string(),
         },
     );
@@ -424,7 +433,7 @@ where
             let priority = service_priority(&service);
 
             ServiceStatus {
-                name: service.name.clone(),
+                name: service.config.name.clone(),
                 component_kind: service.current.to_string(),
                 status: ServerStatus::Loading,
                 service,
@@ -443,7 +452,7 @@ where
         thread::spawn(move || {
             let status = service_status(&service_clone, &session_name);
 
-            tx.send((service_clone.name.clone(), status))
+            tx.send((service_clone.config.name.clone(), status))
                 .expect("Failed to send service status");
         });
     }
@@ -453,10 +462,128 @@ where
     (services_statuses, rx)
 }
 
+fn print_instance_summary() {
+    let default_dir = default_linkup_dir_path();
+    let current_dir = linkup_dir_path();
+    let instances_dir = default_dir.join("instances");
+
+    struct InstanceInfo {
+        id: String,
+        domain: String,
+        path: String,
+        is_current: bool,
+    }
+
+    fn instance_from_state(state: &State) -> (String, String) {
+        let path = std::path::Path::new(&state.linkup.config_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let domain = if state.linkup.session_name.is_empty() {
+            "(unassigned)".to_string()
+        } else {
+            primary_domains(&state.domains)
+                .first()
+                .map(|d| format!("{}.{}", state.linkup.session_name, d.domain))
+                .unwrap_or_else(|| "(unassigned)".to_string())
+        };
+        (path, domain)
+    }
+
+    let mut instances: Vec<InstanceInfo> = Vec::new();
+
+    let default_state_path = default_dir.join(LINKUP_STATE_FILE);
+    if default_state_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&default_state_path) {
+            if let Ok(state) = serde_yaml::from_str::<State>(&content) {
+                let (path, domain) = instance_from_state(&state);
+                instances.push(InstanceInfo {
+                    id: "default".to_string(),
+                    domain,
+                    path,
+                    is_current: current_dir == default_dir,
+                });
+            }
+        }
+    }
+
+    if instances_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&instances_dir) {
+            let mut numbered: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().is_dir())
+                .collect();
+            numbered.sort_by_key(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .parse::<u32>()
+                    .unwrap_or(u32::MAX)
+            });
+
+            for entry in numbered {
+                let state_path = entry.path().join(LINKUP_STATE_FILE);
+                if state_path.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&state_path) {
+                        if let Ok(state) = serde_yaml::from_str::<State>(&content) {
+                            let id = entry.file_name().to_string_lossy().to_string();
+                            let (path, domain) = instance_from_state(&state);
+                            instances.push(InstanceInfo {
+                                id,
+                                domain,
+                                path,
+                                is_current: current_dir == entry.path(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if instances.len() <= 1 {
+        return;
+    }
+
+    let id_w = instances
+        .iter()
+        .map(|i| i.id.len())
+        .max()
+        .unwrap_or(2)
+        .max(2);
+    let domain_w = instances
+        .iter()
+        .map(|i| i.domain.len())
+        .max()
+        .unwrap_or(6)
+        .max(6);
+
+    println!("Instances:");
+    println!("     {:<id_w$}  {:<domain_w$}  PATH", "ID", "DOMAIN");
+    for inst in &instances {
+        let marker = if inst.is_current { "📌" } else { "  " };
+        let domain_cell = if inst.domain == "(unassigned)" {
+            format!("{:<domain_w$}", inst.domain,)
+        } else {
+            format!(
+                "\x1b]8;;https://{}\x1b\\{}\x1b]8;;\x1b\\{}",
+                inst.domain,
+                inst.domain,
+                " ".repeat(domain_w.saturating_sub(inst.domain.len()))
+            )
+        };
+        println!(
+            "  {} {:<id_w$}  {}  {}",
+            marker, inst.id, domain_cell, inst.path,
+        );
+    }
+}
+
 fn is_internal_service(service: &LocalService) -> bool {
-    service.name == "linkup_local_server"
-        || service.name == "linkup_remote_server"
-        || service.name == "tunnel"
+    let service_name = &service.config.name;
+
+    service_name == "linkup_local_server"
+        || service_name == "linkup_remote_server"
+        || service_name == "tunnel"
 }
 
 fn service_priority(service: &LocalService) -> i8 {
@@ -464,5 +591,55 @@ fn service_priority(service: &LocalService) -> i8 {
         1
     } else {
         2
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn domain(name: &str) -> Domain {
+        Domain {
+            domain: name.to_string(),
+            default_service: "web".to_string(),
+            routes: None,
+        }
+    }
+
+    #[test]
+    fn test_primary_domains_filters_subdomains() {
+        let domains = vec![domain("example.com"), domain("app.example.com")];
+        let result = primary_domains(&domains);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].domain, "example.com");
+    }
+
+    #[test]
+    fn test_primary_domains_single() {
+        let domains = vec![domain("example.com")];
+        let result = primary_domains(&domains);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].domain, "example.com");
+    }
+
+    #[test]
+    fn test_primary_domains_empty() {
+        let domains: Vec<Domain> = vec![];
+        let result = primary_domains(&domains);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_primary_domains_unrelated() {
+        let domains = vec![domain("foo.com"), domain("bar.com")];
+        let result = primary_domains(&domains);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_format_state_domains() {
+        let domains = vec![domain("example.com"), domain("app.example.com")];
+        let result = format_state_domains("my-session", &domains);
+        assert_eq!(result, vec!["https://my-session.example.com"]);
     }
 }

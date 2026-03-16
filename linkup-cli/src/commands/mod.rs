@@ -1,6 +1,9 @@
 pub mod completion;
 pub mod deploy;
 pub mod health;
+pub mod instance_remove;
+pub mod instance_remove_all;
+pub mod instance_use;
 pub mod local;
 pub mod local_dns;
 pub mod preview;
@@ -17,6 +20,11 @@ pub use {completion::completion, completion::Args as CompletionArgs};
 pub use {deploy::deploy, deploy::DeployArgs};
 pub use {deploy::destroy, deploy::DestroyArgs};
 pub use {health::health, health::Args as HealthArgs};
+pub use {instance_remove::instance_remove, instance_remove::Args as InstanceRemoveArgs};
+pub use {
+    instance_remove_all::instance_remove_all, instance_remove_all::Args as InstanceRemoveAllArgs,
+};
+pub use {instance_use::instance_use, instance_use::Args as InstanceUseArgs};
 pub use {local::local, local::Args as LocalArgs};
 pub use {local_dns::local_dns, local_dns::Args as LocalDnsArgs};
 pub use {preview::preview, preview::Args as PreviewArgs};

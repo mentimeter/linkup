@@ -14,7 +14,7 @@ use url::Url;
 
 use crate::{
     linkup_certs_dir_path, linkup_file_path,
-    local_config::{upload_state, LocalState},
+    state::{upload_state, State},
     worker_client, Result,
 };
 
@@ -35,19 +35,26 @@ pub enum Error {
 pub struct LocalServer {
     stdout_file_path: PathBuf,
     stderr_file_path: PathBuf,
+    http_port: u16,
 }
 
 impl LocalServer {
-    pub fn new() -> Self {
+    pub fn new(http_port: u16) -> Self {
         Self {
             stdout_file_path: linkup_file_path("localserver-stdout"),
             stderr_file_path: linkup_file_path("localserver-stderr"),
+            http_port,
         }
     }
 
-    /// For internal communication to local-server, we only use the port 80 (HTTP).
-    pub fn url() -> Url {
-        Url::parse("http://localhost:80").expect("linkup url invalid")
+    pub fn url(port: u16) -> Url {
+        Url::parse(&format!("http://localhost:{}", port)).expect("linkup url invalid")
+    }
+
+    /// Derives HTTPS port from HTTP port (80->443, 9080->9443).
+    /// The offset 363 = 443 - 80.
+    fn https_port(&self) -> u16 {
+        self.http_port.saturating_add(363)
     }
 
     fn start(&self) -> Result<()> {
@@ -63,12 +70,16 @@ impl LocalServer {
             "RUST_LOG",
             "info,hickory_server=warn,hyper_util=warn,h2=warn,tower_http=info",
         );
-        command.env("LINKUP_SERVICE_ID", Self::ID);
+        command.env("LINKUP_SERVICE_ID", super::service_id(Self::ID));
         command.args([
             "server",
             "local-worker",
             "--certs-dir",
             linkup_certs_dir_path().to_str().unwrap(),
+            "--http-port",
+            &self.http_port.to_string(),
+            "--https-port",
+            &self.https_port().to_string(),
         ]);
 
         command
@@ -87,13 +98,13 @@ impl LocalServer {
             .build()
             .expect("failed while creating an HTTP client to check readiness of LocalServer");
 
-        let url = format!("{}linkup/check", Self::url());
+        let url = format!("{}linkup/check", Self::url(self.http_port));
         let response = client.get(url).send().await;
 
         matches!(response, Ok(res) if res.status() == StatusCode::OK)
     }
 
-    async fn update_state(&self, state: &mut LocalState) -> Result<()> {
+    async fn update_state(&self, state: &mut State) -> Result<()> {
         let session_name = upload_state(state).await?;
 
         state.linkup.session_name = session_name;
@@ -105,13 +116,52 @@ impl LocalServer {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_url_default_port() {
+        let url = LocalServer::url(80);
+        assert_eq!(url.host_str(), Some("localhost"));
+        assert_eq!(url.port_or_known_default(), Some(80));
+    }
+
+    #[test]
+    fn test_url_custom_port() {
+        let url = LocalServer::url(9080);
+        assert_eq!(url.as_str(), "http://localhost:9080/");
+    }
+
+    #[test]
+    fn test_https_port_derivation() {
+        let server = LocalServer::new(80);
+        assert_eq!(server.https_port(), 443);
+
+        let server = LocalServer::new(9080);
+        assert_eq!(server.https_port(), 9443);
+    }
+
+    #[test]
+    fn test_https_port_max_valid() {
+        let server = LocalServer::new(65172);
+        assert_eq!(server.https_port(), 65535);
+    }
+
+    #[test]
+    fn test_https_port_overflow_saturates() {
+        let server = LocalServer::new(65535);
+        assert_eq!(server.https_port(), u16::MAX);
+    }
+}
+
 impl BackgroundService for LocalServer {
     const ID: &str = "linkup-local-server";
     const NAME: &str = "Linkup local server";
 
     async fn run_with_progress(
         &self,
-        state: &mut LocalState,
+        state: &mut State,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<()> {
         self.notify_update(&status_sender, super::RunStatus::Starting);

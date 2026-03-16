@@ -1,5 +1,4 @@
 use std::{
-    env,
     fs::{self, File},
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
@@ -13,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{linkup_file_path, local_config::LocalState, worker_client::WorkerClient, Result};
+use crate::{linkup_dir_path, linkup_file_path, state::State, worker_client::WorkerClient, Result};
 
 use super::{find_service_pid, BackgroundService, PidError};
 
@@ -56,6 +55,7 @@ impl CloudflareTunnel {
         worker_url: &Url,
         worker_token: &str,
         linkup_session_name: &str,
+        local_server_port: u16,
     ) -> Result<Url> {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
@@ -77,19 +77,23 @@ impl CloudflareTunnel {
             &tunnel_data.id,
             &tunnel_data.secret,
         )?;
-        create_config_yml(&tunnel_data.id)?;
+        create_config_yml(&tunnel_data.id, local_server_port)?;
 
         log::debug!("Starting tunnel with name: {}", self.pidfile_path.display());
         log::debug!("Starting tunnel with name: {}", tunnel_data.name);
+
+        let config_path = linkup_dir_path().join("cloudflared-config.yml");
 
         process::Command::new("cloudflared")
             .process_group(0)
             .stdout(stdout_file)
             .stderr(stderr_file)
             .stdin(Stdio::null())
-            .env("LINKUP_SERVICE_ID", Self::ID)
+            .env("LINKUP_SERVICE_ID", super::service_id(Self::ID))
             .args([
                 "tunnel",
+                "--config",
+                config_path.to_str().expect("config path to be valid UTF-8"),
                 "--pidfile",
                 self.pidfile_path
                     .to_str()
@@ -129,7 +133,7 @@ impl CloudflareTunnel {
         false
     }
 
-    fn update_state(&self, tunnel_url: &Url, state: &mut LocalState) -> Result<()> {
+    fn update_state(&self, tunnel_url: &Url, state: &mut State) -> Result<()> {
         debug!("Adding tunnel url {} to the state", tunnel_url.as_str());
 
         state.linkup.tunnel = Some(tunnel_url.clone());
@@ -147,7 +151,7 @@ impl BackgroundService for CloudflareTunnel {
 
     async fn run_with_progress(
         &self,
-        state: &mut LocalState,
+        state: &mut State,
         status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
     ) -> Result<()> {
         if !state.should_use_tunnel() {
@@ -170,7 +174,7 @@ impl BackgroundService for CloudflareTunnel {
             return Err(Error::InvalidSessionName(state.linkup.session_name.clone()).into());
         }
 
-        if find_service_pid(Self::ID).is_some() {
+        if find_service_pid(&super::service_id(Self::ID)).is_some() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Started,
@@ -182,11 +186,13 @@ impl BackgroundService for CloudflareTunnel {
 
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
+        let local_server_port = state.linkup.local_server_port.unwrap_or(80);
         let tunnel_url = self
             .start(
                 &state.linkup.worker_url,
                 &state.linkup.worker_token,
                 &state.linkup.session_name,
+                local_server_port,
             )
             .await;
 
@@ -294,6 +300,8 @@ pub fn is_installed() -> bool {
     res.success()
 }
 
+/// Credentials are stored in LINKUP_HOME (not ~/.cloudflared/) so each
+/// instance gets its own tunnel identity.
 fn save_tunnel_credentials(
     account_id: &str,
     tunnel_id: &str,
@@ -305,21 +313,20 @@ fn save_tunnel_credentials(
         "TunnelSecret": tunnel_secret,
     });
 
-    let home_dir = env::var("HOME").expect("HOME environment variable to be present");
-    let dir_path = Path::new(&home_dir).join(".cloudflared");
+    let dir_path = linkup_dir_path();
 
     if !dir_path.exists() {
         fs::create_dir_all(&dir_path)?;
     }
 
-    let file_path = dir_path.join(format!("{}.json", tunnel_id));
+    let file_path = dir_path.join("cloudflared-creds.json");
 
     fs::write(&file_path, data.to_string())?;
 
     Ok(())
 }
 
-fn create_config_yml(tunnel_id: &str) -> Result<(), Error> {
+fn create_config_yml(tunnel_id: &str, local_server_port: u16) -> Result<(), Error> {
     #[derive(Serialize, Deserialize)]
     struct Config {
         url: String,
@@ -328,25 +335,24 @@ fn create_config_yml(tunnel_id: &str) -> Result<(), Error> {
         credentials_file: String,
     }
 
-    let home_dir = env::var("HOME").expect("HOME environment variable to be present");
-    let dir_path = Path::new(&home_dir).join(".cloudflared");
+    let dir_path = linkup_dir_path();
 
     if !dir_path.exists() {
         fs::create_dir_all(&dir_path)?;
     }
 
-    let credentials_file_path = dir_path.join(format!("{}.json", tunnel_id));
+    let credentials_file_path = dir_path.join("cloudflared-creds.json");
     let credentials_file_path_str = credentials_file_path.to_string_lossy().to_string();
 
     let config = Config {
-        url: "http://localhost".to_string(),
+        url: format!("http://localhost:{}", local_server_port),
         tunnel: tunnel_id.to_string(),
         credentials_file: credentials_file_path_str,
     };
 
     let serialized = serde_yaml::to_string(&config).expect("Failed to serialize config");
 
-    fs::write(dir_path.join("config.yml"), serialized)?;
+    fs::write(dir_path.join("cloudflared-config.yml"), serialized)?;
 
     Ok(())
 }
@@ -377,5 +383,53 @@ fn get_pid(file_path: &Path) -> Result<super::Pid, PidError> {
             Ok(super::Pid::from_u32(pid_u32))
         }
         Err(e) => Err(PidError::BadPidFile(e.to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_config_yml_output_path_and_content() {
+        let _lock = crate::ENV_TEST_MUTEX.lock().unwrap();
+        let prev = std::env::var("LINKUP_HOME").ok();
+
+        let tmp = std::env::temp_dir().join("linkup-test-cf-config");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        unsafe { std::env::set_var("LINKUP_HOME", &tmp) };
+
+        create_config_yml("test-tunnel-id", 9080).unwrap();
+
+        let config_path = tmp.join("cloudflared-config.yml");
+        assert!(
+            config_path.exists(),
+            "config file should be created in LINKUP_HOME"
+        );
+
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        assert!(
+            content.contains("http://localhost:9080"),
+            "should contain correct port"
+        );
+        assert!(
+            content.contains("test-tunnel-id"),
+            "should contain tunnel ID"
+        );
+
+        let creds_path = tmp.join("cloudflared-creds.json");
+        assert!(
+            content.contains(&creds_path.to_string_lossy().to_string()),
+            "credentials-file should point to LINKUP_HOME"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        if let Some(val) = prev {
+            unsafe { std::env::set_var("LINKUP_HOME", val) };
+        } else {
+            unsafe { std::env::remove_var("LINKUP_HOME") };
+        }
     }
 }
