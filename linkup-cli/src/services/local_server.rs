@@ -116,45 +116,6 @@ impl LocalServer {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_url_default_port() {
-        let url = LocalServer::url(80);
-        assert_eq!(url.host_str(), Some("localhost"));
-        assert_eq!(url.port_or_known_default(), Some(80));
-    }
-
-    #[test]
-    fn test_url_custom_port() {
-        let url = LocalServer::url(9080);
-        assert_eq!(url.as_str(), "http://localhost:9080/");
-    }
-
-    #[test]
-    fn test_https_port_derivation() {
-        let server = LocalServer::new(80);
-        assert_eq!(server.https_port(), 443);
-
-        let server = LocalServer::new(9080);
-        assert_eq!(server.https_port(), 9443);
-    }
-
-    #[test]
-    fn test_https_port_max_valid() {
-        let server = LocalServer::new(65172);
-        assert_eq!(server.https_port(), 65535);
-    }
-
-    #[test]
-    fn test_https_port_overflow_saturates() {
-        let server = LocalServer::new(65535);
-        assert_eq!(server.https_port(), u16::MAX);
-    }
-}
-
 impl BackgroundService for LocalServer {
     const ID: &str = "linkup-local-server";
     const NAME: &str = "Linkup local server";
@@ -226,5 +187,44 @@ impl BackgroundService for LocalServer {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_url_default_port() {
+        let url = LocalServer::url(80);
+        assert_eq!(url.host_str(), Some("localhost"));
+        assert_eq!(url.port_or_known_default(), Some(80));
+    }
+
+    #[test]
+    fn test_url_custom_port() {
+        let url = LocalServer::url(9080);
+        assert_eq!(url.as_str(), "http://localhost:9080/");
+    }
+
+    #[test]
+    fn test_https_port_derivation() {
+        let server = LocalServer::new(80);
+        assert_eq!(server.https_port(), 443);
+
+        let server = LocalServer::new(9080);
+        assert_eq!(server.https_port(), 9443);
+    }
+
+    #[test]
+    fn test_https_port_max_valid() {
+        let server = LocalServer::new(65172);
+        assert_eq!(server.https_port(), 65535);
+    }
+
+    #[test]
+    fn test_https_port_overflow_saturates() {
+        let server = LocalServer::new(65535);
+        assert_eq!(server.https_port(), u16::MAX);
     }
 }
