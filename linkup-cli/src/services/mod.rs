@@ -26,16 +26,12 @@ pub enum RunStatus {
     Error,
 }
 
-impl Display for RunStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Pending => write!(f, "pending"),
-            Self::Starting => write!(f, "starting"),
-            Self::Started => write!(f, "started"),
-            Self::Skipped => write!(f, "skipped"),
-            Self::Error => write!(f, "error"),
-        }
-    }
+#[derive(Error, Debug)]
+pub enum PidError {
+    #[error("no pid file: {0}")]
+    NoPidFile(String),
+    #[error("bad pid file: {0}")]
+    BadPidFile(String),
 }
 
 #[derive(Clone)]
@@ -54,6 +50,14 @@ pub trait BackgroundService {
         local_state: &mut State,
         status_sender: sync::mpsc::Sender<RunUpdate>,
     ) -> anyhow::Result<()>;
+
+    fn stop() {
+        if let Some(pid) = Self::find_pid() {
+            system()
+                .process(pid)
+                .map(|process| process.kill_with(Signal::Interrupt));
+        }
+    }
 
     fn notify_update(&self, status_sender: &sync::mpsc::Sender<RunUpdate>, status: RunStatus) {
         status_sender
@@ -79,35 +83,31 @@ pub trait BackgroundService {
             })
             .unwrap();
     }
-}
 
-#[derive(Error, Debug)]
-pub enum PidError {
-    #[error("no pid file: {0}")]
-    NoPidFile(String),
-    #[error("bad pid file: {0}")]
-    BadPidFile(String),
-}
-
-pub fn find_service_pid(service_id: &str) -> Option<Pid> {
-    for (pid, process) in system().processes() {
-        if process
-            .environ()
-            .iter()
-            .any(|item| item.to_string_lossy() == format!("LINKUP_SERVICE_ID={service_id}"))
-        {
-            return Some(*pid);
+    fn find_pid() -> Option<Pid> {
+        for (pid, process) in system().processes() {
+            if process
+                .environ()
+                .iter()
+                .any(|item| item.to_string_lossy() == format!("LINKUP_SERVICE_ID={}", Self::ID))
+            {
+                return Some(*pid);
+            }
         }
-    }
 
-    None
+        None
+    }
 }
 
-pub fn stop_service(service_id: &str) {
-    if let Some(pid) = find_service_pid(service_id) {
-        system()
-            .process(pid)
-            .map(|process| process.kill_with(Signal::Interrupt));
+impl Display for RunStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pending => write!(f, "pending"),
+            Self::Starting => write!(f, "starting"),
+            Self::Started => write!(f, "started"),
+            Self::Skipped => write!(f, "skipped"),
+            Self::Error => write!(f, "error"),
+        }
     }
 }
 
