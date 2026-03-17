@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     linkup_dir_path,
-    services::{self, find_service_pid, BackgroundService},
+    services::{self, BackgroundService},
     state::State,
     Result,
 };
@@ -106,7 +106,7 @@ impl BackgroundServices {
     pub fn load(state: Option<&State>) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
-        let linkup_server = match find_service_pid(services::LocalServer::ID) {
+        let linkup_server = match services::LocalServer::find_pid() {
             Some(pid) => {
                 managed_pids.push(pid);
 
@@ -116,7 +116,7 @@ impl BackgroundServices {
         };
 
         let cloudflared = if services::is_cloudflared_installed() {
-            match find_service_pid(services::CloudflareTunnel::ID) {
+            match services::CloudflareTunnel::find_pid() {
                 Some(pid) => {
                     managed_pids.push(pid);
 
@@ -128,7 +128,7 @@ impl BackgroundServices {
             BackgroundServiceHealth::NotInstalled
         };
 
-        let dns_server = match find_service_pid(services::LocalDnsServer::ID) {
+        let dns_server = match services::LocalDnsServer::find_pid() {
             Some(pid) => {
                 managed_pids.push(pid);
 

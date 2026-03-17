@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use colored::Colorize;
 
 use crate::{
-    services::{self, find_service_pid, BackgroundService},
+    services::{self, BackgroundService},
     state::{upload_state, ServiceTarget, State},
     Result,
 };
@@ -35,7 +35,7 @@ pub async fn local(args: &Args) -> Result<()> {
         return Ok(());
     }
 
-    if find_service_pid(services::LocalServer::ID).is_none() {
+    if services::LocalServer::find_pid().is_none() {
         println!(
             "{}",
             "Seems like your local Linkup server is not running. Please run 'linkup start' first."
