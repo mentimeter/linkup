@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 use crate::env_files::clear_env_file;
-use crate::services::{stop_service, BackgroundService};
+use crate::services::BackgroundService;
 use crate::state::State;
 use crate::{services, Result};
 
@@ -35,9 +35,9 @@ pub fn stop(_args: &Args, clear_env: bool) -> Result<()> {
         }
     }
 
-    stop_service(services::LocalServer::ID);
-    stop_service(services::CloudflareTunnel::ID);
-    stop_service(services::LocalDnsServer::ID);
+    services::LocalServer::stop();
+    services::CloudflareTunnel::stop();
+    services::LocalDnsServer::stop();
 
     println!("Stopped linkup");
 

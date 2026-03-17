@@ -15,7 +15,7 @@ use url::Url;
 
 use crate::{linkup_file_path, state::State, worker_client::WorkerClient, Result};
 
-use super::{find_service_pid, BackgroundService, PidError};
+use super::{BackgroundService, PidError};
 
 #[derive(thiserror::Error, Debug)]
 #[allow(dead_code)]
@@ -170,7 +170,7 @@ impl BackgroundService for CloudflareTunnel {
             return Err(Error::InvalidSessionName(state.linkup.session_name.clone()).into());
         }
 
-        if find_service_pid(Self::ID).is_some() {
+        if Self::find_pid().is_some() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Started,
