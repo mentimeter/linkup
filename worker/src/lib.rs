@@ -1,4 +1,5 @@
 use axum::{
+    body::to_bytes,
     extract::{Json, Query, Request, State},
     http::StatusCode,
     middleware::{from_fn_with_state, Next},
@@ -17,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use tower_service::Service;
 use worker::{
     console_error, console_log, console_warn, event, kv::KvStore, Env, Fetch, HttpRequest,
-    HttpResponse,
+    HttpResponse, RequestRedirect,
 };
 use ws::handle_ws_resp;
 
@@ -330,15 +331,9 @@ async fn linkup_request_handler(
     req.headers_mut().remove(http::header::HOST);
     linkup::normalize_cookie_header(req.headers_mut());
 
-    let upstream_request: worker::Request = match req.try_into() {
-        Ok(req) => req,
-        Err(e) => {
-            return HttpError::new(
-                format!("Failed to parse request: {}", e),
-                StatusCode::BAD_REQUEST,
-            )
-            .into_response()
-        }
+    let upstream_request = match convert_request(req).await {
+        Ok(worker_request) => worker_request,
+        Err(error) => return error.into_response(),
     };
 
     let cacheable_req = is_cacheable_request(&upstream_request, &config);
@@ -366,7 +361,7 @@ async fn linkup_request_handler(
                 format!("Failed to fetch from target service: {}", e),
                 StatusCode::BAD_GATEWAY,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -394,6 +389,66 @@ async fn linkup_request_handler(
         }
         handle_http_resp(upstream_response).await.into_response()
     }
+}
+
+// NOTE(augustoccesar)[2026-03-19]: The reason to build this manually instead of using the TryFrom for
+//  the worker::Request is because of how body is constructed.
+//  We were seeing body for DELETE requests not being proxied correctly. Because of that we are now
+//  doing the reconstruct manually to ensure the body is present.
+//
+//  This is not ideal and would be great to keep trusting the `to_wasm` from the workers-rs,
+//  but for now this solves our issue.
+//  Main concern here is if we might be missing some of the other internal operations that are
+//  done during the conversion. But for our usecases, it seems to be working.
+async fn convert_request(
+    req: http::Request<axum::body::Body>,
+) -> Result<worker::Request, HttpError> {
+    const MAX_BODY_SIZE: usize = 100 * 1024 * 1024; // 100MB, same as local-server limit
+
+    let (parts, body) = req.into_parts();
+    let body_bytes = match to_bytes(body, MAX_BODY_SIZE).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return Err(HttpError::new(
+                format!("Failed to extract request body: {}", e),
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    };
+
+    let target_url = parts.uri.to_string();
+
+    let mut headers = worker::Headers::new();
+    for (name, value) in parts.headers.iter() {
+        if let Ok(header_value) = value.to_str() {
+            let _ = headers.set(name.as_str(), header_value);
+        }
+    }
+
+    let mut request_init = worker::RequestInit::new();
+    request_init
+        .with_method(worker::Method::from(parts.method.to_string()))
+        .with_headers(headers)
+        .with_redirect(RequestRedirect::Manual);
+
+    if !body_bytes.is_empty() {
+        request_init.with_body(Some(wasm_bindgen::JsValue::from_str(
+            &String::from_utf8_lossy(&body_bytes),
+        )));
+    }
+
+    let worker_request: worker::Request =
+        match worker::Request::new_with_init(&target_url, &request_init) {
+            Ok(req) => req,
+            Err(e) => {
+                return Err(HttpError::new(
+                    format!("Failed to create request: {}", e),
+                    StatusCode::BAD_REQUEST,
+                ));
+            }
+        };
+
+    Ok(worker_request)
 }
 
 async fn cleanup_unused_sessions(state: &LinkupState) {
