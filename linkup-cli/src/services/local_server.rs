@@ -50,7 +50,7 @@ impl LocalServer {
         Url::parse("http://localhost:80").expect("linkup url invalid")
     }
 
-    fn start(&self) -> Result<()> {
+    fn start(&self, session_name: String, domains: Vec<String>) -> Result<()> {
         log::debug!("Starting {}", Self::NAME);
 
         let stdout_file = File::create(&self.stdout_file_path)?;
@@ -66,7 +66,10 @@ impl LocalServer {
         command.env("LINKUP_SERVICE_ID", Self::ID);
         command.args([
             "server",
-            "local-worker",
+            "--session-name",
+            &session_name,
+            "--domains",
+            &domains.join(","),
             "--certs-dir",
             linkup_certs_dir_path().to_str().unwrap(),
         ]);
@@ -116,6 +119,9 @@ impl BackgroundService for LocalServer {
     ) -> Result<()> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
+        let session_name = state.linkup.session_name.clone();
+        let domains = state.domain_strings();
+
         if self.reachable().await {
             self.notify_update_with_details(
                 &status_sender,
@@ -126,7 +132,7 @@ impl BackgroundService for LocalServer {
             return Ok(());
         }
 
-        if let Err(e) = self.start() {
+        if let Err(e) = self.start(session_name, domains) {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,

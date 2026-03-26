@@ -37,7 +37,6 @@ pub fn stop(_args: &Args, clear_env: bool) -> Result<()> {
 
     services::LocalServer::stop();
     services::CloudflareTunnel::stop();
-    services::LocalDnsServer::stop();
 
     println!("Stopped linkup");
 
