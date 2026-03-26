@@ -17,6 +17,7 @@ use hickory_server::{
         config::{NameServerConfig, NameServerConfigGroup, ResolverOpts},
         name_server::TokioConnectionProvider,
     },
+    server::{RequestHandler, ResponseHandler, ResponseInfo},
     store::{
         forwarder::{ForwardAuthority, ForwardConfig},
         in_memory::InMemoryAuthority,
@@ -34,13 +35,15 @@ use linkup::{
     Session, SessionAllocator, TargetService, UpdateSessionRequest,
 };
 use rustls::ServerConfig;
+use serde::Deserialize;
 use std::{
     net::{Ipv4Addr, SocketAddr},
+    ops::Deref,
     path::PathBuf,
     str::FromStr,
 };
 use std::{path::Path, sync::Arc};
-use tokio::{net::UdpSocket, select, signal};
+use tokio::{net::UdpSocket, select, signal, sync::RwLock};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
@@ -80,14 +83,46 @@ impl IntoResponse for ApiError {
     }
 }
 
-pub fn linkup_router(config_store: MemoryStringStore) -> Router {
+#[derive(Clone)]
+pub struct DnsCatalog(Arc<RwLock<Catalog>>);
+
+impl DnsCatalog {
+    pub fn new() -> Self {
+        Self(Arc::new(RwLock::new(Catalog::new())))
+    }
+}
+
+impl Deref for DnsCatalog {
+    type Target = Arc<RwLock<Catalog>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[async_trait::async_trait]
+impl RequestHandler for DnsCatalog {
+    async fn handle_request<R: ResponseHandler>(
+        &self,
+        request: &hickory_server::server::Request,
+        response_handle: R,
+    ) -> ResponseInfo {
+        let catalog = self.read().await;
+
+        catalog.handle_request(request, response_handle).await
+    }
+}
+
+pub fn linkup_router(config_store: MemoryStringStore, dns_catalog: DnsCatalog) -> Router {
     let client = https_client();
 
     Router::new()
         .route("/linkup/local-session", post(linkup_config_handler))
         .route("/linkup/check", get(always_ok))
+        .route("/linkup/dns/records", post(dns_create)) // TODO: Modify me
         .fallback(any(linkup_request_handler))
         .layer(Extension(config_store))
+        .layer(Extension(dns_catalog))
         .layer(Extension(client))
         .layer(
             ServiceBuilder::new()
@@ -100,24 +135,21 @@ pub fn linkup_router(config_store: MemoryStringStore) -> Router {
         )
 }
 
-pub async fn start(
-    config_store: MemoryStringStore,
-    certs_dir: &Path,
-    session_name: String,
-    domains: Vec<String>,
-) {
+pub async fn start(config_store: MemoryStringStore, certs_dir: &Path) {
+    let dns_catalog = DnsCatalog::new();
+
     let http_config_store = config_store.clone();
     let https_config_store = config_store.clone();
     let https_certs_dir = PathBuf::from(certs_dir);
 
     select! {
-        () = start_server_http(http_config_store) => {
+        () = start_server_http(http_config_store, dns_catalog.clone()) => {
             println!("HTTP server shut down");
         },
-        () = start_server_https(https_config_store, &https_certs_dir) => {
+        () = start_server_https(https_config_store, &https_certs_dir, dns_catalog.clone()) => {
             println!("HTTPS server shut down");
         },
-        () = start_dns_server(session_name, domains) => {
+        () = start_dns_server(dns_catalog.clone()) => {
             println!("DNS server shut down");
         },
         () = shutdown_signal() => {
@@ -126,7 +158,11 @@ pub async fn start(
     }
 }
 
-async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Path) {
+async fn start_server_https(
+    config_store: MemoryStringStore,
+    certs_dir: &Path,
+    dns_catalog: DnsCatalog,
+) {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     let sni = match certificates::WildcardSniResolver::load_dir(certs_dir) {
@@ -145,7 +181,7 @@ async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Path) {
         .with_cert_resolver(Arc::new(sni));
     server_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
-    let app = linkup_router(config_store);
+    let app = linkup_router(config_store, dns_catalog);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 443));
     println!("HTTPS listening on {}", &addr);
@@ -156,8 +192,8 @@ async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Path) {
         .expect("failed to start HTTPS server");
 }
 
-async fn start_server_http(config_store: MemoryStringStore) {
-    let app = linkup_router(config_store);
+async fn start_server_http(config_store: MemoryStringStore, dns_catalog: DnsCatalog) {
+    let app = linkup_router(config_store, dns_catalog);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 80));
     println!("HTTP listening on {}", &addr);
@@ -171,25 +207,7 @@ async fn start_server_http(config_store: MemoryStringStore) {
         .expect("failed to start HTTP server");
 }
 
-async fn start_dns_server(linkup_session_name: String, domains: Vec<String>) {
-    let mut catalog = Catalog::new();
-
-    for domain in &domains {
-        let record_name = Name::from_str(&format!("{linkup_session_name}.{domain}.")).unwrap();
-
-        let authority = InMemoryAuthority::empty(record_name.clone(), ZoneType::Primary, false);
-
-        let record = Record::from_rdata(
-            record_name.clone(),
-            3600,
-            RData::A(Ipv4Addr::new(127, 0, 0, 1).into()),
-        );
-
-        authority.upsert(record, 0).await;
-
-        catalog.upsert(record_name.clone().into(), vec![Arc::new(authority)]);
-    }
-
+async fn start_dns_server(dns_catalog: DnsCatalog) {
     let cf_name_server = NameServerConfig::new("1.1.1.1:53".parse().unwrap(), Protocol::Udp);
     let forward_config = ForwardConfig {
         name_servers: NameServerConfigGroup::from(vec![cf_name_server]),
@@ -202,12 +220,15 @@ async fn start_dns_server(linkup_session_name: String, domains: Vec<String>) {
             .build()
             .unwrap();
 
-    catalog.upsert(Name::root().into(), vec![Arc::new(forwarder)]);
+    {
+        let mut catalog = dns_catalog.write().await;
+        catalog.upsert(Name::root().into(), vec![Arc::new(forwarder)]);
+    }
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8053));
     let sock = UdpSocket::bind(&addr).await.unwrap();
 
-    let mut server = ServerFuture::new(catalog);
+    let mut server = ServerFuture::new(dns_catalog);
     server.register_socket(sock);
 
     println!("listening on {addr}");
@@ -425,6 +446,34 @@ async fn linkup_config_handler(
 
 async fn always_ok() -> &'static str {
     "OK"
+}
+
+#[derive(Deserialize)]
+pub struct CreateDnsRecord {
+    pub record: String,
+}
+
+async fn dns_create(
+    Extension(dns_catalog): Extension<DnsCatalog>,
+    Json(payload): Json<CreateDnsRecord>,
+) -> impl IntoResponse {
+    let mut catalog = dns_catalog.write().await;
+
+    let record_name = Name::from_str(&format!("{}.", payload.record)).unwrap();
+
+    let authority = InMemoryAuthority::empty(record_name.clone(), ZoneType::Primary, false);
+
+    let record = Record::from_rdata(
+        record_name.clone(),
+        3600,
+        RData::A(Ipv4Addr::new(127, 0, 0, 1).into()),
+    );
+
+    authority.upsert(record, 0).await;
+
+    catalog.upsert(record_name.clone().into(), vec![Arc::new(authority)]);
+
+    StatusCode::CREATED.into_response()
 }
 
 fn https_client() -> HttpsClient {
