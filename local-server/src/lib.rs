@@ -92,6 +92,12 @@ impl DnsCatalog {
     }
 }
 
+impl Default for DnsCatalog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Deref for DnsCatalog {
     type Target = Arc<RwLock<Catalog>>;
 
