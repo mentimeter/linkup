@@ -450,7 +450,7 @@ async fn always_ok() -> &'static str {
 
 #[derive(Deserialize)]
 pub struct CreateDnsRecord {
-    pub record: String,
+    pub domain: String,
 }
 
 async fn dns_create(
@@ -459,7 +459,7 @@ async fn dns_create(
 ) -> impl IntoResponse {
     let mut catalog = dns_catalog.write().await;
 
-    let record_name = Name::from_str(&format!("{}.", payload.record)).unwrap();
+    let record_name = Name::from_str(&format!("{}.", payload.domain)).unwrap();
 
     let authority = InMemoryAuthority::empty(record_name.clone(), ZoneType::Primary, false);
 
