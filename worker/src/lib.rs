@@ -1,5 +1,5 @@
 use axum::{
-    body::to_bytes,
+    body::HttpBody,
     extract::{Json, Query, Request, State},
     http::StatusCode,
     middleware::{from_fn_with_state, Next},
@@ -403,18 +403,8 @@ async fn linkup_request_handler(
 async fn convert_request(
     req: http::Request<axum::body::Body>,
 ) -> Result<worker::Request, HttpError> {
-    const MAX_BODY_SIZE: usize = 100 * 1024 * 1024; // 100MB, same as local-server limit
-
     let (parts, body) = req.into_parts();
-    let body_bytes = match to_bytes(body, MAX_BODY_SIZE).await {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            return Err(HttpError::new(
-                format!("Failed to extract request body: {}", e),
-                StatusCode::BAD_REQUEST,
-            ));
-        }
-    };
+    let has_body = !body.is_end_stream();
 
     let target_url = parts.uri.to_string();
 
@@ -431,10 +421,17 @@ async fn convert_request(
         .with_headers(headers)
         .with_redirect(RequestRedirect::Manual);
 
-    if !body_bytes.is_empty() {
-        request_init.with_body(Some(wasm_bindgen::JsValue::from_str(
-            &String::from_utf8_lossy(&body_bytes),
-        )));
+    if has_body {
+        let body_stream = worker::Body::from_stream(body.into_data_stream()).map_err(|e| {
+            HttpError::new(
+                format!("Failed to stream request body: {}", e),
+                StatusCode::BAD_GATEWAY,
+            )
+        })?;
+
+        if let Some(body_stream) = body_stream.into_inner() {
+            request_init.with_body(Some(wasm_bindgen::JsValue::from(body_stream)));
+        }
     }
 
     let worker_request: worker::Request =
