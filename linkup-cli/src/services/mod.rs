@@ -4,10 +4,8 @@ use sysinfo::{ProcessRefreshKind, RefreshKind, System};
 use thiserror::Error;
 
 mod cloudflare_tunnel;
-mod local_dns_server;
 mod local_server;
 
-pub use local_dns_server::LocalDnsServer;
 pub use local_server::LocalServer;
 pub use sysinfo::{Pid, Signal};
 pub use {

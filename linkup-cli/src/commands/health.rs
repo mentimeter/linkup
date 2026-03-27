@@ -90,20 +90,18 @@ struct OrphanProcess {
 pub struct BackgroundServices {
     pub linkup_server: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
-    dns_server: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
 }
 
 #[derive(Debug, Serialize)]
 pub enum BackgroundServiceHealth {
-    Unknown,
     NotInstalled,
     Stopped,
     Running(u32),
 }
 
 impl BackgroundServices {
-    pub fn load(state: Option<&State>) -> Self {
+    pub fn load(_state: Option<&State>) -> Self {
         let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
 
         let linkup_server = match services::LocalServer::find_pid() {
@@ -128,30 +126,9 @@ impl BackgroundServices {
             BackgroundServiceHealth::NotInstalled
         };
 
-        let dns_server = match services::LocalDnsServer::find_pid() {
-            Some(pid) => {
-                managed_pids.push(pid);
-
-                BackgroundServiceHealth::Running(pid.as_u32())
-            }
-            None => match state {
-                // If there is no state, we cannot know if local-dns is installed since we depend on
-                // the domains listed on it.
-                Some(state) => {
-                    if local_dns::is_installed(&crate::state::managed_domains(Some(state), &None)) {
-                        BackgroundServiceHealth::Stopped
-                    } else {
-                        BackgroundServiceHealth::NotInstalled
-                    }
-                }
-                None => BackgroundServiceHealth::Unknown,
-            },
-        };
-
         Self {
             linkup_server,
             cloudflared,
-            dns_server,
             possible_orphan_processes: find_potential_orphan_processes(managed_pids),
         }
     }
@@ -357,15 +334,6 @@ impl Display for Health {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-            BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
-        }
-
-        write!(f, "  - DNS Server     ")?;
-        match &self.background_services.dns_server {
-            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
-            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
-            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-            BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
         write!(f, "  - Cloudflared    ")?;
@@ -373,7 +341,6 @@ impl Display for Health {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-            BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
         writeln!(f, "{}", "Linkup:".bold().italic())?;

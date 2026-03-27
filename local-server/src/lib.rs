@@ -36,10 +36,11 @@ use linkup::{
 use rustls::ServerConfig;
 use std::{
     net::{Ipv4Addr, SocketAddr},
+    path::PathBuf,
     str::FromStr,
 };
 use std::{path::Path, sync::Arc};
-use tokio::{net::UdpSocket, signal};
+use tokio::{net::UdpSocket, select, signal};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
@@ -99,7 +100,33 @@ pub fn linkup_router(config_store: MemoryStringStore) -> Router {
         )
 }
 
-pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Path) {
+pub async fn start(
+    config_store: MemoryStringStore,
+    certs_dir: &Path,
+    session_name: String,
+    domains: Vec<String>,
+) {
+    let http_config_store = config_store.clone();
+    let https_config_store = config_store.clone();
+    let https_certs_dir = PathBuf::from(certs_dir);
+
+    select! {
+        () = start_server_http(http_config_store) => {
+            println!("HTTP server shut down");
+        },
+        () = start_server_https(https_config_store, &https_certs_dir) => {
+            println!("HTTPS server shut down");
+        },
+        () = start_dns_server(session_name, domains) => {
+            println!("DNS server shut down");
+        },
+        () = shutdown_signal() => {
+            println!("Shutdown signal received, stopping all servers");
+        }
+    }
+}
+
+async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Path) {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     let sni = match certificates::WildcardSniResolver::load_dir(certs_dir) {
@@ -121,7 +148,7 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
     let app = linkup_router(config_store);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 443));
-    println!("listening on {}", &addr);
+    println!("HTTPS listening on {}", &addr);
 
     axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
         .serve(app.into_make_service())
@@ -129,21 +156,22 @@ pub async fn start_server_https(config_store: MemoryStringStore, certs_dir: &Pat
         .expect("failed to start HTTPS server");
 }
 
-pub async fn start_server_http(config_store: MemoryStringStore) -> std::io::Result<()> {
+async fn start_server_http(config_store: MemoryStringStore) {
     let app = linkup_router(config_store);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 80));
-    println!("listening on {}", &addr);
+    println!("HTTP listening on {}", &addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .expect("failed to bind to address");
+
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
-
-    Ok(())
+        .await
+        .expect("failed to start HTTP server");
 }
 
-pub async fn start_dns_server(linkup_session_name: String, domains: Vec<String>) {
+async fn start_dns_server(linkup_session_name: String, domains: Vec<String>) {
     let mut catalog = Catalog::new();
 
     for domain in &domains {
@@ -399,11 +427,6 @@ async fn always_ok() -> &'static str {
     "OK"
 }
 
-async fn shutdown_signal() {
-    let _ = signal::ctrl_c().await;
-    println!("signal received, starting graceful shutdown");
-}
-
 fn https_client() -> HttpsClient {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
@@ -424,4 +447,28 @@ fn https_client() -> HttpsClient {
         .build();
 
     Client::builder(TokioExecutor::new()).build(https)
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to start SIGINT handler");
+    };
+
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to start SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    tokio::select! {
+        () = ctrl_c => {
+            println!("Received SIGINT signal");
+        },
+        () = terminate => {
+            println!("Received SIGTERM signal");
+        },
+    }
 }
