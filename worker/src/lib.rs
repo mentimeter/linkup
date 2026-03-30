@@ -331,8 +331,8 @@ async fn linkup_request_handler(
     req.headers_mut().remove(http::header::HOST);
     linkup::normalize_cookie_header(req.headers_mut());
 
-    let upstream_request = if req.headers().contains_key(http::header::CONTENT_LENGTH)
-        && req.method() == http::Method::DELETE
+    let upstream_request = if req.method() == http::Method::DELETE
+        && req.headers().contains_key(http::header::CONTENT_LENGTH)
     {
         // NOTE(augustoccesar)[2026-03-30]: This exists only to handle some non-compliant
         //  DELETE requests and should be removed as soon as possible.
