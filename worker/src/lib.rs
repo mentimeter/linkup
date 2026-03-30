@@ -208,7 +208,7 @@ async fn linkup_session_handler(
         Ok(conf) => conf,
         Err(e) => {
             return HttpError::new(
-                format!("Failed to parse server config: {} - local server", e),
+                format!("Failed to parse server config: {} - Worker", e),
                 StatusCode::BAD_REQUEST,
             )
             .into_response()
@@ -245,7 +245,7 @@ async fn linkup_preview_handler(
         Ok(conf) => conf,
         Err(e) => {
             return HttpError::new(
-                format!("Failed to parse server config: {} - local server", e),
+                format!("Failed to parse server config: {} - Worker", e),
                 StatusCode::BAD_REQUEST,
             )
             .into_response()
@@ -296,8 +296,7 @@ async fn linkup_request_handler(
         Ok(session) => session,
         Err(_) => {
             return HttpError::new(
-                "Linkup was unable to determine the session origin of the request.
-                Make sure your request includes a valid session ID in the referer or tracestate headers. - Local Server".to_string(),
+                "Linkup was unable to determine the session origin of the request.\nMake sure your request includes a valid session ID in the referer or tracestate headers. - Worker".to_string(),
                 StatusCode::UNPROCESSABLE_ENTITY,
             )
             .into_response()
@@ -308,9 +307,7 @@ async fn linkup_request_handler(
         Some(result) => result,
         None => {
             return HttpError::new(
-                "The request belonged to a session, but there was no target for the request.
-                Check your routing rules in the linkup config for a match. - Local Server"
-                    .to_string(),
+                "The request belonged to a session, but there was no target for the request.\nCheck your routing rules in the linkup config for a match. - Worker".to_string(),
                 StatusCode::NOT_FOUND,
             )
             .into_response()
