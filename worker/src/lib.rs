@@ -331,9 +331,28 @@ async fn linkup_request_handler(
     req.headers_mut().remove(http::header::HOST);
     linkup::normalize_cookie_header(req.headers_mut());
 
-    let upstream_request = match convert_request(req).await {
-        Ok(worker_request) => worker_request,
-        Err(error) => return error.into_response(),
+    let upstream_request = if req.headers().contains_key(http::header::CONTENT_LENGTH)
+        && req.method() == http::Method::DELETE
+    {
+        // NOTE(augustoccesar)[2026-03-30]: This exists only to handle some non-compliant
+        //  DELETE requests and should be removed as soon as possible.
+        //  Ideally only the `else` branch of this should exist where we delegate the conversion
+        //  to workers-rs.
+        match convert_request(req).await {
+            Ok(worker_request) => worker_request,
+            Err(error) => return error.into_response(),
+        }
+    } else {
+        match req.try_into() {
+            Ok(req) => req,
+            Err(e) => {
+                return HttpError::new(
+                    format!("Failed to parse request: {}", e),
+                    StatusCode::BAD_REQUEST,
+                )
+                .into_response()
+            }
+        }
     };
 
     let cacheable_req = is_cacheable_request(&upstream_request, &config);
@@ -391,15 +410,11 @@ async fn linkup_request_handler(
     }
 }
 
+// TODO(augustoccesar)[2025-03-30]: Deprecate this once non-compliant DELETE endpoints are removed.
 // NOTE(augustoccesar)[2026-03-19]: The reason to build this manually instead of using the TryFrom for
 //  the worker::Request is because of how body is constructed.
 //  We were seeing body for DELETE requests not being proxied correctly. Because of that we are now
 //  doing the reconstruct manually to ensure the body is present.
-//
-//  This is not ideal and would be great to keep trusting the `to_wasm` from the workers-rs,
-//  but for now this solves our issue.
-//  Main concern here is if we might be missing some of the other internal operations that are
-//  done during the conversion. But for our usecases, it seems to be working.
 async fn convert_request(
     req: http::Request<axum::body::Body>,
 ) -> Result<worker::Request, HttpError> {
