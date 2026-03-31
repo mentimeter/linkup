@@ -9,8 +9,8 @@ mod local_server;
 pub use local_server::LocalServer;
 pub use sysinfo::{Pid, Signal};
 pub use {
-    cloudflare_tunnel::is_installed as is_cloudflared_installed,
     cloudflare_tunnel::CloudflareTunnel,
+    cloudflare_tunnel::is_installed as is_cloudflared_installed,
 };
 
 use crate::state::State;

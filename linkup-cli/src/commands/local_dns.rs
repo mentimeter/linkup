@@ -4,11 +4,11 @@ use std::{
 };
 
 use crate::{
-    commands, is_sudo, linkup_certs_dir_path,
-    state::{self, managed_domains, top_level_domains, State},
-    sudo_su, Result,
+    Result, commands, is_sudo, linkup_certs_dir_path,
+    state::{self, State, managed_domains, top_level_domains},
+    sudo_su,
 };
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Subcommand;
 use linkup_local_server::certificates::{
     setup_self_signed_certificates, uninstall_self_signed_certificates,

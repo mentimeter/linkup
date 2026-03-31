@@ -13,9 +13,8 @@ use url::Url;
 use linkup::{Domain, Session, SessionService, UpdateSessionRequest};
 
 use crate::{
-    linkup_file_path, services,
+    LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services,
     worker_client::{self, WorkerClient},
-    Result, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE,
 };
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

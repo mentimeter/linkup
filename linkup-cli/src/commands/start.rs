@@ -4,21 +4,21 @@ use std::{
     io::stdout,
     path::{Path, PathBuf},
     sync,
-    thread::{self, sleep, JoinHandle},
+    thread::{self, JoinHandle, sleep},
     time::Duration,
 };
 
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error, anyhow};
 use colored::Colorize;
-use crossterm::{cursor, ExecutableCommand};
+use crossterm::{ExecutableCommand, cursor};
 
+use crate::{Result, state::State};
 use crate::{
-    commands::status::{format_state_domains, SessionStatus},
+    commands::status::{SessionStatus, format_state_domains},
     env_files::write_to_env_file,
     services::{self, BackgroundService},
     state::{config_path, config_to_state, get_config},
 };
-use crate::{state::State, Result};
 
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 

@@ -1,11 +1,11 @@
-use reqwest::{multipart, Client};
+use reqwest::{Client, multipart};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
+    DeployError,
     auth::CloudflareApiAuth,
     resources::{DNSRecord, Rule, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart},
-    DeployError,
 };
 
 pub trait CloudflareApi {
@@ -795,20 +795,19 @@ impl CloudflareApi for AccountCloudflareApi {
             return Err(DeployError::OtherError);
         }
 
-        if let Some(records) = data.result {
-            if let Some(r) = records
+        if let Some(records) = data.result
+            && let Some(r) = records
                 .into_iter()
                 .find(|r| r.comment == Some(comment.clone()))
-            {
-                return Ok(Some(DNSRecord {
-                    id: r.id,
-                    name: r.name,
-                    record_type: r.record_type,
-                    content: r.content,
-                    comment: comment.clone(),
-                    proxied: r.proxied.unwrap_or(false),
-                }));
-            }
+        {
+            return Ok(Some(DNSRecord {
+                id: r.id,
+                name: r.name,
+                record_type: r.record_type,
+                content: r.content,
+                comment: comment.clone(),
+                proxied: r.proxied.unwrap_or(false),
+            }));
         }
 
         Ok(None)

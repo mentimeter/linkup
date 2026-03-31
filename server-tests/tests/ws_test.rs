@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
+use axum::Router;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
-use axum::Router;
 use futures::{SinkExt, StreamExt};
 use helpers::ServerKind;
 use http::{HeaderName, HeaderValue};

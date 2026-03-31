@@ -3,7 +3,7 @@ use std::str::FromStr;
 use axum::{http::StatusCode, response::IntoResponse};
 use http::{HeaderName, HeaderValue};
 use linkup::allow_all_cors;
-use worker::{console_log, Error, HttpResponse, WebSocket, WebSocketPair, WebsocketEvent};
+use worker::{Error, HttpResponse, WebSocket, WebSocketPair, WebsocketEvent, console_log};
 
 use futures::{
     future::{self, Either},
@@ -25,7 +25,7 @@ pub async fn handle_ws_resp(upstream_response: worker::Response) -> impl IntoRes
                 format!("Failed to connect to destination: {}", e),
                 StatusCode::BAD_GATEWAY,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -36,7 +36,7 @@ pub async fn handle_ws_resp(upstream_response: worker::Response) -> impl IntoRes
                 format!("Failed to create source websocket: {}", e),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
-            .into_response()
+            .into_response();
         }
     };
     let downstream_ws_server = downstream_ws.server;
@@ -102,7 +102,7 @@ pub async fn handle_ws_resp(upstream_response: worker::Response) -> impl IntoRes
                 format!("Failed to create response from websocket: {}", e),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -113,7 +113,7 @@ pub async fn handle_ws_resp(upstream_response: worker::Response) -> impl IntoRes
                 format!("Failed to parse response: {}", e),
                 StatusCode::BAD_GATEWAY,
             )
-            .into_response()
+            .into_response();
         }
     };
 

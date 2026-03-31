@@ -164,13 +164,15 @@ impl From<HttpHeaderMap> for HeaderMap {
 impl From<HeaderMap> for HttpHeaderMap {
     fn from(linkup_headers: HeaderMap) -> Self {
         let mut http_headers = HttpHeaderMap::new();
+
         for (key, value) in linkup_headers.into_iter() {
-            if let Ok(http_value) = HttpHeaderValue::from_str(&value) {
-                if let Ok(http_key) = http::header::HeaderName::from_bytes(key.as_bytes()) {
-                    http_headers.insert(http_key, http_value);
-                }
+            if let Ok(http_value) = HttpHeaderValue::from_str(&value)
+                && let Ok(http_key) = http::header::HeaderName::from_bytes(key.as_bytes())
+            {
+                http_headers.insert(http_key, http_value);
             }
         }
+
         http_headers
     }
 }
@@ -178,7 +180,7 @@ impl From<HeaderMap> for HttpHeaderMap {
 #[cfg(test)]
 mod tests {
     use super::normalize_cookie_header;
-    use http::{header::COOKIE, HeaderMap, HeaderValue};
+    use http::{HeaderMap, HeaderValue, header::COOKIE};
 
     #[test]
     fn normalizes_multiple_cookie_headers_with_semicolon() {

@@ -165,14 +165,14 @@ pub fn get_target_service(
 
     // If there was a destination created in a previous linkup, we don't want to
     // re-do path rewrites, so we use the destination service.
-    if let Some(destination_service) = headers.get(HeaderName::LinkupDestination) {
-        if let Some(service) = config.get_service(destination_service) {
-            let target = redirect(target.clone(), &service.location, Some(path.to_string()));
-            return Some(TargetService {
-                name: destination_service.to_string(),
-                url: target.to_string(),
-            });
-        }
+    if let Some(destination_service) = headers.get(HeaderName::LinkupDestination)
+        && let Some(service) = config.get_service(destination_service)
+    {
+        let target = redirect(target.clone(), &service.location, Some(path.to_string()));
+        return Some(TargetService {
+            name: destination_service.to_string(),
+            url: target.to_string(),
+        });
     }
 
     let url_target = config.get_domain(&get_target_domain(url, session_name));
