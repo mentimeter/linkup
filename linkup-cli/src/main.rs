@@ -206,9 +206,6 @@ enum Commands {
     #[clap(about = "Stop a running linkup session")]
     Stop(commands::StopArgs),
 
-    #[clap(about = "Reset a linkup session")]
-    Reset(commands::ResetArgs),
-
     #[clap(about = "Route session traffic to a local service")]
     Local(commands::LocalArgs),
 
@@ -257,9 +254,8 @@ async fn main() -> anyhow::Result<()> {
 
     match &cli.command {
         Commands::Health(args) => commands::health(args),
-        Commands::Start(args) => commands::start(args, true, &cli.config).await,
+        Commands::Start(args) => commands::start(args, &cli.config).await,
         Commands::Stop(args) => commands::stop(args, true),
-        Commands::Reset(args) => commands::reset(args).await,
         Commands::Local(args) => commands::local(args).await,
         Commands::Remote(args) => commands::remote(args).await,
         Commands::Status(args) => commands::status(args),
