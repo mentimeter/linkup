@@ -13,9 +13,10 @@ use tokio::time::sleep;
 use url::Url;
 
 use crate::{
-    linkup_certs_dir_path, linkup_file_path,
+    linkup_certs_dir_path, linkup_file_path, services,
     state::{upload_state, State},
-    worker_client, Result,
+    worker_client::{self, WorkerClient},
+    Result,
 };
 
 use super::{BackgroundService, PidError};
@@ -50,7 +51,7 @@ impl LocalServer {
         Url::parse("http://localhost:80").expect("linkup url invalid")
     }
 
-    fn start(&self, session_name: String, domains: Vec<String>) -> Result<()> {
+    fn start(&self) -> Result<()> {
         log::debug!("Starting {}", Self::NAME);
 
         let stdout_file = File::create(&self.stdout_file_path)?;
@@ -66,10 +67,6 @@ impl LocalServer {
         command.env("LINKUP_SERVICE_ID", Self::ID);
         command.args([
             "server",
-            "--session-name",
-            &session_name,
-            "--domains",
-            &domains.join(","),
             "--certs-dir",
             linkup_certs_dir_path().to_str().unwrap(),
         ]);
@@ -132,7 +129,7 @@ impl BackgroundService for LocalServer {
             return Ok(());
         }
 
-        if let Err(e) = self.start(session_name, domains) {
+        if let Err(e) = self.start() {
             self.notify_update_with_details(
                 &status_sender,
                 super::RunStatus::Error,
@@ -169,6 +166,15 @@ impl BackgroundService for LocalServer {
                     return Err(Error::ServerUnreachable.into());
                 }
             }
+        }
+
+        // TODO(augustoccesar)[2026-03-26]: Maybe send all the domains on one request?
+        for domain in &domains {
+            let full_domain = format!("{session_name}.{domain}");
+
+            WorkerClient::new(&services::LocalServer::url(), "")
+                .create_dns_record(&full_domain)
+                .await?;
         }
 
         match self.update_state(state).await {
