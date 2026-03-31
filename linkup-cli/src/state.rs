@@ -130,17 +130,8 @@ pub struct ServersSessions {
     pub remote: Session,
 }
 
-pub fn config_to_state(
-    config: linkup::config::Config,
-    config_path: String,
-    no_tunnel: bool,
-) -> State {
+pub fn config_to_state(config: linkup::config::Config, config_path: String) -> State {
     let random_token = Alphanumeric.sample_string(&mut rand::rng(), 16);
-
-    let tunnel = match no_tunnel {
-        true => None,
-        false => Some(Url::parse("http://tunnel-not-yet-set").expect("default url parses")),
-    };
 
     let linkup = LinkupState {
         session_name: String::new(),
@@ -148,7 +139,7 @@ pub fn config_to_state(
         worker_token: config.linkup.worker_token,
         config_path,
         worker_url: config.linkup.worker_url,
-        tunnel,
+        tunnel: Some(Url::parse("http://tunnel-not-yet-set").expect("default url parses")),
         cache_routes: config.linkup.cache_routes,
     };
 
@@ -387,7 +378,7 @@ domains:
     fn test_config_to_state() {
         let input_str = String::from(CONF_STR);
         let config = serde_yaml::from_str(&input_str).unwrap();
-        let local_state = config_to_state(config, "./path/to/config.yaml".to_string(), false);
+        let local_state = config_to_state(config, "./path/to/config.yaml".to_string());
 
         assert_eq!(local_state.linkup.config_path, "./path/to/config.yaml");
 

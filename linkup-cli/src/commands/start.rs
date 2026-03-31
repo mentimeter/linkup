@@ -23,18 +23,11 @@ use crate::{
 const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 #[derive(clap::Args)]
-pub struct Args {
-    #[clap(
-        short,
-        long,
-        help = "Start linkup in partial mode without a tunnel. Not all requests will succeed."
-    )]
-    pub no_tunnel: bool,
-}
+pub struct Args {}
 
-pub async fn start(args: &Args, fresh_state: bool, config_arg: &Option<String>) -> Result<()> {
+pub async fn start(_args: &Args, fresh_state: bool, config_arg: &Option<String>) -> Result<()> {
     let mut state = if fresh_state {
-        let state = load_and_save_state(config_arg, args.no_tunnel)?;
+        let state = load_and_save_state(config_arg)?;
         set_linkup_env(state.clone())?;
 
         state
@@ -215,25 +208,20 @@ fn set_linkup_env(state: State) -> Result<()> {
     Ok(())
 }
 
-fn load_and_save_state(config_arg: &Option<String>, no_tunnel: bool) -> Result<State> {
-    let previous_state = State::load();
+fn load_and_save_state(config_arg: &Option<String>) -> Result<State> {
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 
-    let mut state = config_to_state(input_config.clone(), config_path, no_tunnel);
+    let mut state = config_to_state(input_config.clone(), config_path);
 
-    // Reuse previous session name if possible
-    if let Ok(ps) = previous_state {
-        state.linkup.session_name = ps.linkup.session_name;
-        state.linkup.session_token = ps.linkup.session_token;
-
-        // Maintain tunnel state until it is rewritten
-        if !no_tunnel && ps.linkup.tunnel.is_some() {
-            state.linkup.tunnel = ps.linkup.tunnel;
-        }
+    if let Ok(previous_state) = State::load() {
+        state.linkup.session_name = previous_state.linkup.session_name;
+        state.linkup.session_token = previous_state.linkup.session_token;
+        state.linkup.tunnel = previous_state.linkup.tunnel;
     }
 
     state.save()?;
+
     Ok(state)
 }
 
