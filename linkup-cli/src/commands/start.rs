@@ -25,15 +25,9 @@ const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '�
 #[derive(clap::Args)]
 pub struct Args {}
 
-pub async fn start(_args: &Args, fresh_state: bool, config_arg: &Option<String>) -> Result<()> {
-    let mut state = if fresh_state {
-        let state = load_and_save_state(config_arg)?;
-        set_linkup_env(state.clone())?;
-
-        state
-    } else {
-        State::load()?
-    };
+pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
+    let mut state = load_and_save_state(config_arg)?;
+    set_linkup_env(state.clone())?;
 
     let status_update_channel = sync::mpsc::channel::<services::RunUpdate>();
 
