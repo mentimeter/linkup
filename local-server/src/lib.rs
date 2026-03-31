@@ -35,7 +35,6 @@ use linkup::{
     Session, SessionAllocator, TargetService, UpdateSessionRequest,
 };
 use rustls::ServerConfig;
-use serde::Deserialize;
 use std::{
     net::{Ipv4Addr, SocketAddr},
     ops::Deref,
@@ -125,7 +124,6 @@ pub fn linkup_router(config_store: MemoryStringStore, dns_catalog: DnsCatalog) -
     Router::new()
         .route("/linkup/local-session", post(linkup_config_handler))
         .route("/linkup/check", get(always_ok))
-        .route("/linkup/dns/records", post(dns_create)) // TODO: Modify me
         .fallback(any(linkup_request_handler))
         .layer(Extension(config_store))
         .layer(Extension(dns_catalog))
@@ -417,9 +415,16 @@ async fn handle_http_req(
 
 async fn linkup_config_handler(
     Extension(store): Extension<MemoryStringStore>,
+    Extension(dns_catalog): Extension<DnsCatalog>,
     Json(update_req): Json<UpdateSessionRequest>,
 ) -> impl IntoResponse {
     let desired_name = update_req.desired_name.clone();
+    let domains = update_req
+        .domains
+        .iter()
+        .map(|domain| domain.domain.clone())
+        .collect::<Vec<String>>();
+
     let server_conf: Session = match update_req.try_into() {
         Ok(conf) => conf,
         Err(e) => {
@@ -432,11 +437,11 @@ async fn linkup_config_handler(
     };
 
     let sessions = SessionAllocator::new(&store);
-    let session_name = sessions
+    let session_name_result = sessions
         .store_session(server_conf, NameKind::Animal, desired_name)
         .await;
 
-    let name = match session_name {
+    let session_name = match session_name_result {
         Ok(session_name) => session_name,
         Err(e) => {
             return ApiError::new(
@@ -447,25 +452,24 @@ async fn linkup_config_handler(
         }
     };
 
-    (StatusCode::OK, name).into_response()
+    for domain in &domains {
+        let full_domain = format!("{session_name}.{domain}");
+
+        register_dns_record(&dns_catalog, &full_domain).await;
+    }
+
+    (StatusCode::OK, session_name).into_response()
 }
 
 async fn always_ok() -> &'static str {
     "OK"
 }
 
-#[derive(Deserialize)]
-pub struct CreateDnsRecord {
-    pub domain: String,
-}
-
-async fn dns_create(
-    Extension(dns_catalog): Extension<DnsCatalog>,
-    Json(payload): Json<CreateDnsRecord>,
-) -> impl IntoResponse {
+async fn register_dns_record(dns_catalog: &DnsCatalog, domain: &str) {
     let mut catalog = dns_catalog.write().await;
 
-    let record_name = Name::from_str(&format!("{}.", payload.domain)).unwrap();
+    let record_name = Name::from_str(&format!("{}.", domain))
+        .expect("dns record from domain should always succeed");
 
     let authority = InMemoryAuthority::empty(record_name.clone(), ZoneType::Primary, false);
 
@@ -478,8 +482,6 @@ async fn dns_create(
     authority.upsert(record, 0).await;
 
     catalog.upsert(record_name.clone().into(), vec![Arc::new(authority)]);
-
-    StatusCode::CREATED.into_response()
 }
 
 fn https_client() -> HttpsClient {
