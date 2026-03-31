@@ -5,7 +5,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::{api::CloudflareApi, cf_deploy::DeployNotifier, DeployError};
+use super::{DeployError, api::CloudflareApi, cf_deploy::DeployNotifier};
 
 const LINKUP_WORKER_SHIM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/shim.mjs"));
 const LINKUP_WORKER_INDEX_WASM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.wasm"));
@@ -527,7 +527,7 @@ impl TargetCfResources {
         let bindings = match client.request(&req).await {
             Ok(response) => response.result,
             Err(cloudflare::framework::response::ApiFailure::Error(StatusCode::NOT_FOUND, _)) => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(error) => return Err(DeployError::from(error)),
         };
@@ -536,10 +536,10 @@ impl TargetCfResources {
             use cloudflare::endpoints::workers::WorkersBinding;
 
             // NOTE(augustoccesar)[2025-02-26]: We are saving WORKER_TOKEN as plain text, so we don't need other binding types
-            if let WorkersBinding::PlainText { name, text } = binding {
-                if name == "WORKER_TOKEN" {
-                    return Ok(Some(text));
-                }
+            if let WorkersBinding::PlainText { name, text } = binding
+                && name == "WORKER_TOKEN"
+            {
+                return Ok(Some(text));
             }
         }
 
@@ -642,25 +642,21 @@ impl TargetCfResources {
                         name,
                         namespace_id,
                     } = binding
+                        && *name == kv_namespace.binding
                     {
-                        if *name == kv_namespace.binding {
-                            *namespace_id = kv_ns_id.clone();
-                            break;
-                        }
+                        *namespace_id = kv_ns_id.clone();
+                        break;
                     }
                 }
             }
 
             if let Some(token) = token {
                 for binding in final_metadata.bindings.iter_mut() {
-                    if let cloudflare::endpoints::workers::WorkersBinding::SecretText {
-                        name,
-                        text,
-                    } = binding
+                    if let cloudflare::endpoints::workers::WorkersBinding::SecretText { name, text } =
+                        binding
+                        && *name == "CLOUDFLARE_API_TOKEN"
                     {
-                        if *name == "CLOUDFLARE_API_TOKEN" {
-                            *text = Some(token.clone());
-                        }
+                        *text = Some(token.clone());
                     }
                 }
             }

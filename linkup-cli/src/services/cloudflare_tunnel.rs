@@ -7,13 +7,13 @@ use std::{
     time::Duration,
 };
 
-use hickory_resolver::{config::ResolverOpts, proto::rr::RecordType, TokioResolver};
+use hickory_resolver::{TokioResolver, config::ResolverOpts, proto::rr::RecordType};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{linkup_file_path, state::State, worker_client::WorkerClient, Result};
+use crate::{Result, linkup_file_path, state::State, worker_client::WorkerClient};
 
 use super::{BackgroundService, PidError};
 

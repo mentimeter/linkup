@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use regex::Regex;
-use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serializer, ser::SerializeSeq};
 
 pub fn serialize_regex<S>(regex: &Regex, serializer: S) -> Result<S::Ok, S::Error>
 where

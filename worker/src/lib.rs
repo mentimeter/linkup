@@ -1,23 +1,24 @@
 use axum::{
+    Router,
+    body::to_bytes,
     extract::{Json, Query, Request, State},
     http::StatusCode,
-    middleware::{from_fn_with_state, Next},
+    middleware::{Next, from_fn_with_state},
     response::IntoResponse,
     routing::{any, get, post},
-    Router,
 };
 use http::{HeaderMap, Uri};
 use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
-    allow_all_cors, get_additional_headers, get_target_service, CreatePreviewRequest, NameKind,
-    Session, SessionAllocator, UpdateSessionRequest, Version, VersionChannel,
+    CreatePreviewRequest, NameKind, Session, SessionAllocator, UpdateSessionRequest, Version,
+    VersionChannel, allow_all_cors, get_additional_headers, get_target_service,
 };
 use serde::{Deserialize, Serialize};
 use tower_service::Service;
 use worker::{
-    console_error, console_log, console_warn, event, kv::KvStore, Env, Fetch, HttpRequest,
-    HttpResponse,
+    Env, Fetch, HttpRequest, HttpResponse, RequestRedirect, console_error, console_log,
+    console_warn, event, kv::KvStore,
 };
 use ws::handle_ws_resp;
 
@@ -210,7 +211,7 @@ async fn linkup_session_handler(
                 format!("Failed to parse server config: {} - Worker", e),
                 StatusCode::BAD_REQUEST,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -225,7 +226,7 @@ async fn linkup_session_handler(
                 format!("Failed to store server config: {}", e),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -247,7 +248,7 @@ async fn linkup_preview_handler(
                 format!("Failed to parse server config: {} - Worker", e),
                 StatusCode::BAD_REQUEST,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -262,7 +263,7 @@ async fn linkup_preview_handler(
                 format!("Failed to store server config: {}", e),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -327,33 +328,27 @@ async fn linkup_request_handler(
     req.headers_mut().remove(http::header::HOST);
     linkup::normalize_cookie_header(req.headers_mut());
 
-    let upstream_request: worker::Request = match req.try_into() {
-        Ok(req) => req,
-        Err(e) => {
-            return HttpError::new(
-                format!("Failed to parse request: {}", e),
-                StatusCode::BAD_REQUEST,
-            )
-            .into_response()
-        }
+    let upstream_request = match convert_request(req).await {
+        Ok(worker_request) => worker_request,
+        Err(error) => return error.into_response(),
     };
 
     let cacheable_req = is_cacheable_request(&upstream_request, &config);
     let cache_key = get_cache_key(&upstream_request, &session_name).unwrap_or_default();
-    if cacheable_req {
-        if let Some(upstream_response) = get_cached_req(cache_key.clone()).await {
-            let resp: HttpResponse = match upstream_response.try_into() {
-                Ok(resp) => resp,
-                Err(e) => {
-                    return HttpError::new(
-                        format!("Failed to parse cached response: {}", e),
-                        StatusCode::BAD_GATEWAY,
-                    )
-                    .into_response()
-                }
-            };
-            return resp.into_response();
-        }
+
+    if cacheable_req && let Some(upstream_response) = get_cached_req(cache_key.clone()).await {
+        let resp: HttpResponse = match upstream_response.try_into() {
+            Ok(resp) => resp,
+            Err(e) => {
+                return HttpError::new(
+                    format!("Failed to parse cached response: {}", e),
+                    StatusCode::BAD_GATEWAY,
+                )
+                .into_response();
+            }
+        };
+
+        return resp.into_response();
     }
 
     let mut upstream_response = match Fetch::Request(upstream_request).send().await {
@@ -363,7 +358,7 @@ async fn linkup_request_handler(
                 format!("Failed to fetch from target service: {}", e),
                 StatusCode::BAD_GATEWAY,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -378,7 +373,7 @@ async fn linkup_request_handler(
                         format!("Failed to clone response: {}", e),
                         StatusCode::BAD_GATEWAY,
                     )
-                    .into_response()
+                    .into_response();
                 }
             };
             if let Err(e) = set_cached_req(cache_key, cache_clone).await {
@@ -391,6 +386,66 @@ async fn linkup_request_handler(
         }
         handle_http_resp(upstream_response).await.into_response()
     }
+}
+
+// NOTE(augustoccesar)[2026-03-19]: The reason to build this manually instead of using the TryFrom for
+//  the worker::Request is because of how body is constructed.
+//  We were seeing body for DELETE requests not being proxied correctly. Because of that we are now
+//  doing the reconstruct manually to ensure the body is present.
+//
+//  This is not ideal and would be great to keep trusting the `to_wasm` from the workers-rs,
+//  but for now this solves our issue.
+//  Main concern here is if we might be missing some of the other internal operations that are
+//  done during the conversion. But for our usecases, it seems to be working.
+async fn convert_request(
+    req: http::Request<axum::body::Body>,
+) -> Result<worker::Request, HttpError> {
+    const MAX_BODY_SIZE: usize = 100 * 1024 * 1024; // 100MB, same as local-server limit
+
+    let (parts, body) = req.into_parts();
+    let body_bytes = match to_bytes(body, MAX_BODY_SIZE).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return Err(HttpError::new(
+                format!("Failed to extract request body: {}", e),
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    };
+
+    let target_url = parts.uri.to_string();
+
+    let mut headers = worker::Headers::new();
+    for (name, value) in parts.headers.iter() {
+        if let Ok(header_value) = value.to_str() {
+            let _ = headers.set(name.as_str(), header_value);
+        }
+    }
+
+    let mut request_init = worker::RequestInit::new();
+    request_init
+        .with_method(worker::Method::from(parts.method.to_string()))
+        .with_headers(headers)
+        .with_redirect(RequestRedirect::Manual);
+
+    if !body_bytes.is_empty() {
+        request_init.with_body(Some(wasm_bindgen::JsValue::from_str(
+            &String::from_utf8_lossy(&body_bytes),
+        )));
+    }
+
+    let worker_request: worker::Request =
+        match worker::Request::new_with_init(&target_url, &request_init) {
+            Ok(req) => req,
+            Err(e) => {
+                return Err(HttpError::new(
+                    format!("Failed to create request: {}", e),
+                    StatusCode::BAD_REQUEST,
+                ));
+            }
+        };
+
+    Ok(worker_request)
 }
 
 async fn cleanup_unused_sessions(state: &LinkupState) {
@@ -455,7 +510,7 @@ async fn handle_http_resp(worker_resp: worker::Response) -> impl IntoResponse {
                 format!("Failed to parse response: {}", e),
                 StatusCode::BAD_GATEWAY,
             )
-            .into_response()
+            .into_response();
         }
     };
     resp.headers_mut().extend(allow_all_cors());

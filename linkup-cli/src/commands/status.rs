@@ -1,7 +1,7 @@
 use anyhow::Context;
 use colored::{ColoredString, Colorize};
 use crossterm::{cursor, execute, style::Print, terminal};
-use linkup::{config::HealthConfig, get_additional_headers, Domain, HeaderMap, TargetService};
+use linkup::{Domain, HeaderMap, TargetService, config::HealthConfig, get_additional_headers};
 use serde::{Deserialize, Serialize};
 use std::{
     io::stdout,
@@ -455,9 +455,5 @@ fn is_internal_service(service: &LocalService) -> bool {
 }
 
 fn service_priority(service: &LocalService) -> i8 {
-    if is_internal_service(service) {
-        1
-    } else {
-        2
-    }
+    if is_internal_service(service) { 1 } else { 2 }
 }

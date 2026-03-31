@@ -1,7 +1,7 @@
 use crate::{
-    services::{self, BackgroundService},
-    state::{upload_state, ServiceTarget, State},
     Result,
+    services::{self, BackgroundService},
+    state::{ServiceTarget, State, upload_state},
 };
 
 use anyhow::anyhow;
