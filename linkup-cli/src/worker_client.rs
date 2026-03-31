@@ -70,6 +70,21 @@ impl WorkerClient {
         self.post("/linkup/local-session", params).await
     }
 
+    pub async fn create_dns_record(&self, domain: &str) -> Result<(), Error> {
+        #[derive(Serialize)]
+        struct Params {
+            domain: String,
+        }
+
+        let params = Params {
+            domain: domain.to_owned(),
+        };
+
+        self.post("/linkup/dns/records", &params).await?;
+
+        Ok(())
+    }
+
     pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {
         let query = GetTunnelParams {
             session_name: String::from(session_name),
@@ -101,15 +116,14 @@ impl WorkerClient {
             .send()
             .await?;
 
-        match response.status() {
-            StatusCode::OK => {
-                let content = response.text().await?;
-                Ok(content)
-            }
-            _ => Err(Error::Response(
+        if response.status().is_success() {
+            let content = response.text().await?;
+            Ok(content)
+        } else {
+            Err(Error::Response(
                 response.status(),
                 response.text().await.unwrap_or_else(|_| "".to_string()),
-            )),
+            ))
         }
     }
 }
