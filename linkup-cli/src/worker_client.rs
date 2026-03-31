@@ -1,5 +1,5 @@
 use linkup::{CreatePreviewRequest, UpdateSessionRequest};
-use reqwest::{header, StatusCode};
+use reqwest::{StatusCode, header};
 use serde::{Deserialize, Serialize};
 use url::Url;
 

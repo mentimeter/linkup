@@ -1,6 +1,6 @@
 use std::{env, fs, io::ErrorKind, path::PathBuf};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use thiserror::Error;

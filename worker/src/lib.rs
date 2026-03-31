@@ -1,24 +1,24 @@
 use axum::{
+    Router,
     body::to_bytes,
     extract::{Json, Query, Request, State},
     http::StatusCode,
-    middleware::{from_fn_with_state, Next},
+    middleware::{Next, from_fn_with_state},
     response::IntoResponse,
     routing::{any, get, post},
-    Router,
 };
 use http::{HeaderMap, Uri};
 use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
-    allow_all_cors, get_additional_headers, get_target_service, CreatePreviewRequest, NameKind,
-    Session, SessionAllocator, UpdateSessionRequest, Version, VersionChannel,
+    CreatePreviewRequest, NameKind, Session, SessionAllocator, UpdateSessionRequest, Version,
+    VersionChannel, allow_all_cors, get_additional_headers, get_target_service,
 };
 use serde::{Deserialize, Serialize};
 use tower_service::Service;
 use worker::{
-    console_error, console_log, console_warn, event, kv::KvStore, Env, Fetch, HttpRequest,
-    HttpResponse, RequestRedirect,
+    Env, Fetch, HttpRequest, HttpResponse, RequestRedirect, console_error, console_log,
+    console_warn, event, kv::KvStore,
 };
 use ws::handle_ws_resp;
 
@@ -211,7 +211,7 @@ async fn linkup_session_handler(
                 format!("Failed to parse server config: {} - Worker", e),
                 StatusCode::BAD_REQUEST,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -226,7 +226,7 @@ async fn linkup_session_handler(
                 format!("Failed to store server config: {}", e),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -248,7 +248,7 @@ async fn linkup_preview_handler(
                 format!("Failed to parse server config: {} - Worker", e),
                 StatusCode::BAD_REQUEST,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -263,7 +263,7 @@ async fn linkup_preview_handler(
                 format!("Failed to store server config: {}", e),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -335,20 +335,20 @@ async fn linkup_request_handler(
 
     let cacheable_req = is_cacheable_request(&upstream_request, &config);
     let cache_key = get_cache_key(&upstream_request, &session_name).unwrap_or_default();
-    if cacheable_req {
-        if let Some(upstream_response) = get_cached_req(cache_key.clone()).await {
-            let resp: HttpResponse = match upstream_response.try_into() {
-                Ok(resp) => resp,
-                Err(e) => {
-                    return HttpError::new(
-                        format!("Failed to parse cached response: {}", e),
-                        StatusCode::BAD_GATEWAY,
-                    )
-                    .into_response()
-                }
-            };
-            return resp.into_response();
-        }
+
+    if cacheable_req && let Some(upstream_response) = get_cached_req(cache_key.clone()).await {
+        let resp: HttpResponse = match upstream_response.try_into() {
+            Ok(resp) => resp,
+            Err(e) => {
+                return HttpError::new(
+                    format!("Failed to parse cached response: {}", e),
+                    StatusCode::BAD_GATEWAY,
+                )
+                .into_response();
+            }
+        };
+
+        return resp.into_response();
     }
 
     let mut upstream_response = match Fetch::Request(upstream_request).send().await {
@@ -373,7 +373,7 @@ async fn linkup_request_handler(
                         format!("Failed to clone response: {}", e),
                         StatusCode::BAD_GATEWAY,
                     )
-                    .into_response()
+                    .into_response();
                 }
             };
             if let Err(e) = set_cached_req(cache_key, cache_clone).await {
@@ -510,7 +510,7 @@ async fn handle_http_resp(worker_resp: worker::Response) -> impl IntoResponse {
                 format!("Failed to parse response: {}", e),
                 StatusCode::BAD_GATEWAY,
             )
-            .into_response()
+            .into_response();
         }
     };
     resp.headers_mut().extend(allow_all_cors());

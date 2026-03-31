@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use linkup::{Domain, MemoryStringStore, SessionService, UpdateSessionRequest};
-use linkup_local_server::{linkup_router, DnsCatalog};
+use linkup_local_server::{DnsCatalog, linkup_router};
 use reqwest::Url;
 use tokio::net::TcpListener;
 

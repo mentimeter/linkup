@@ -13,9 +13,9 @@ use tokio::time::sleep;
 use url::Url;
 
 use crate::{
-    linkup_certs_dir_path, linkup_file_path,
-    state::{upload_state, State},
-    worker_client, Result,
+    Result, linkup_certs_dir_path, linkup_file_path,
+    state::{State, upload_state},
+    worker_client,
 };
 
 use super::{BackgroundService, PidError};

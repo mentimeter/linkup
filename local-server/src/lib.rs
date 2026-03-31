@@ -1,13 +1,14 @@
 use axum::{
+    Extension, Router,
     body::Body,
     extract::{DefaultBodyLimit, Json, Request},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{any, get, post},
-    Extension, Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
 use hickory_server::{
+    ServerFuture,
     authority::{Catalog, ZoneType},
     proto::{
         rr::{Name, RData, Record},
@@ -22,17 +23,16 @@ use hickory_server::{
         forwarder::{ForwardAuthority, ForwardConfig},
         in_memory::InMemoryAuthority,
     },
-    ServerFuture,
 };
-use http::{header::HeaderMap, HeaderName, HeaderValue, Uri};
+use http::{HeaderName, HeaderValue, Uri, header::HeaderMap};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
-    client::legacy::{connect::HttpConnector, Client},
+    client::legacy::{Client, connect::HttpConnector},
     rt::TokioExecutor,
 };
 use linkup::{
-    allow_all_cors, get_additional_headers, get_target_service, MemoryStringStore, NameKind,
-    Session, SessionAllocator, TargetService, UpdateSessionRequest,
+    MemoryStringStore, NameKind, Session, SessionAllocator, TargetService, UpdateSessionRequest,
+    allow_all_cors, get_additional_headers, get_target_service,
 };
 use rustls::ServerConfig;
 use std::{
@@ -302,11 +302,12 @@ async fn linkup_request_handler(
             let mut cookie_values: Vec<String> = Vec::new();
             for (key, value) in req.headers() {
                 if key == http::header::COOKIE {
-                    if let Ok(cookie_value) = value.to_str().map(str::trim) {
-                        if !cookie_value.is_empty() {
-                            cookie_values.push(cookie_value.to_string());
-                        }
+                    if let Ok(cookie_value) = value.to_str().map(str::trim)
+                        && !cookie_value.is_empty()
+                    {
+                        cookie_values.push(cookie_value.to_string());
                     }
+
                     continue;
                 }
 
@@ -404,7 +405,7 @@ async fn handle_http_req(
                 ),
                 StatusCode::BAD_GATEWAY,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -432,7 +433,7 @@ async fn linkup_config_handler(
                 format!("Failed to parse server config: {} - local server", e),
                 StatusCode::BAD_REQUEST,
             )
-            .into_response()
+            .into_response();
         }
     };
 
@@ -448,7 +449,7 @@ async fn linkup_config_handler(
                 format!("Failed to store server config: {}", e),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
-            .into_response()
+            .into_response();
         }
     };
 

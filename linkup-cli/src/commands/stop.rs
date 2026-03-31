@@ -6,7 +6,7 @@ use anyhow::Context;
 use crate::env_files::clear_env_file;
 use crate::services::BackgroundService;
 use crate::state::State;
-use crate::{services, Result};
+use crate::{Result, services};
 
 #[derive(clap::Args)]
 pub struct Args {}

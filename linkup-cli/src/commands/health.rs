@@ -9,10 +9,9 @@ use std::{
 };
 
 use crate::{
-    linkup_dir_path,
+    Result, linkup_dir_path,
     services::{self, BackgroundService},
     state::State,
-    Result,
 };
 
 use super::local_dns;
@@ -148,10 +147,10 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
         }
 
         // Check if the process is a child of the current process (health command).
-        if let Some(parent_pid) = process.parent() {
-            if parent_pid == current_pid {
-                continue;
-            }
+        if let Some(parent_pid) = process.parent()
+            && parent_pid == current_pid
+        {
+            continue;
         }
 
         let command = process.cmd();

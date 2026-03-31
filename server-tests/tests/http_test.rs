@@ -1,10 +1,10 @@
 use axum::{
+    Router,
     response::{AppendHeaders, Redirect},
     routing::{any, get},
-    Router,
 };
 use helpers::ServerKind;
-use http::{header::SET_COOKIE, StatusCode};
+use http::{StatusCode, header::SET_COOKIE};
 use rstest::rstest;
 use tokio::net::TcpListener;
 

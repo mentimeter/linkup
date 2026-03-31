@@ -1,7 +1,7 @@
-use crate::commands::status::{format_state_domains, SessionStatus};
+use crate::Result;
+use crate::commands::status::{SessionStatus, format_state_domains};
 use crate::state::{config_path, get_config};
 use crate::worker_client::WorkerClient;
-use crate::Result;
 use anyhow::Context;
 use clap::builder::ValueParser;
 use linkup::CreatePreviewRequest;

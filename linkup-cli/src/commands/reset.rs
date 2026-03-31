@@ -1,4 +1,4 @@
-use crate::{commands, state::State, Result};
+use crate::{Result, commands, state::State};
 
 #[derive(clap::Args)]
 pub struct Args {}

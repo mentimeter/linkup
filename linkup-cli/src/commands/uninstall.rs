@@ -1,8 +1,8 @@
 use std::{fs, process};
 
 use crate::{
-    commands, commands::local_dns, linkup_dir_path, linkup_exe_path, prompt,
-    state::managed_domains, state::State, InstallationMethod, Result,
+    InstallationMethod, Result, commands, commands::local_dns, linkup_dir_path, linkup_exe_path,
+    prompt, state::State, state::managed_domains,
 };
 
 #[cfg(target_os = "linux")]

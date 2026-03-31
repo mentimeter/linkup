@@ -1,7 +1,7 @@
+use crate::Result;
 use crate::commands::deploy::{
     api::AccountCloudflareApi, auth, console_notify::ConsoleNotifier, resources::cf_resources,
 };
-use crate::Result;
 
 use super::{api::CloudflareApi, cf_deploy::DeployNotifier, resources::TargetCfResources};
 

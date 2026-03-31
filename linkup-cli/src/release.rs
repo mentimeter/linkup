@@ -4,7 +4,7 @@ mod github {
     use flate2::read::GzDecoder;
     use linkup::VersionError;
     use reqwest::header::HeaderValue;
-    use serde::{de::DeserializeOwned, Deserialize, Serialize};
+    use serde::{Deserialize, Serialize, de::DeserializeOwned};
     use tar::Archive;
     use url::Url;
 

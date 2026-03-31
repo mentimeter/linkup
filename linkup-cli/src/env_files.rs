@@ -11,10 +11,10 @@ use crate::Result;
 const LINKUP_ENV_SEPARATOR: &str = "##### Linkup environment - DO NOT EDIT #####";
 
 pub fn write_to_env_file(service: &str, dev_env_path: &PathBuf, env_path: &PathBuf) -> Result<()> {
-    if let Ok(env_content) = fs::read_to_string(env_path) {
-        if env_content.contains(LINKUP_ENV_SEPARATOR) {
-            return Ok(());
-        }
+    if let Ok(env_content) = fs::read_to_string(env_path)
+        && env_content.contains(LINKUP_ENV_SEPARATOR)
+    {
+        return Ok(());
     }
 
     let mut dev_env_content = fs::read_to_string(dev_env_path).with_context(|| {

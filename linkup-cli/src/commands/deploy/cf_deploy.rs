@@ -1,6 +1,6 @@
+use crate::Result;
 use crate::commands::deploy::auth;
 use crate::commands::deploy::resources::cf_resources;
-use crate::Result;
 
 use super::api::{AccountCloudflareApi, CloudflareApi};
 use super::console_notify::ConsoleNotifier;
@@ -125,7 +125,7 @@ pub async fn deploy_to_cloudflare(
 #[cfg(test)]
 mod tests {
     use cloudflare::framework::{
-        async_api::Client, auth, endpoint::spec::EndpointSpec, Environment, HttpApiClientConfig,
+        Environment, HttpApiClientConfig, async_api::Client, auth, endpoint::spec::EndpointSpec,
     };
     use mockito::ServerGuard;
     use std::cell::RefCell;
@@ -135,8 +135,9 @@ mod tests {
         api::Token,
         cf_destroy::destroy_from_cloudflare,
         resources::{
-            rules_equal, DNSRecord, KvNamespace, Rule, TargectCfZoneResources, TargetCacheRules,
+            DNSRecord, KvNamespace, Rule, TargectCfZoneResources, TargetCacheRules,
             TargetDNSRecord, TargetWorkerRoute, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart,
+            rules_equal,
         },
     };
 
@@ -651,9 +652,11 @@ export default {
         let dns_records = api.dns_records.borrow();
         assert_eq!(dns_records.len(), 1);
         assert_eq!(dns_records[0].name, "linkup-integration-test");
-        assert!(dns_records[0]
-            .content
-            .contains("linkup-integration-test-script.workers.dev"));
+        assert!(
+            dns_records[0]
+                .content
+                .contains("linkup-integration-test-script.workers.dev")
+        );
 
         // Check route created
         let routes = api.worker_routes.borrow();
