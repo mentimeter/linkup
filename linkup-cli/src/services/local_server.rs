@@ -13,10 +13,9 @@ use tokio::time::sleep;
 use url::Url;
 
 use crate::{
-    linkup_certs_dir_path, linkup_file_path, services,
+    linkup_certs_dir_path, linkup_file_path,
     state::{upload_state, State},
-    worker_client::{self, WorkerClient},
-    Result,
+    worker_client, Result,
 };
 
 use super::{BackgroundService, PidError};
@@ -116,9 +115,6 @@ impl BackgroundService for LocalServer {
     ) -> Result<()> {
         self.notify_update(&status_sender, super::RunStatus::Starting);
 
-        let session_name = state.linkup.session_name.clone();
-        let domains = state.domain_strings();
-
         if self.reachable().await {
             self.notify_update_with_details(
                 &status_sender,
@@ -166,15 +162,6 @@ impl BackgroundService for LocalServer {
                     return Err(Error::ServerUnreachable.into());
                 }
             }
-        }
-
-        // TODO(augustoccesar)[2026-03-26]: Maybe send all the domains on one request?
-        for domain in &domains {
-            let full_domain = format!("{session_name}.{domain}");
-
-            WorkerClient::new(&services::LocalServer::url(), "")
-                .create_dns_record(&full_domain)
-                .await?;
         }
 
         match self.update_state(state).await {
