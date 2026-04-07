@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dev-dependencies]
-linkup = { path = "../linkup" }
-linkup-local-server = { path = "../local-server" }
-http = "1.2.0"
-reqwest = { version = "0.12.12", default-features = false, features = [
+linkup = { workspace = true }
+linkup-local-server = { workspace = true }
+http = { workspace = true }
+reqwest = { workspace = true, features = [
     "blocking",
-    "rustls-tls",
+    "rustls",
 ] }
-anyhow = "1.0.95"
-futures = "0.3.31"
-axum = { version = "0.8.1", features = ["ws"] }
-serde_json = "1.0.137"
-tokio-tungstenite = "0.26.1"
-tokio = { version = "1.43.0", features = ["test-util", "macros"] }
+anyhow = { workspace = true }
+futures = { workspace = true }
+axum = { workspace = true, features = ["ws"] }
+serde_json = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros"] }
 rstest = "0.24.0"

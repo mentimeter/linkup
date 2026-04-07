@@ -429,7 +429,7 @@ async fn convert_request(
         .with_redirect(RequestRedirect::Manual);
 
     if !body_bytes.is_empty() {
-        request_init.with_body(Some(wasm_bindgen::JsValue::from_str(
+        request_init.with_body(Some(worker::wasm_bindgen::JsValue::from_str(
             &String::from_utf8_lossy(&body_bytes),
         )));
     }
