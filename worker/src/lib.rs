@@ -245,6 +245,11 @@ async fn linkup_preview_handler(
     let store = CfWorkerStringStore::new(state.sessions_kv.clone());
     let sessions = SessionAllocator::new(&store);
 
+    let desired_name = match &upsert_req {
+        UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
+        UpsertSessionRequest::Unnamed { .. } => String::new(),
+    };
+
     let server_conf: Session = match upsert_req.try_into() {
         Ok(conf) => conf,
         Err(e) => {
@@ -257,7 +262,7 @@ async fn linkup_preview_handler(
     };
 
     let session_name = sessions
-        .store_session(server_conf, NameKind::SixChar, String::from(""))
+        .store_session(server_conf, NameKind::SixChar, desired_name)
         .await;
 
     let name = match session_name {
