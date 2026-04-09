@@ -257,7 +257,7 @@ impl TryFrom<serde_json::Value> for Session {
 
 impl From<Session> for StorableSession {
     fn from(value: Session) -> Self {
-        let services: Vec<StorableService> = value
+        let mut services: Vec<StorableService> = value
             .services
             .into_iter()
             .map(|(name, service)| {
@@ -284,7 +284,9 @@ impl From<Session> for StorableSession {
             })
             .collect();
 
-        let domains: Vec<StorableDomain> = value
+        services.sort_by(|a, b| a.name.cmp(&b.name));
+
+        let mut domains: Vec<StorableDomain> = value
             .domains
             .into_iter()
             .map(|(domain, domain_data)| {
@@ -311,6 +313,8 @@ impl From<Session> for StorableSession {
                 }
             })
             .collect();
+
+        domains.sort_by(|a, b| a.domain.cmp(&b.domain));
 
         let cache_routes = value.cache_routes.map(|cr| {
             cr.into_iter()
