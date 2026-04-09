@@ -1,4 +1,4 @@
-use linkup::{CreatePreviewRequest, UpdateSessionRequest};
+use linkup::UpsertSessionRequest;
 use reqwest::{StatusCode, header};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -62,11 +62,11 @@ impl WorkerClient {
         }
     }
 
-    pub async fn preview(&self, params: &CreatePreviewRequest) -> Result<String, Error> {
+    pub async fn preview(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
         self.post("/linkup/preview-session", params).await
     }
 
-    pub async fn linkup(&self, params: &UpdateSessionRequest) -> Result<String, Error> {
+    pub async fn linkup(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
         self.post("/linkup/local-session", params).await
     }
 

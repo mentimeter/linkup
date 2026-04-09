@@ -27,29 +27,30 @@ pub struct Route {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct UpdateSessionRequest {
-    pub desired_name: String,
-    pub session_token: String,
-    pub services: Vec<SessionService>,
-    pub domains: Vec<Domain>,
-    #[serde(
-        default,
-        serialize_with = "crate::serde_ext::serialize_opt_vec_regex",
-        deserialize_with = "crate::serde_ext::deserialize_opt_vec_regex"
-    )]
-    pub cache_routes: Option<Vec<Regex>>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct CreatePreviewRequest {
-    pub services: Vec<SessionService>,
-    pub domains: Vec<Domain>,
-    #[serde(
-        default,
-        serialize_with = "crate::serde_ext::serialize_opt_vec_regex",
-        deserialize_with = "crate::serde_ext::deserialize_opt_vec_regex"
-    )]
-    pub cache_routes: Option<Vec<Regex>>,
+#[serde(untagged)]
+pub enum UpsertSessionRequest {
+    Named {
+        desired_name: String,
+        session_token: String,
+        services: Vec<SessionService>,
+        domains: Vec<Domain>,
+        #[serde(
+            default,
+            serialize_with = "crate::serde_ext::serialize_opt_vec_regex",
+            deserialize_with = "crate::serde_ext::deserialize_opt_vec_regex"
+        )]
+        cache_routes: Option<Vec<Regex>>,
+    },
+    Unnamed {
+        services: Vec<SessionService>,
+        domains: Vec<Domain>,
+        #[serde(
+            default,
+            serialize_with = "crate::serde_ext::serialize_opt_vec_regex",
+            deserialize_with = "crate::serde_ext::deserialize_opt_vec_regex"
+        )]
+        cache_routes: Option<Vec<Regex>>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -112,33 +113,35 @@ impl Session {
     }
 }
 
-impl TryFrom<UpdateSessionRequest> for Session {
+impl TryFrom<UpsertSessionRequest> for Session {
     type Error = ConfigError;
 
-    fn try_from(req: UpdateSessionRequest) -> Result<Self, Self::Error> {
-        let session = Self {
-            session_token: req.session_token,
-            services: req.services,
-            domains: req.domains,
-            cache_routes: req.cache_routes,
+    fn try_from(req: UpsertSessionRequest) -> Result<Self, Self::Error> {
+        let (session_token, services, domains, cache_routes) = match req {
+            UpsertSessionRequest::Named {
+                services,
+                domains,
+                cache_routes,
+                session_token,
+                ..
+            } => (session_token, services, domains, cache_routes),
+            UpsertSessionRequest::Unnamed {
+                services,
+                domains,
+                cache_routes,
+            } => (
+                PREVIEW_SESSION_TOKEN.to_string(),
+                services,
+                domains,
+                cache_routes,
+            ),
         };
 
-        validate_not_empty(&session)?;
-        validate_services(&session)?;
-
-        Ok(session)
-    }
-}
-
-impl TryFrom<CreatePreviewRequest> for Session {
-    type Error = ConfigError;
-
-    fn try_from(req: CreatePreviewRequest) -> Result<Self, Self::Error> {
         let session = Self {
-            session_token: PREVIEW_SESSION_TOKEN.to_string(),
-            services: req.services,
-            domains: req.domains,
-            cache_routes: req.cache_routes,
+            session_token,
+            services,
+            domains,
+            cache_routes,
         };
 
         validate_not_empty(&session)?;
@@ -164,7 +167,7 @@ impl TryFrom<serde_json::Value> for Session {
 pub fn create_preview_req_from_config(
     config: &Config,
     services_overwrite: &[(String, Url)],
-) -> CreatePreviewRequest {
+) -> UpsertSessionRequest {
     let mut session_services: Vec<SessionService> = Vec::with_capacity(config.services.len());
 
     for service in &config.services {
@@ -184,7 +187,7 @@ pub fn create_preview_req_from_config(
         });
     }
 
-    CreatePreviewRequest {
+    UpsertSessionRequest::Unnamed {
         services: session_services,
         domains: config.domains.clone(),
         cache_routes: config.linkup.cache_routes.clone(),

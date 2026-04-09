@@ -11,8 +11,8 @@ use http::{HeaderMap, Uri};
 use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
-    CreatePreviewRequest, NameKind, Session, SessionAllocator, UpdateSessionRequest, Version,
-    VersionChannel, allow_all_cors, get_additional_headers, get_target_service,
+    NameKind, Session, SessionAllocator, UpsertSessionRequest, Version, VersionChannel,
+    allow_all_cors, get_additional_headers, get_target_service,
 };
 use serde::{Deserialize, Serialize};
 use tower_service::Service;
@@ -198,13 +198,17 @@ async fn get_tunnel_handler(
 #[worker::send]
 async fn linkup_session_handler(
     State(state): State<LinkupState>,
-    Json(update_req): Json<UpdateSessionRequest>,
+    Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     let store = CfWorkerStringStore::new(state.sessions_kv.clone());
     let sessions = SessionAllocator::new(&store);
 
-    let desired_name = update_req.desired_name.clone();
-    let server_conf: Session = match update_req.try_into() {
+    let desired_name = match &upsert_req {
+        UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
+        UpsertSessionRequest::Unnamed { .. } => String::new(),
+    };
+
+    let server_conf: Session = match upsert_req.try_into() {
         Ok(conf) => conf,
         Err(e) => {
             return HttpError::new(
@@ -236,12 +240,12 @@ async fn linkup_session_handler(
 #[worker::send]
 async fn linkup_preview_handler(
     State(state): State<LinkupState>,
-    Json(update_req): Json<CreatePreviewRequest>,
+    Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     let store = CfWorkerStringStore::new(state.sessions_kv.clone());
     let sessions = SessionAllocator::new(&store);
 
-    let server_conf: Session = match update_req.try_into() {
+    let server_conf: Session = match upsert_req.try_into() {
         Ok(conf) => conf,
         Err(e) => {
             return HttpError::new(
