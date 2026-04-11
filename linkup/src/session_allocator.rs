@@ -169,7 +169,7 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{create_preview_req_from_json, MemoryStringStore};
+    use crate::{CreatePreviewRequest, MemoryStringStore};
 
     #[tokio::test]
     async fn identical_preview_requests_reuse_same_name() {
@@ -202,8 +202,12 @@ mod tests {
         })
         .to_string();
 
-        let first_session = create_preview_req_from_json(request_json.clone()).unwrap();
-        let second_session = create_preview_req_from_json(request_json).unwrap();
+        let first_session =
+            Session::try_from(serde_json::from_str::<CreatePreviewRequest>(&request_json).unwrap())
+                .unwrap();
+
+        let mut second_session = first_session.clone();
+        second_session.services.reverse();
 
         let first_name = allocator
             .store_session(first_session, NameKind::SixChar, String::new())
