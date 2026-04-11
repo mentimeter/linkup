@@ -8,6 +8,7 @@ use std::{
 };
 
 use hickory_resolver::{TokioResolver, config::ResolverOpts, proto::rr::RecordType};
+use indicatif::ProgressBar;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
@@ -145,14 +146,10 @@ impl BackgroundService for CloudflareTunnel {
     const ID: &str = "cloudflare-tunnel";
     const NAME: &str = "Cloudflare Tunnel";
 
-    async fn run_with_progress(
-        &self,
-        state: &mut State,
-        status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
-    ) -> Result<()> {
+    async fn run_with_progress(&self, state: &mut State, progress_bar: &ProgressBar) -> Result<()> {
         if !state.should_use_tunnel() {
             self.notify_update_with_details(
-                &status_sender,
+                progress_bar,
                 super::RunStatus::Skipped,
                 "Requested no tunnel",
             );
@@ -162,7 +159,7 @@ impl BackgroundService for CloudflareTunnel {
 
         if state.linkup.session_name.is_empty() {
             self.notify_update_with_details(
-                &status_sender,
+                progress_bar,
                 super::RunStatus::Error,
                 "Empty session name",
             );
@@ -172,7 +169,7 @@ impl BackgroundService for CloudflareTunnel {
 
         if Self::find_pid().is_some() {
             self.notify_update_with_details(
-                &status_sender,
+                progress_bar,
                 super::RunStatus::Started,
                 "Was already running",
             );
@@ -180,7 +177,7 @@ impl BackgroundService for CloudflareTunnel {
             return Ok(());
         }
 
-        self.notify_update(&status_sender, super::RunStatus::Starting);
+        self.notify_update(progress_bar, super::RunStatus::Starting);
 
         let tunnel_url = self
             .start(
@@ -201,7 +198,7 @@ impl BackgroundService for CloudflareTunnel {
                         pid_file_ready_attempt += 1;
 
                         self.notify_update_with_details(
-                            &status_sender,
+                            progress_bar,
                             super::RunStatus::Starting,
                             format!("Waiting for tunnel... retry #{}", pid_file_ready_attempt),
                         );
@@ -211,7 +208,7 @@ impl BackgroundService for CloudflareTunnel {
 
                     if !pid_file_exists {
                         self.notify_update_with_details(
-                            &status_sender,
+                            progress_bar,
                             super::RunStatus::Error,
                             "Failed to start tunnel",
                         );
@@ -219,7 +216,7 @@ impl BackgroundService for CloudflareTunnel {
                         return Err(Error::PidfileNotFound.into());
                     }
 
-                    self.notify_update(&status_sender, super::RunStatus::Starting);
+                    self.notify_update(progress_bar, super::RunStatus::Starting);
                 }
 
                 // DNS Propagation check
@@ -232,7 +229,7 @@ impl BackgroundService for CloudflareTunnel {
                         dns_propagation_attempt += 1;
 
                         self.notify_update_with_details(
-                            &status_sender,
+                            progress_bar,
                             super::RunStatus::Starting,
                             format!(
                                 "Waiting for tunnel DNS to propagate... retry #{}",
@@ -245,7 +242,7 @@ impl BackgroundService for CloudflareTunnel {
 
                     if !dns_propagated {
                         self.notify_update_with_details(
-                            &status_sender,
+                            progress_bar,
                             super::RunStatus::Error,
                             "Failed to propagate tunnel DNS",
                         );
@@ -253,15 +250,15 @@ impl BackgroundService for CloudflareTunnel {
                         return Err(Error::DNSNotPropagated.into());
                     }
 
-                    self.notify_update(&status_sender, super::RunStatus::Starting);
+                    self.notify_update(progress_bar, super::RunStatus::Starting);
                 }
 
                 match self.update_state(&tunnel_url, state) {
                     Ok(_) => {
-                        self.notify_update(&status_sender, super::RunStatus::Started);
+                        self.notify_update(progress_bar, super::RunStatus::Started);
                     }
                     Err(e) => {
-                        self.notify_update(&status_sender, super::RunStatus::Error);
+                        self.notify_update(progress_bar, super::RunStatus::Error);
 
                         return Err(e);
                     }
@@ -271,7 +268,7 @@ impl BackgroundService for CloudflareTunnel {
             }
             Err(e) => {
                 self.notify_update_with_details(
-                    &status_sender,
+                    progress_bar,
                     super::RunStatus::Error,
                     "Failed to start",
                 );
