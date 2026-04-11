@@ -1,16 +1,11 @@
 use std::{
-    collections::HashMap,
     fs,
-    io::stdout,
     path::{Path, PathBuf},
-    sync,
-    thread::{self, JoinHandle, sleep},
-    time::Duration,
 };
 
 use anyhow::{Context, Error, anyhow};
 use colored::Colorize;
-use crossterm::{ExecutableCommand, cursor};
+use indicatif::{MultiProgress, ProgressBar};
 
 use crate::{Result, state::State};
 use crate::{
@@ -20,8 +15,6 @@ use crate::{
     state::{config_path, config_to_state, get_config},
 };
 
-const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
 #[derive(clap::Args)]
 pub struct Args {}
 
@@ -29,27 +22,23 @@ pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
     let mut state = load_and_save_state(config_arg)?;
     set_linkup_env(state.clone())?;
 
-    let status_update_channel = sync::mpsc::channel::<services::RunUpdate>();
-
     let local_server = services::LocalServer::new();
     let cloudflare_tunnel = services::CloudflareTunnel::new();
 
-    let mut display_thread: Option<JoinHandle<()>> = None;
-    let display_channel = sync::mpsc::channel::<bool>();
+    let multi_progress = MultiProgress::new();
 
-    // If we are doing RUST_LOG=debug to debug if there is anything wrong, having the display thread make so it
-    // overwrites some of the output since it does some cursor moving.
-    // So in that case, we do not start the display thread.
-    if !log::log_enabled!(log::Level::Debug) {
-        display_thread = Some(spawn_display_thread(
-            &[
-                services::LocalServer::NAME,
-                services::CloudflareTunnel::NAME,
-            ],
-            status_update_channel.1,
-            display_channel.1,
-        ));
-    }
+    multi_progress
+        .println("Background services:")
+        .expect("printing should not fail");
+    multi_progress
+        .println(format!("{:<20} {:<10}", "NAME".bold(), "STATUS".bold()))
+        .expect("printing should not fail");
+
+    let local_server_progress = multi_progress.add(ProgressBar::new_spinner());
+    local_server.prepare_progress_bar(&local_server_progress);
+
+    let cloudflare_tunnel_progress = multi_progress.add(ProgressBar::new_spinner());
+    cloudflare_tunnel.prepare_progress_bar(&cloudflare_tunnel_progress);
 
     // To make sure that we get the last update to the display thread before the error is bubbled up,
     // we store any error that might happen on one of the steps and only return it after we have
@@ -57,7 +46,7 @@ pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
     let mut exit_error: Option<Error> = None;
 
     match local_server
-        .run_with_progress(&mut state, status_update_channel.0.clone())
+        .run_with_progress(&mut state, &local_server_progress)
         .await
     {
         Ok(_) => (),
@@ -66,7 +55,7 @@ pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
 
     if exit_error.is_none() {
         match cloudflare_tunnel
-            .run_with_progress(&mut state, status_update_channel.0.clone())
+            .run_with_progress(&mut state, &cloudflare_tunnel_progress)
             .await
         {
             Ok(_) => (),
@@ -74,10 +63,8 @@ pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
         }
     }
 
-    if let Some(display_thread) = display_thread {
-        display_channel.0.send(true).unwrap();
-        display_thread.join().unwrap();
-    }
+    local_server_progress.finish();
+    cloudflare_tunnel_progress.finish();
 
     if let Some(exit_error) = exit_error {
         return Err(exit_error).context("Failed to start CLI");
@@ -88,108 +75,10 @@ pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
         domains: format_state_domains(&state.linkup.session_name, &state.domains),
     };
 
-    println!();
+    print!("\n\n");
     status.print();
 
     Ok(())
-}
-
-/// This spawns a background thread that is responsible for updating the terminal with the information
-/// about the start of the services.
-///
-/// # Arguments
-/// * `names` - These are the names of the services that are going to be displayed here. These is also
-///   the "keys" that the status receiver will listen to for updating.
-///
-/// * `status_update_receiver` - This is a [`sync::mpsc::Receiver`] on which this thread will listen
-///   for updates.
-///
-/// * `exit_signal_receiver` - This is also a [`sync::mpsc::Receiver`], where, to make sure that we always
-///   show the last update, the exit of the display thread is done by receiving any message on this receiver.
-fn spawn_display_thread(
-    names: &[&str],
-    status_update_receiver: sync::mpsc::Receiver<services::RunUpdate>,
-    exit_signal_receiver: sync::mpsc::Receiver<bool>,
-) -> thread::JoinHandle<()> {
-    let rows = names.len();
-
-    println!("Background services:");
-    println!("{:<20} {:<10}", "NAME".bold(), "STATUS".bold());
-
-    let names: Vec<String> = names.iter().map(|name| String::from(*name)).collect();
-    thread::spawn(move || {
-        std::io::stdout().execute(cursor::Hide).unwrap();
-        let mut loop_iter = 0;
-        let mut statuses = HashMap::<String, services::RunUpdate>::new();
-
-        loop {
-            if loop_iter == 0 {
-                // For the first loop, make sure we add all the services with a pending status.
-                for name in &names {
-                    statuses.insert(
-                        name.clone(),
-                        services::RunUpdate {
-                            id: name.clone(),
-                            status: services::RunStatus::Pending,
-                            details: None,
-                        },
-                    );
-                }
-            } else {
-                crossterm::execute!(std::io::stdout(), cursor::MoveUp(rows as u16)).unwrap();
-            }
-
-            for name in &names {
-                let latest_update = statuses.get(name).unwrap();
-                let mut formatted_status = match &latest_update.status {
-                    services::RunStatus::Starting => {
-                        LOADING_CHARS[loop_iter % LOADING_CHARS.len()].to_string()
-                    }
-                    status => status.to_string(),
-                };
-
-                if let Some(details) = &latest_update.details {
-                    formatted_status.push_str(&format!(" ({})", details));
-                }
-
-                let colored_status = match latest_update.status {
-                    services::RunStatus::Started => formatted_status.blue(),
-                    services::RunStatus::Error => formatted_status.yellow(),
-                    _ => formatted_status.normal(),
-                };
-
-                // This is necessary in case the previous update was a longer line
-                // than the one that is going to be shown now.
-                stdout()
-                    .execute(crossterm::terminal::Clear(
-                        crossterm::terminal::ClearType::CurrentLine,
-                    ))
-                    .unwrap();
-
-                println!("{:<20} {:<10}", name, colored_status)
-            }
-
-            match &status_update_receiver.try_recv() {
-                Ok(status_update) => {
-                    statuses.insert(status_update.id.clone(), status_update.clone());
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    // To make sure we exit on the right order, only check for the exit signal in case
-                    // we are not receiving more updates on the `status_update_receiver`.
-                    match exit_signal_receiver.try_recv() {
-                        Ok(_) | Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
-                        _ => (),
-                    }
-                }
-            }
-
-            loop_iter += 1;
-            sleep(Duration::from_millis(50));
-        }
-
-        std::io::stdout().execute(cursor::Show).unwrap();
-    })
 }
 
 fn set_linkup_env(state: State) -> Result<()> {

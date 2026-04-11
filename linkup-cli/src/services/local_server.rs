@@ -8,6 +8,7 @@ use std::{
 };
 
 use anyhow::Context;
+use indicatif::ProgressBar;
 use reqwest::StatusCode;
 use tokio::time::sleep;
 use url::Url;
@@ -108,16 +109,12 @@ impl BackgroundService for LocalServer {
     const ID: &str = "linkup-local-server";
     const NAME: &str = "Linkup local server";
 
-    async fn run_with_progress(
-        &self,
-        state: &mut State,
-        status_sender: std::sync::mpsc::Sender<super::RunUpdate>,
-    ) -> Result<()> {
-        self.notify_update(&status_sender, super::RunStatus::Starting);
+    async fn run_with_progress(&self, state: &mut State, progress_bar: &ProgressBar) -> Result<()> {
+        self.notify_update(progress_bar, super::RunStatus::Starting);
 
         if self.reachable().await {
             self.notify_update_with_details(
-                &status_sender,
+                progress_bar,
                 super::RunStatus::Started,
                 "Was already running",
             );
@@ -127,7 +124,7 @@ impl BackgroundService for LocalServer {
 
         if let Err(e) = self.start() {
             self.notify_update_with_details(
-                &status_sender,
+                progress_bar,
                 super::RunStatus::Error,
                 "Failed to start",
             );
@@ -145,7 +142,7 @@ impl BackgroundService for LocalServer {
                     attempts += 1;
 
                     self.notify_update_with_details(
-                        &status_sender,
+                        progress_bar,
                         super::RunStatus::Starting,
                         format!("Waiting for server... retry #{}", attempts),
                     );
@@ -154,7 +151,7 @@ impl BackgroundService for LocalServer {
                 }
                 (false, 10..) => {
                     self.notify_update_with_details(
-                        &status_sender,
+                        progress_bar,
                         super::RunStatus::Error,
                         "Failed to reach server",
                     );
@@ -166,10 +163,10 @@ impl BackgroundService for LocalServer {
 
         match self.update_state(state).await {
             Ok(_) => {
-                self.notify_update(&status_sender, super::RunStatus::Started);
+                self.notify_update(progress_bar, super::RunStatus::Started);
             }
             Err(e) => {
-                self.notify_update(&status_sender, super::RunStatus::Error);
+                self.notify_update(progress_bar, super::RunStatus::Error);
                 return Err(e);
             }
         }
