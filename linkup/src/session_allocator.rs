@@ -1,7 +1,7 @@
 use crate::{
     ConfigError, HeaderMap, NameKind, Session, SessionError, StringStore,
-    extract_tracestate_session, first_subdomain, headers::HeaderName,
-    name_gen::deterministic_six_char_hash, random_animal, random_six_char,
+    extract_tracestate_session, first_subdomain, headers::HeaderName, random_animal,
+    random_six_char,
 };
 
 pub struct SessionAllocator<'a, S: StringStore> {
@@ -59,16 +59,21 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
 
     pub async fn store_session(
         &self,
-        config: Session,
+        session: Session,
         name_kind: NameKind,
         desired_name: String,
     ) -> Result<String, SessionError> {
-        let config_str = serde_json::to_string(&config)
-            .map_err(|error| SessionError::ConfigErr(error.to_string()))?;
-
         let name = self
-            .choose_name(desired_name, config.session_token, name_kind, &config_str)
+            .choose_name(
+                desired_name,
+                session.session_token.clone(),
+                name_kind,
+                &session,
+            )
             .await?;
+
+        let config_str = serde_json::to_string(&session)
+            .map_err(|error| SessionError::ConfigErr(error.to_string()))?;
 
         self.store.put(name.clone(), config_str).await?;
 
@@ -80,21 +85,16 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         desired_name: String,
         session_token: String,
         name_kind: NameKind,
-        config_json: &str,
+        session: &Session,
     ) -> Result<String, SessionError> {
-        if desired_name.is_empty() {
-            return self
-                .new_session_name(name_kind, desired_name, config_json)
-                .await;
-        }
-
-        if let Some(session) = self.get_session_config(desired_name.clone()).await?
+        if !desired_name.is_empty()
+            && let Some(session) = self.get_session_config(desired_name.clone()).await?
             && session.session_token == session_token
         {
             return Ok(desired_name);
         }
 
-        self.new_session_name(name_kind, desired_name, config_json)
+        self.new_session_name(name_kind, desired_name, session)
             .await
     }
 
@@ -119,10 +119,10 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         &self,
         name_kind: NameKind,
         desired_name: String,
-        config_json: &str,
+        session: &Session,
     ) -> Result<String, SessionError> {
         if name_kind == NameKind::SixChar {
-            return Ok(deterministic_six_char_hash(config_json));
+            return Ok(session.sha()[..6].to_string());
         }
 
         let mut key = String::new();
