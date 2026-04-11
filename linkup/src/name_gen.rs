@@ -2,7 +2,6 @@ use rand::{
     distr::{Alphanumeric, SampleString},
     seq::IndexedRandom,
 };
-use sha2::{Digest, Sha256};
 
 pub fn random_animal() -> String {
     let mut rand = rand::rng();
@@ -15,18 +14,6 @@ pub fn random_animal() -> String {
         .expect("Animals slice should not be empty");
 
     format!("{adjective}-{animal}")
-}
-
-pub fn deterministic_six_char_hash(input: &str) -> String {
-    let mut hasher = Sha256::new();
-
-    hasher.update(input);
-
-    let result = hasher.finalize();
-    let hex_string = hex::encode(result);
-
-    // Truncate the hexadecimal string to 6 characters
-    hex_string[..6].to_string()
 }
 
 pub fn random_six_char() -> String {

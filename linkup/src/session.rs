@@ -1,3 +1,4 @@
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use thiserror::Error;
 
@@ -109,6 +110,26 @@ impl Session {
         self.domains
             .iter()
             .find(|domain_record| domain_record.domain == domain)
+    }
+
+    pub fn sha(&self) -> String {
+        let mut sorted_self = self.clone();
+        sorted_self.services.sort_by(|a, b| a.name.cmp(&b.name));
+        sorted_self.domains.sort_by(|a, b| a.domain.cmp(&b.domain));
+
+        if let Some(cache_routes) = sorted_self.cache_routes.as_mut() {
+            cache_routes.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        }
+
+        let serialized_self =
+            serde_json::to_string(&sorted_self).expect("Session should be serializable");
+
+        let mut hasher = Sha256::new();
+
+        hasher.update(serialized_self);
+
+        let result = hasher.finalize();
+        hex::encode(result)
     }
 }
 
