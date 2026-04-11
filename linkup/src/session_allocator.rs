@@ -165,3 +165,60 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         Ok(random_six_char())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{CreatePreviewRequest, MemoryStringStore};
+
+    #[tokio::test]
+    async fn identical_preview_requests_reuse_same_name() {
+        let store = MemoryStringStore::default();
+        let allocator = SessionAllocator::new(&store);
+        let request_json = serde_json::json!({
+            "services": [
+                {
+                    "name": "frontend",
+                    "location": "https://frontend.example.com"
+                },
+                {
+                    "name": "backend",
+                    "location": "https://backend.example.com"
+                }
+            ],
+            "domains": [
+                {
+                    "domain": "example.com",
+                    "default_service": "frontend",
+                    "routes": [
+                        {
+                            "path": "^/api(?:/|$)",
+                            "service": "backend"
+                        }
+                    ]
+                }
+            ],
+            "cache_routes": null
+        })
+        .to_string();
+
+        let first_session =
+            Session::try_from(serde_json::from_str::<CreatePreviewRequest>(&request_json).unwrap())
+                .unwrap();
+
+        let mut second_session = first_session.clone();
+        second_session.services.reverse();
+
+        let first_name = allocator
+            .store_session(first_session, NameKind::SixChar, String::new())
+            .await
+            .unwrap();
+        let second_name = allocator
+            .store_session(second_session, NameKind::SixChar, String::new())
+            .await
+            .unwrap();
+
+        assert_eq!(first_name.len(), 6);
+        assert_eq!(first_name, second_name);
+    }
+}
