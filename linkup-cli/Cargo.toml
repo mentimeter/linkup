@@ -44,6 +44,7 @@ sha2 = { workspace = true }
 hex = { workspace = true }
 tar = "0.4.43"
 flate2 = "1.0.35"
+indicatif = "0.18.4"
 
 [dev-dependencies]
 mockall = "0.14.0"
