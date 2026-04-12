@@ -40,9 +40,9 @@ pub enum SessionError {
 // this workspace), we should return `impl Future` instead of having `async fn` so that we can add and ensure
 // any desired bounds.
 pub trait StringStore {
-    fn get(&self, key: String) -> impl Future<Output = Result<Option<String>, SessionError>>;
-    fn exists(&self, key: String) -> impl Future<Output = Result<bool, SessionError>>;
-    fn put(&self, key: String, value: String) -> impl Future<Output = Result<(), SessionError>>;
+    fn get(&self, key: &str) -> impl Future<Output = Result<Option<String>, SessionError>>;
+    fn exists(&self, key: &str) -> impl Future<Output = Result<bool, SessionError>>;
+    fn put(&self, key: &str, value: &str) -> impl Future<Output = Result<(), SessionError>>;
 }
 
 #[derive(PartialEq)]
@@ -378,7 +378,7 @@ mod tests {
         let config: Session = config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(config, NameKind::Animal, "".to_string())
+            .store_session(config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -524,7 +524,7 @@ mod tests {
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "".to_string())
+            .store_session(input_config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -614,7 +614,7 @@ mod tests {
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "".to_string())
+            .store_session(input_config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -665,7 +665,7 @@ mod tests {
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "".to_string())
+            .store_session(input_config, NameKind::Animal, "")
             .await
             .unwrap();
 
