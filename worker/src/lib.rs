@@ -216,7 +216,7 @@ async fn linkup_session_handler(
     };
 
     let session_name = sessions
-        .store_session(server_conf, NameKind::Animal, desired_name)
+        .store_session(server_conf, NameKind::Animal, &desired_name)
         .await;
 
     let name = match session_name {
@@ -253,7 +253,7 @@ async fn linkup_preview_handler(
     };
 
     let session_name = sessions
-        .store_session(server_conf, NameKind::SixChar, String::from(""))
+        .store_session(server_conf, NameKind::SixChar, "")
         .await;
 
     let name = match session_name {
