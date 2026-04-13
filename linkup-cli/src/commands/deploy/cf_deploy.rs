@@ -58,12 +58,12 @@ pub async fn deploy(args: &DeployArgs) -> Result<()> {
         zone_ids_strings.clone(),
         Box::new(auth),
     );
-    let cloudflare_client = cloudflare::framework::async_api::Client::new(
+    let cloudflare_client = cloudflare::framework::client::async_api::Client::new(
         cloudflare::framework::auth::Credentials::UserAuthKey {
             email: args.email.clone(),
             key: args.api_key.clone(),
         },
-        cloudflare::framework::HttpApiClientConfig::default(),
+        cloudflare::framework::client::ClientConfig::default(),
         cloudflare::framework::Environment::Production,
     )
     .expect("Cloudflare API Client to have been created");
@@ -90,7 +90,7 @@ pub async fn deploy(args: &DeployArgs) -> Result<()> {
 pub async fn deploy_to_cloudflare(
     resources: &TargetCfResources,
     api: &impl CloudflareApi,
-    cloudflare_client: &cloudflare::framework::async_api::Client,
+    cloudflare_client: &cloudflare::framework::client::async_api::Client,
     notifier: &impl DeployNotifier,
 ) -> Result<()> {
     // 1) Check what needs to change
@@ -125,7 +125,8 @@ pub async fn deploy_to_cloudflare(
 #[cfg(test)]
 mod tests {
     use cloudflare::framework::{
-        Environment, HttpApiClientConfig, async_api::Client, auth, endpoint::spec::EndpointSpec,
+        Environment, auth, client::ClientConfig, client::async_api::Client,
+        endpoint::spec::EndpointSpec,
     };
     use mockito::ServerGuard;
     use std::cell::RefCell;
@@ -150,8 +151,8 @@ mod tests {
                 email: "test@example.com".to_string(),
                 key: "test-api-key".to_string(),
             },
-            HttpApiClientConfig::default(),
-            Environment::Custom(mock_server_url),
+            ClientConfig::default(),
+            Environment::Custom(mock_server_url.to_string()),
         )
         .unwrap()
     }
@@ -168,7 +169,7 @@ mod tests {
         let res = serde_json::to_string(&cloudflare::framework::response::ApiSuccess::<Vec<()>> {
             result: vec![],
             result_info: None,
-            messages: serde_json::json!([]),
+            messages: vec![],
             errors: vec![],
         })
         .unwrap();
@@ -192,7 +193,7 @@ mod tests {
         > {
             result: cloudflare::endpoints::workers::ListSchedulesResponse { schedules: vec![] },
             result_info: None,
-            messages: serde_json::json!([]),
+            messages: vec![],
             errors: vec![],
         })
         .unwrap();
@@ -763,12 +764,12 @@ export default {
             Box::new(global_api_auth),
         );
 
-        let cloudflare_client = cloudflare::framework::async_api::Client::new(
+        let cloudflare_client = cloudflare::framework::client::async_api::Client::new(
             cloudflare::framework::auth::Credentials::UserAuthKey {
                 email,
                 key: api_key,
             },
-            cloudflare::framework::HttpApiClientConfig::default(),
+            cloudflare::framework::client::ClientConfig::default(),
             cloudflare::framework::Environment::Production,
         )
         .expect("Cloudflare API Client to have been created");

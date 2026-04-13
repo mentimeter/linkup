@@ -1,13 +1,15 @@
 [workspace]
 resolver = "2"
 
-members = ["linkup-cli", "linkup", "worker", "local-server", "server-tests", "cloudflare"]
+members = ["linkup-cli", "linkup", "worker", "local-server", "server-tests"]
 
 [workspace.dependencies]
 anyhow = "1.0.95"
 async-trait = "0.1.86"
-axum = { version = "0.8.1", default-features = false }
+axum = { version = "0.8.8", default-features = false }
 base64 = "0.22.1"
+# TODO(augustoccesar)[2026-04-13]: Point this to mentimeter/cloudflare-rs until the fixes are merged upstream.
+cloudflare = { git = "https://github.com/mentimeter/cloudflare-rs", rev = "77cc181830aed80ce7a7f53a517c59b16f868802" }
 futures = "0.3.31"
 hex = "0.4.3"
 http = "1.2.0"
@@ -24,4 +26,3 @@ url = { version = "2.5.4", features = ["serde"] }
 
 linkup = { path = "linkup" }
 linkup-local-server = { path = "local-server" }
-cloudflare = { path = "cloudflare", default-features = false }

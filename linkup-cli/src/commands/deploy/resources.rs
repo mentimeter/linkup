@@ -238,7 +238,7 @@ impl TargetCfResources {
     pub async fn check_deploy_plan(
         &self,
         api: &impl CloudflareApi,
-        cloudflare_client: &cloudflare::framework::async_api::Client,
+        cloudflare_client: &cloudflare::framework::client::async_api::Client,
     ) -> Result<DeployPlan, DeployError> {
         println!("Checking account token.");
         let account_token_action = self.check_account_token(api).await?;
@@ -300,7 +300,7 @@ impl TargetCfResources {
     pub async fn check_worker_script(
         &self,
         api: &impl CloudflareApi,
-        cloudflare_client: &cloudflare::framework::async_api::Client,
+        cloudflare_client: &cloudflare::framework::client::async_api::Client,
         account_token_plan: &Option<AccountTokenPlan>,
     ) -> Result<Option<WorkerScriptPlan>, DeployError> {
         let script_name = &self.worker_script_name;
@@ -517,7 +517,7 @@ impl TargetCfResources {
     /// on every deploy, so we use this to check if one already exists.
     pub async fn check_worker_token(
         &self,
-        client: &cloudflare::framework::async_api::Client,
+        client: &cloudflare::framework::client::async_api::Client,
     ) -> Result<Option<String>, DeployError> {
         let req = cloudflare::endpoints::workers::ListBindings {
             account_id: &self.account_id,
@@ -548,7 +548,7 @@ impl TargetCfResources {
 
     pub async fn check_worker_schedules(
         &self,
-        client: &cloudflare::framework::async_api::Client,
+        client: &cloudflare::framework::client::async_api::Client,
     ) -> Result<Option<WorkerSchedulesPlan>, DeployError> {
         let req = cloudflare::endpoints::workers::ListSchedules {
             account_identifier: &self.account_id,
@@ -596,7 +596,7 @@ impl TargetCfResources {
     pub async fn execute_deploy_plan(
         &self,
         api: &impl CloudflareApi,
-        client: &cloudflare::framework::async_api::Client,
+        client: &cloudflare::framework::client::async_api::Client,
         plan: &DeployPlan,
         notifier: &impl DeployNotifier,
     ) -> Result<(), DeployError> {
@@ -768,7 +768,7 @@ impl TargetCfResources {
 
             let schedules = schedules.clone();
 
-            let req = cloudflare::endpoints::workers::UpsertSchedules {
+            let req = cloudflare::endpoints::workers::UpdateSchedules {
                 account_identifier: &self.account_id,
                 script_name: &self.worker_script_name,
                 schedules,
@@ -859,7 +859,7 @@ impl TargetCfResources {
     pub async fn execute_destroy_plan(
         &self,
         api: &impl CloudflareApi,
-        cloudflare_client: &cloudflare::framework::async_api::Client,
+        cloudflare_client: &cloudflare::framework::client::async_api::Client,
         plan: &DestroyPlan,
         notifier: &impl DeployNotifier,
     ) -> Result<(), DeployError> {
@@ -920,23 +920,23 @@ impl TargetCfResources {
         }
 
         // Cleanup all the tunnels
-        let tunnel_prefix =
-            cloudflare::linkup::tunnel_prefix(cloudflare_client, &self.tunnel_zone_id).await?;
-        let req = cloudflare::endpoints::cfd_tunnel::list_tunnels::ListTunnels {
-            account_identifier: &self.account_id,
-            params: cloudflare::endpoints::cfd_tunnel::list_tunnels::Params {
-                is_deleted: Some(false),
-                include_prefix: Some(tunnel_prefix.clone()),
-                pagination_params: Some(
-                    // TODO(augustoccesar)[2025-03-05]: Implement pagination
-                    cloudflare::endpoints::cfd_tunnel::list_tunnels::PaginationParams {
-                        page: 1,
-                        per_page: 1000,
-                    },
-                ),
-                ..Default::default()
-            },
-        };
+        let tunnel_prefix = super::tunnel_prefix(cloudflare_client, &self.tunnel_zone_id).await?;
+        let req: cloudflare::endpoints::cfd_tunnel::list_tunnels::ListTunnels<'_> =
+            cloudflare::endpoints::cfd_tunnel::list_tunnels::ListTunnels {
+                account_identifier: &self.account_id,
+                params: cloudflare::endpoints::cfd_tunnel::list_tunnels::Params {
+                    is_deleted: Some(false),
+                    include_prefix: Some(tunnel_prefix.clone()),
+                    pagination_params: Some(
+                        // TODO(augustoccesar)[2025-03-05]: Implement pagination
+                        cloudflare::endpoints::cfd_tunnel::list_tunnels::PaginationParams {
+                            page: 1,
+                            per_page: 1000,
+                        },
+                    ),
+                    ..Default::default()
+                },
+            };
 
         match cloudflare_client.request(&req).await {
             Ok(res) => {
@@ -974,11 +974,11 @@ impl TargetCfResources {
         }
 
         // Cleanup all tunnels DNS records
-        let list_tunnel_dns_req = cloudflare::endpoints::dns::ListDnsRecords {
+        let list_tunnel_dns_req = cloudflare::endpoints::dns::dns::ListDnsRecords {
             zone_identifier: &self.tunnel_zone_id,
-            params: cloudflare::endpoints::dns::ListDnsRecordsParams {
-                name: Some(cloudflare::endpoints::dns::ListDnsRecordsParamsName {
-                    startswith: Some(tunnel_prefix),
+            params: cloudflare::endpoints::dns::dns::ListDnsRecordsParams {
+                name: Some(cloudflare::endpoints::dns::dns::ListDnsRecordsParamsName {
+                    starts_with: Some(tunnel_prefix),
                     ..Default::default()
                 }),
                 page: Some(1),
@@ -999,7 +999,7 @@ impl TargetCfResources {
                     dns_records.iter().map(|record| record.id.clone()).collect();
 
                 for record in dns_records_to_delete {
-                    let delete_req = cloudflare::endpoints::dns::DeleteDnsRecord {
+                    let delete_req = cloudflare::endpoints::dns::dns::DeleteDnsRecord {
                         zone_identifier: &self.tunnel_zone_id,
                         identifier: &record,
                     };
