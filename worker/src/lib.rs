@@ -93,7 +93,6 @@ pub fn linkup_router(state: LinkupState) -> Router {
         .route("/linkup/tunnel", get(get_tunnel_handler))
         .route("/linkup/check", get(always_ok))
         .route("/linkup/no-tunnel", get(no_tunnel))
-        .route("/linkup", any(deprecated_linkup_session_handler))
         .route_layer(from_fn_with_state(state.clone(), authenticate))
         // Fallback for all other requests
         .fallback(any(linkup_request_handler))
@@ -587,13 +586,4 @@ async fn authenticate(
     }
 
     next.run(request).await
-}
-
-#[worker::send]
-async fn deprecated_linkup_session_handler() -> impl IntoResponse {
-    (
-        StatusCode::NOT_FOUND,
-        "This endpoint was deprecated in linkup 2.0, please check that your cli is up to date",
-    )
-        .into_response()
 }
