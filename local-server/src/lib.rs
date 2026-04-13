@@ -446,7 +446,7 @@ async fn linkup_config_handler(
 
     let sessions = SessionAllocator::new(&store);
     let session_name_result = sessions
-        .store_session(server_conf, NameKind::Animal, desired_name)
+        .store_session(server_conf, NameKind::Animal, &desired_name)
         .await;
 
     let session_name = match session_name_result {

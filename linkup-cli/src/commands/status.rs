@@ -1,24 +1,14 @@
 use anyhow::Context;
 use colored::{ColoredString, Colorize};
-use crossterm::{cursor, execute, style::Print, terminal};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use linkup::{Domain, HeaderMap, TargetService, config::HealthConfig, get_additional_headers};
 use serde::{Deserialize, Serialize};
-use std::{
-    io::stdout,
-    ops::Deref,
-    sync::mpsc::Receiver,
-    thread::{self, sleep},
-    time::Duration,
-};
+use std::{collections::HashMap, sync::mpsc::Receiver, thread, time::Duration};
 
 use crate::{
     commands, services,
     state::{LocalService, ServiceTarget, State},
 };
-
-const LOADING_CHARS: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const MIN_WIDTH_FOR_LOCATION: usize = 110;
-const MIN_WIDTH_FOR_KIND: usize = 50;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -83,65 +73,62 @@ pub fn status(args: &Args) -> anyhow::Result<()> {
             _ => println!("{}", "Linkup is not currently running.\n".yellow()),
         }
 
-        let mut stdout = stdout();
+        let multi_progress = MultiProgress::new();
 
-        execute!(stdout, cursor::Hide, terminal::DisableLineWrap)?;
+        multi_progress
+            .println(format!(
+                "{:<22} {:<16} {:<8} {}",
+                "SERVICE NAME".bold(),
+                "COMPONENT KIND".bold(),
+                "STATUS".bold(),
+                "LOCATION".bold(),
+            ))
+            .expect("printing should not fail");
 
-        ctrlc::set_handler(move || {
-            execute!(std::io::stdout(), cursor::Show, terminal::EnableLineWrap).unwrap();
-            std::process::exit(130);
-        })
-        .expect("Failed to set CTRL+C handler");
+        let mut services_progress_bars: HashMap<String, ProgressBar> = HashMap::new();
 
-        let mut iteration = 0;
-        let mut loading_char_iteration = 0;
+        let in_progress_style = ProgressStyle::with_template("{prefix} {spinner:<8.white} {msg:!}")
+            .unwrap()
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏");
+
+        let done_style = ProgressStyle::with_template("{prefix} {msg}").unwrap();
+
+        for service in &status.services {
+            let progress_bar = multi_progress.add(ProgressBar::new_spinner());
+            progress_bar.set_style(in_progress_style.clone());
+            progress_bar.set_prefix(format!(
+                "{:<22} {:<16}",
+                service.name, service.component_kind
+            ));
+            progress_bar.set_message(service.service.current_url().to_string());
+            progress_bar.enable_steady_tick(Duration::from_millis(50));
+
+            services_progress_bars.insert(service.name.clone(), progress_bar);
+        }
+
         let mut updated_services = 0;
-        loop {
-            while let Some((name, server_status)) = status_receiver.try_iter().next() {
-                for service_status in status.services.iter_mut() {
-                    if service_status.name == name {
-                        service_status.status = server_status.clone();
-                        updated_services += 1;
+
+        for (name, server_status) in status_receiver.iter() {
+            for service_status in status.services.iter_mut() {
+                if service_status.name == name {
+                    service_status.status = server_status.clone();
+
+                    if let Some(pb) = services_progress_bars.get(&name) {
+                        let status_text = format!("{:<8}", server_status.colored());
+                        let location = service_status.service.current_url().to_string();
+
+                        pb.set_style(done_style.clone());
+                        pb.finish_with_message(format!("{} {}", status_text, location));
                     }
+
+                    updated_services += 1;
                 }
-            }
-
-            // It has to print the services statuses at least once before we can move the cursor
-            // to the start of the stuses section.
-            if iteration > 0 {
-                // +1 to include the header since it is also dynamic based on the width of the terminal.
-                execute!(stdout, cursor::MoveUp((status.services.len() + 1) as u16))?;
-            }
-
-            let (terminal_width, _) = terminal::size().unwrap();
-
-            execute!(
-                stdout,
-                terminal::Clear(terminal::ClearType::CurrentLine),
-                Print(table_header(terminal_width))
-            )?;
-
-            for i in 0..status.services.len() {
-                let status = &status.services[i];
-
-                execute!(
-                    stdout,
-                    terminal::Clear(terminal::ClearType::CurrentLine),
-                    Print(status.as_table_row(loading_char_iteration, terminal_width))
-                )?;
             }
 
             if updated_services == status.services.len() {
                 break;
             }
-
-            loading_char_iteration = (iteration + 1) % LOADING_CHARS.len();
-            iteration += 1;
-
-            sleep(Duration::from_millis(50));
         }
-
-        execute!(stdout, cursor::Show, terminal::EnableLineWrap).unwrap();
     }
 
     Ok(())
@@ -178,44 +165,6 @@ struct ServiceStatus {
     priority: i8,
 }
 
-impl ServiceStatus {
-    pub fn as_table_row(&self, loading_iter: usize, terminal_width: u16) -> String {
-        let terminal_width = terminal_width as usize;
-
-        let display_status = match &self.status {
-            ServerStatus::Loading => LOADING_CHARS[loading_iter].to_string().normal(),
-            status => status.colored(),
-        };
-
-        let mut status_name = ColoredString::from(self.name.clone());
-        let mut status_component_kind = ColoredString::from(self.component_kind.clone());
-        let mut status_location = ColoredString::from(self.service.current_url().to_string());
-
-        if status_component_kind.deref() == "local" {
-            status_name = status_name.bright_magenta();
-            status_component_kind = status_component_kind.bright_magenta();
-            status_location = status_location.bright_magenta();
-        };
-
-        let mut output = String::with_capacity(MIN_WIDTH_FOR_LOCATION);
-        output.push_str(&format!("{:<22}", status_name));
-
-        if terminal_width > MIN_WIDTH_FOR_KIND {
-            output.push_str(&format!("{:<16}", status_component_kind));
-        }
-
-        output.push_str(&format!("{:<8}", display_status));
-
-        if terminal_width > MIN_WIDTH_FOR_LOCATION {
-            output.push_str(&status_location);
-        }
-
-        output.push('\n');
-
-        output
-    }
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum ServerStatus {
     Ok,
@@ -233,27 +182,6 @@ impl ServerStatus {
             ServerStatus::Loading => "loading".normal(),
         }
     }
-}
-
-fn table_header(terminal_width: u16) -> String {
-    let terminal_width = terminal_width as usize;
-
-    let mut output = String::with_capacity(110);
-    output.push_str(&format!("{:<22}", "SERVICE NAME"));
-
-    if terminal_width > MIN_WIDTH_FOR_KIND {
-        output.push_str(&format!("{:<16}", "COMPONENT KIND"));
-    }
-
-    output.push_str(&format!("{:<8}", "STATUS"));
-
-    if terminal_width > MIN_WIDTH_FOR_LOCATION {
-        output.push_str("LOCATION");
-    }
-
-    output.push('\n');
-
-    output
 }
 
 pub fn format_state_domains(session_name: &str, domains: &[Domain]) -> Vec<String> {
