@@ -10,8 +10,8 @@ use http::{HeaderMap, Uri};
 use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
-    CreatePreviewRequest, NameKind, Session, SessionAllocator, UpdateSessionRequest, Version,
-    VersionChannel, allow_all_cors, get_additional_headers, get_target_service,
+    NameKind, Session, SessionAllocator, UpsertSessionRequest, Version, VersionChannel,
+    allow_all_cors, get_additional_headers, get_target_service,
 };
 use serde::{Deserialize, Serialize};
 use tower_service::Service;
@@ -196,50 +196,38 @@ async fn get_tunnel_handler(
 #[worker::send]
 async fn linkup_session_handler(
     State(state): State<LinkupState>,
-    Json(update_req): Json<UpdateSessionRequest>,
+    Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    let store = CfWorkerStringStore::new(state.sessions_kv.clone());
-    let sessions = SessionAllocator::new(&store);
-
-    let desired_name = update_req.desired_name.clone();
-    let server_conf: Session = match update_req.try_into() {
-        Ok(conf) => conf,
-        Err(e) => {
-            return HttpError::new(
-                format!("Failed to parse server config: {} - Worker", e),
-                StatusCode::BAD_REQUEST,
-            )
-            .into_response();
-        }
-    };
-
-    let session_name = sessions
-        .store_session(server_conf, NameKind::Animal, &desired_name)
-        .await;
-
-    let name = match session_name {
-        Ok(session_name) => session_name,
-        Err(e) => {
-            return HttpError::new(
-                format!("Failed to store server config: {}", e),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-            .into_response();
-        }
-    };
-
-    (StatusCode::OK, name).into_response()
+    handle_session_upsert(state, upsert_req, NameKind::Animal).await
 }
 
 #[worker::send]
 async fn linkup_preview_handler(
     State(state): State<LinkupState>,
-    Json(update_req): Json<CreatePreviewRequest>,
+    Json(upsert_req): Json<UpsertSessionRequest>,
+) -> impl IntoResponse {
+    handle_session_upsert(state, upsert_req, NameKind::SixChar).await
+}
+
+// TODO(augustoccesar)[2026-04-13]: This methods now exists because both the endpoints to
+//  create a preview session and a local session are exactly the same with the only
+//  difference being on the name generator kind.
+//  We should probably deprecate them as separate endpoints and create a new one that
+//  can take the name generator as part of the request.
+async fn handle_session_upsert(
+    state: LinkupState,
+    req: UpsertSessionRequest,
+    name_kind: NameKind,
 ) -> impl IntoResponse {
     let store = CfWorkerStringStore::new(state.sessions_kv.clone());
     let sessions = SessionAllocator::new(&store);
 
-    let server_conf: Session = match update_req.try_into() {
+    let desired_name = match &req {
+        UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
+        UpsertSessionRequest::Unnamed { .. } => String::new(),
+    };
+
+    let session: Session = match req.try_into() {
         Ok(conf) => conf,
         Err(e) => {
             return HttpError::new(
@@ -251,7 +239,7 @@ async fn linkup_preview_handler(
     };
 
     let session_name = sessions
-        .store_session(server_conf, NameKind::SixChar, "")
+        .store_session(session, name_kind, &desired_name)
         .await;
 
     let name = match session_name {

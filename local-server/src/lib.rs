@@ -31,7 +31,7 @@ use hyper_util::{
     rt::TokioExecutor,
 };
 use linkup::{
-    MemoryStringStore, NameKind, Session, SessionAllocator, TargetService, UpdateSessionRequest,
+    MemoryStringStore, NameKind, Session, SessionAllocator, TargetService, UpsertSessionRequest,
     allow_all_cors, get_additional_headers, get_target_service,
 };
 use rustls::ServerConfig;
@@ -417,16 +417,23 @@ async fn handle_http_req(
 async fn linkup_config_handler(
     Extension(store): Extension<MemoryStringStore>,
     Extension(dns_catalog): Extension<DnsCatalog>,
-    Json(update_req): Json<UpdateSessionRequest>,
+    Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    let desired_name = update_req.desired_name.clone();
-    let domains = update_req
-        .domains
+    let (desired_name, req_domains) = match &upsert_req {
+        UpsertSessionRequest::Named {
+            desired_name,
+            domains,
+            ..
+        } => (desired_name.clone(), domains),
+        UpsertSessionRequest::Unnamed { domains, .. } => (String::new(), domains),
+    };
+
+    let domains = req_domains
         .iter()
         .map(|domain| domain.domain.clone())
         .collect::<Vec<String>>();
 
-    let server_conf: Session = match update_req.try_into() {
+    let server_conf: Session = match upsert_req.try_into() {
         Ok(conf) => conf,
         Err(e) => {
             return ApiError::new(
