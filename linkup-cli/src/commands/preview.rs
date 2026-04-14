@@ -4,7 +4,7 @@ use crate::state::{config_path, get_config};
 use crate::worker_client::WorkerClient;
 use anyhow::Context;
 use clap::builder::ValueParser;
-use linkup::CreatePreviewRequest;
+use linkup::UpsertSessionRequest;
 use url::Url;
 
 #[derive(clap::Args)]
@@ -24,12 +24,12 @@ pub struct Args {
 pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
     let config_path = config_path(config)?;
     let input_config = get_config(&config_path)?;
-    let create_preview_request: CreatePreviewRequest =
+    let upsert_session_request: UpsertSessionRequest =
         linkup::create_preview_req_from_config(&input_config, &args.services);
     let url = input_config.linkup.worker_url.clone();
 
     if args.print_request {
-        let create_req_json = serde_json::to_string(&create_preview_request)
+        let create_req_json = serde_json::to_string(&upsert_session_request)
             .context("Failed to encode request to JSON string")?;
 
         println!("{}", create_req_json);
@@ -38,7 +38,7 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
     }
 
     let preview_name = WorkerClient::from(&input_config)
-        .preview(&create_preview_request)
+        .preview(&upsert_session_request)
         .await
         .with_context(|| format!("Failed to send preview request to {}", url))?;
 
