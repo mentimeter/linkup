@@ -31,6 +31,7 @@ pub struct Route {
 #[serde(untagged)]
 pub enum UpsertSessionRequest {
     Named {
+        mode: SessionMode,
         desired_name: String,
         session_token: String,
         services: Vec<SessionService>,
@@ -43,6 +44,7 @@ pub enum UpsertSessionRequest {
         cache_routes: Option<Vec<Regex>>,
     },
     Unnamed {
+        mode: SessionMode,
         services: Vec<SessionService>,
         domains: Vec<Domain>,
         #[serde(
@@ -52,6 +54,11 @@ pub enum UpsertSessionRequest {
         )]
         cache_routes: Option<Vec<Regex>>,
     },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum SessionMode {
+    Tunneled,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -134,6 +141,19 @@ impl Session {
     }
 }
 
+impl TryFrom<serde_json::Value> for Session {
+    type Error = ConfigError;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        let session = serde_json::from_value(value)?;
+
+        validate_not_empty(&session)?;
+        validate_services(&session)?;
+
+        Ok(session)
+    }
+}
+
 impl TryFrom<UpsertSessionRequest> for Session {
     type Error = ConfigError;
 
@@ -150,6 +170,7 @@ impl TryFrom<UpsertSessionRequest> for Session {
                 services,
                 domains,
                 cache_routes,
+                ..
             } => (
                 PREVIEW_SESSION_TOKEN.to_string(),
                 services,
@@ -164,19 +185,6 @@ impl TryFrom<UpsertSessionRequest> for Session {
             domains,
             cache_routes,
         };
-
-        validate_not_empty(&session)?;
-        validate_services(&session)?;
-
-        Ok(session)
-    }
-}
-
-impl TryFrom<serde_json::Value> for Session {
-    type Error = ConfigError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let session = serde_json::from_value(value)?;
 
         validate_not_empty(&session)?;
         validate_services(&session)?;
@@ -209,12 +217,12 @@ pub fn create_preview_req_from_config(
     }
 
     UpsertSessionRequest::Unnamed {
+        mode: SessionMode::Tunneled,
         services: session_services,
         domains: config.domains.clone(),
         cache_routes: config.linkup.cache_routes.clone(),
     }
 }
-
 fn validate_not_empty(session: &Session) -> Result<(), ConfigError> {
     if session.services.is_empty() {
         return Err(ConfigError::Empty);

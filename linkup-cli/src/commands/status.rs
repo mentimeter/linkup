@@ -215,7 +215,7 @@ fn linkup_services(state: &State) -> Vec<LocalService> {
                 directory: None,
                 rewrites: None,
                 health: Some(HealthConfig {
-                    path: Some("/linkup/check".to_string()),
+                    path: Some("/linkup/health/ping".to_string()),
                     ..Default::default()
                 }),
             },
@@ -229,7 +229,7 @@ fn linkup_services(state: &State) -> Vec<LocalService> {
                 directory: None,
                 rewrites: None,
                 health: Some(HealthConfig {
-                    path: Some("/linkup/check".to_string()),
+                    path: Some("/linkup/health/ping".to_string()),
                     ..Default::default()
                 }),
             },
@@ -243,7 +243,7 @@ fn linkup_services(state: &State) -> Vec<LocalService> {
                 directory: None,
                 rewrites: None,
                 health: Some(HealthConfig {
-                    path: Some("/linkup/check".to_string()),
+                    path: Some("/linkup/health/ping".to_string()),
                     ..Default::default()
                 }),
             },

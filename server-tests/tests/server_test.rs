@@ -1,5 +1,5 @@
 use helpers::ServerKind;
-use linkup::{Domain, SessionService, UpsertSessionRequest};
+use linkup::{Domain, SessionMode, SessionService, UpsertSessionRequest};
 use reqwest::Url;
 use rstest::rstest;
 
@@ -14,7 +14,7 @@ async fn can_respond_to_health_check(
 ) {
     let url = setup_server(server_kind).await;
 
-    let response = get(format!("{}/linkup/check", url)).await;
+    let response = get(format!("{}/linkup/health/ping", url)).await;
 
     assert_eq!(response.status(), reqwest::StatusCode::OK);
 }
@@ -85,6 +85,7 @@ pub fn create_preview_request(fe_location: Option<String>) -> String {
         None => "http://example.com".to_string(),
     };
     let req = UpsertSessionRequest::Unnamed {
+        mode: SessionMode::Tunneled,
         domains: vec![Domain {
             domain: "example.com".to_string(),
             default_service: "frontend".to_string(),

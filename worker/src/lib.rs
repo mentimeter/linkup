@@ -10,8 +10,8 @@ use http::{HeaderMap, Uri};
 use http_error::HttpError;
 use kv_store::CfWorkerStringStore;
 use linkup::{
-    NameKind, Session, SessionAllocator, UpsertSessionRequest, Version, VersionChannel,
-    allow_all_cors, get_additional_headers, get_target_service,
+    NameKind, Session, SessionAllocator, Version, VersionChannel, allow_all_cors,
+    get_additional_headers, get_target_service,
 };
 use serde::{Deserialize, Serialize};
 use tower_service::Service;
@@ -196,7 +196,7 @@ async fn get_tunnel_handler(
 #[worker::send]
 async fn linkup_session_handler(
     State(state): State<LinkupState>,
-    Json(upsert_req): Json<UpsertSessionRequest>,
+    Json(upsert_req): Json<deprecated::UpsertSessionRequest>,
 ) -> impl IntoResponse {
     handle_session_upsert(state, upsert_req, NameKind::Animal).await
 }
@@ -204,7 +204,7 @@ async fn linkup_session_handler(
 #[worker::send]
 async fn linkup_preview_handler(
     State(state): State<LinkupState>,
-    Json(upsert_req): Json<UpsertSessionRequest>,
+    Json(upsert_req): Json<deprecated::UpsertSessionRequest>,
 ) -> impl IntoResponse {
     handle_session_upsert(state, upsert_req, NameKind::SixChar).await
 }
@@ -216,15 +216,15 @@ async fn linkup_preview_handler(
 //  can take the name generator as part of the request.
 async fn handle_session_upsert(
     state: LinkupState,
-    req: UpsertSessionRequest,
+    req: deprecated::UpsertSessionRequest,
     name_kind: NameKind,
 ) -> impl IntoResponse {
     let store = CfWorkerStringStore::new(state.sessions_kv.clone());
     let sessions = SessionAllocator::new(&store);
 
     let desired_name = match &req {
-        UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
-        UpsertSessionRequest::Unnamed { .. } => String::new(),
+        deprecated::UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
+        deprecated::UpsertSessionRequest::Unnamed { .. } => String::new(),
     };
 
     let session: Session = match req.try_into() {
@@ -574,4 +574,132 @@ async fn authenticate(
     }
 
     next.run(request).await
+}
+
+mod deprecated {
+    use std::collections::HashSet;
+
+    use linkup::{ConfigError, Domain, Session, SessionService};
+    use regex::Regex;
+    use serde::{Deserialize, Serialize};
+    use url::Url;
+
+    pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(untagged)]
+    pub enum UpsertSessionRequest {
+        Named {
+            desired_name: String,
+            session_token: String,
+            services: Vec<SessionService>,
+            domains: Vec<Domain>,
+            #[serde(
+                default,
+                serialize_with = "linkup::serde_ext::serialize_opt_vec_regex",
+                deserialize_with = "linkup::serde_ext::deserialize_opt_vec_regex"
+            )]
+            cache_routes: Option<Vec<Regex>>,
+        },
+        Unnamed {
+            services: Vec<SessionService>,
+            domains: Vec<Domain>,
+            #[serde(
+                default,
+                serialize_with = "linkup::serde_ext::serialize_opt_vec_regex",
+                deserialize_with = "linkup::serde_ext::deserialize_opt_vec_regex"
+            )]
+            cache_routes: Option<Vec<Regex>>,
+        },
+    }
+
+    impl TryFrom<UpsertSessionRequest> for Session {
+        type Error = ConfigError;
+
+        fn try_from(req: UpsertSessionRequest) -> Result<Self, Self::Error> {
+            let (session_token, services, domains, cache_routes) = match req {
+                UpsertSessionRequest::Named {
+                    services,
+                    domains,
+                    cache_routes,
+                    session_token,
+                    ..
+                } => (session_token, services, domains, cache_routes),
+                UpsertSessionRequest::Unnamed {
+                    services,
+                    domains,
+                    cache_routes,
+                } => (
+                    PREVIEW_SESSION_TOKEN.to_string(),
+                    services,
+                    domains,
+                    cache_routes,
+                ),
+            };
+
+            let session = Self {
+                session_token,
+                services,
+                domains,
+                cache_routes,
+            };
+
+            validate_not_empty(&session)?;
+            validate_services(&session)?;
+
+            Ok(session)
+        }
+    }
+
+    fn validate_not_empty(session: &Session) -> Result<(), ConfigError> {
+        if session.services.is_empty() {
+            return Err(ConfigError::Empty);
+        }
+        if session.domains.is_empty() {
+            return Err(ConfigError::Empty);
+        }
+
+        Ok(())
+    }
+
+    fn validate_services(session: &Session) -> Result<(), ConfigError> {
+        let mut service_names: HashSet<&str> = HashSet::new();
+
+        for service in &session.services {
+            validate_url_origin(&service.location)?;
+
+            service_names.insert(&service.name);
+        }
+
+        for domain in &session.domains {
+            if !service_names.contains(&domain.default_service.as_str()) {
+                return Err(ConfigError::NoSuchService(
+                    domain.default_service.to_string(),
+                ));
+            }
+
+            if let Some(routes) = &domain.routes {
+                for route in routes {
+                    if !service_names.contains(&route.service.as_str()) {
+                        return Err(ConfigError::NoSuchService(route.service.to_string()));
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_url_origin(url: &Url) -> Result<(), ConfigError> {
+        let origin = url.origin();
+        if !origin.is_tuple() {
+            return Err(ConfigError::InvalidURL(url.to_string()));
+        }
+
+        if url.scheme() != "http" && url.scheme() != "https" {
+            return Err(ConfigError::InvalidURL(url.to_string()));
+        }
+
+        Ok(())
+    }
 }

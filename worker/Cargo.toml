@@ -7,10 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-axum = { workspace = true, features = [
-    "json",
-    "query",
-] }
+axum = { workspace = true, features = ["json", "query"] }
 base64 = { workspace = true }
 console_error_panic_hook = { version = "0.1.7" }
 cloudflare = { workspace = true, features = ["default-tls"] }
@@ -22,5 +19,6 @@ regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tower-service = "0.3.3"
+url = { workspace = true }
 worker = { version = "0.5.0", features = ["http", "axum"] }
 reqwest = { workspace = true, features = ["default-tls"] }

@@ -67,7 +67,13 @@ impl WorkerClient {
     }
 
     pub async fn linkup(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
-        self.post("/linkup/local-session", params).await
+        // LOL
+        // much injiner
+        if self.url.to_string().contains("localhost") {
+            self.post("/linkup/sessions", params).await
+        } else {
+            self.post("/linkup/local-session", params).await
+        }
     }
 
     pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {

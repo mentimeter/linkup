@@ -1837,6 +1837,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tower-service",
+ "url",
  "worker",
 ]
 

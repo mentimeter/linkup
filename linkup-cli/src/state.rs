@@ -10,7 +10,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{Domain, Session, SessionService, UpsertSessionRequest};
+use linkup::{Domain, Session, SessionMode, SessionService, UpsertSessionRequest};
 
 use crate::{
     LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services,
@@ -234,6 +234,7 @@ async fn upload_session_to_server(
     session: Session,
 ) -> Result<String, worker_client::Error> {
     let session_update_req = UpsertSessionRequest::Named {
+        mode: SessionMode::Tunneled,
         session_token: session.session_token,
         desired_name: desired_name.to_string(),
         services: session.services,
