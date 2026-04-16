@@ -109,54 +109,8 @@ impl TryFrom<UpsertSessionRequest> for Session {
             ),
         };
 
-        let session = Self {
-            session_token,
-            services,
-            domains,
-            cache_routes,
-        };
-
-        validate_not_empty(&session)?;
-        validate_services(&session)?;
+        let session = Session::new(session_token, services, domains, cache_routes)?;
 
         Ok(session)
     }
-}
-
-fn validate_not_empty(session: &Session) -> Result<(), ConfigError> {
-    if session.services.is_empty() {
-        return Err(ConfigError::Empty);
-    }
-
-    if session.domains.is_empty() {
-        return Err(ConfigError::Empty);
-    }
-
-    Ok(())
-}
-
-fn validate_services(session: &Session) -> Result<(), ConfigError> {
-    let mut service_names: HashSet<&str> = HashSet::new();
-
-    for service in &session.services {
-        service_names.insert(&service.name);
-    }
-
-    for domain in &session.domains {
-        if !service_names.contains(&domain.default_service.as_str()) {
-            return Err(ConfigError::NoSuchService(
-                domain.default_service.to_string(),
-            ));
-        }
-
-        if let Some(routes) = &domain.routes {
-            for route in routes {
-                if !service_names.contains(&route.service.as_str()) {
-                    return Err(ConfigError::NoSuchService(route.service.to_string()));
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
