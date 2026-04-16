@@ -44,7 +44,9 @@ impl WorkerClient {
         let mut headers = header::HeaderMap::new();
         let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", worker_token))
             .expect("token to contain only valid bytes");
+
         auth_value.set_sensitive(true);
+
         headers.insert(header::AUTHORIZATION, auth_value);
         headers.insert(
             "x-linkup-version",
@@ -62,18 +64,12 @@ impl WorkerClient {
         }
     }
 
-    pub async fn preview(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
-        self.post("/linkup/preview-session", params).await
+    pub async fn local_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
+        self.post("/linkup/local-session", params).await
     }
 
-    pub async fn linkup(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
-        // LOL
-        // much injiner
-        if self.url.to_string().contains("localhost") {
-            self.post("/linkup/sessions", params).await
-        } else {
-            self.post("/linkup/local-session", params).await
-        }
+    pub async fn preview_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
+        self.post("/linkup/preview-session", params).await
     }
 
     pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {
@@ -116,11 +112,5 @@ impl WorkerClient {
                 response.text().await.unwrap_or_else(|_| "".to_string()),
             ))
         }
-    }
-}
-
-impl From<&linkup::config::Config> for WorkerClient {
-    fn from(config: &linkup::config::Config) -> Self {
-        Self::new(&config.linkup.worker_url, &config.linkup.worker_token)
     }
 }

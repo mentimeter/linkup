@@ -37,8 +37,13 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let preview_name = WorkerClient::from(&input_config)
-        .preview(&upsert_session_request)
+    let worker_client = WorkerClient::new(
+        &input_config.linkup.worker_url,
+        &input_config.linkup.worker_token,
+    );
+
+    let preview_name = worker_client
+        .preview_session(&upsert_session_request)
         .await
         .with_context(|| format!("Failed to send preview request to {}", url))?;
 
