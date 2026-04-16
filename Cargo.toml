@@ -1,7 +1,15 @@
 [workspace]
 resolver = "2"
 
-members = ["linkup-cli", "linkup", "worker", "local-server", "server-tests", "cloudflare"]
+members = [
+    "linkup-cli",
+    "linkup",
+    "worker",
+    "local-server",
+    "server-tests",
+    "cloudflare",
+    "linkup-clients",
+]
 
 [workspace.dependencies]
 anyhow = "1.0.95"
@@ -22,6 +30,7 @@ tokio = "1.49.0"
 tokio-tungstenite = "0.28.0"
 url = { version = "2.5.4", features = ["serde"] }
 
-linkup = { path = "linkup" }
-linkup-local-server = { path = "local-server" }
 cloudflare = { path = "cloudflare", default-features = false }
+linkup = { path = "linkup" }
+linkup-clients = { path = "linkup-clients" }
+linkup-local-server = { path = "local-server" }

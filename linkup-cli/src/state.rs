@@ -4,20 +4,16 @@ use std::{
     fs,
 };
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use rand::distr::{Alphanumeric, SampleString};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use linkup::{Domain, Session, SessionMode, SessionService, UpsertSessionRequest};
+use linkup_clients::{LocalServerClient, LocalServerClientError, WorkerClient, WorkerClientError};
 
-use crate::{
-    LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path,
-    local_server_client::{self, LocalServerClient},
-    services,
-    worker_client::{self, WorkerClient},
-};
+use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
@@ -219,7 +215,9 @@ pub async fn upload_state(state: &State) -> Result<String> {
             &server_session_name
         );
 
-        return Err(worker_client::Error::InconsistentState.into());
+        return Err(anyhow!(
+            "Your session is in an inconsistent state. Stop your session before trying again."
+        ));
     }
 
     Ok(server_session_name)
@@ -230,17 +228,19 @@ async fn upload_session_to_worker(
     token: &str,
     desired_name: &str,
     session: Session,
-) -> Result<String, worker_client::Error> {
+) -> Result<String, WorkerClientError> {
     let req = build_upsert_request(desired_name, session);
 
-    WorkerClient::new(url, token).local_session(&req).await
+    WorkerClient::new(url, token, crate::CURRENT_VERSION)
+        .local_session(&req)
+        .await
 }
 
 async fn upload_session_to_local_server(
     url: &Url,
     desired_name: &str,
     session: Session,
-) -> Result<String, local_server_client::Error> {
+) -> Result<String, LocalServerClientError> {
     let req = build_upsert_request(desired_name, session);
 
     LocalServerClient::new(url).upsert_session(&req).await

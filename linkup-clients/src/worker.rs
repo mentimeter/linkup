@@ -13,8 +13,6 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("request failed with status {0}: {1}")]
     Response(StatusCode, String),
-    #[error("your session is in an inconsistent state. Stop your session before trying again.")]
-    InconsistentState,
 }
 
 pub struct WorkerClient {
@@ -40,7 +38,7 @@ struct GetTunnelParams {
 }
 
 impl WorkerClient {
-    pub fn new(url: &Url, worker_token: &str) -> Self {
+    pub fn new(url: &Url, worker_token: &str, version: &str) -> Self {
         let mut headers = header::HeaderMap::new();
         let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", worker_token))
             .expect("token to contain only valid bytes");
@@ -50,7 +48,7 @@ impl WorkerClient {
         headers.insert(header::AUTHORIZATION, auth_value);
         headers.insert(
             "x-linkup-version",
-            header::HeaderValue::from_static(crate::CURRENT_VERSION),
+            header::HeaderValue::from_str(version).expect("version should be valid str"),
         );
 
         let client = reqwest::Client::builder()

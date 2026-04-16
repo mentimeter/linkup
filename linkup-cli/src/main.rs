@@ -10,11 +10,9 @@ pub use linkup::Version;
 
 mod commands;
 mod env_files;
-mod local_server_client;
 mod release;
 mod services;
 mod state;
-mod worker_client;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";

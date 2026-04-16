@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{Result, linkup_file_path, state::State, worker_client::WorkerClient};
+use linkup_clients::WorkerClient;
+
+use crate::{Result, linkup_file_path, state::State};
 
 use super::{BackgroundService, PidError};
 
@@ -66,7 +68,7 @@ impl CloudflareTunnel {
             linkup_session_name
         );
 
-        let worker_client = WorkerClient::new(worker_url, worker_token);
+        let worker_client = WorkerClient::new(worker_url, worker_token, crate::CURRENT_VERSION);
         let tunnel_data = worker_client
             .get_tunnel(linkup_session_name)
             .await

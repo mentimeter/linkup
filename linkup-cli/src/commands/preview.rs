@@ -1,11 +1,13 @@
+use anyhow::Context;
+use clap::builder::ValueParser;
+use url::Url;
+
+use linkup::UpsertSessionRequest;
+use linkup_clients::WorkerClient;
+
 use crate::Result;
 use crate::commands::status::{SessionStatus, format_state_domains};
 use crate::state::{config_path, get_config};
-use crate::worker_client::WorkerClient;
-use anyhow::Context;
-use clap::builder::ValueParser;
-use linkup::UpsertSessionRequest;
-use url::Url;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -40,6 +42,7 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
     let worker_client = WorkerClient::new(
         &input_config.linkup.worker_url,
         &input_config.linkup.worker_token,
+        crate::CURRENT_VERSION,
     );
 
     let preview_name = worker_client

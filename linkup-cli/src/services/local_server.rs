@@ -12,9 +12,10 @@ use indicatif::ProgressBar;
 use tokio::time::sleep;
 use url::Url;
 
+use linkup_clients::LocalServerClient;
+
 use crate::{
     Result, linkup_certs_dir_path, linkup_file_path,
-    local_server_client::LocalServerClient,
     state::{State, upload_state},
 };
 
