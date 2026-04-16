@@ -1,6 +1,16 @@
 use std::fmt::Display;
 
-use crate::TunnelData;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct TunnelData {
+    pub account_id: String,
+    pub name: String,
+    pub url: String,
+    pub id: String,
+    pub secret: String,
+    pub last_started: u64,
+}
 
 #[derive(Debug)]
 pub enum CreateTunnelError {
@@ -32,7 +42,7 @@ pub async fn create_tunnel(
     tunnel_name: &str,
 ) -> Result<TunnelData, CreateTunnelError> {
     let client = crate::cloudflare_client(api_token);
-    let tunnel_secret = crate::generate_secret();
+    let tunnel_secret = generate_secret();
 
     let create_tunnel_req = cloudflare::endpoints::cfd_tunnel::create_tunnel::CreateTunnel {
         account_identifier: account_id,
@@ -175,4 +185,11 @@ pub async fn delete_tunnel(
         .map_err(|error| DeleteTunnelError::DeleteDNSRecord(error.to_string()))?;
 
     Ok(())
+}
+
+fn generate_secret() -> String {
+    let mut random_bytes = [0u8; 32];
+    getrandom::fill(&mut random_bytes).unwrap();
+
+    base64::Engine::encode(&base64::prelude::BASE64_STANDARD, random_bytes)
 }
