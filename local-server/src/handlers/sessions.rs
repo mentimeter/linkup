@@ -1,6 +1,8 @@
 use axum::{Extension, Json, response::IntoResponse};
 use http::StatusCode;
-use linkup::{MemoryStringStore, NameKind, Session, SessionAllocator, UpsertSessionRequest};
+use linkup::{
+    MemoryStringStore, NameKind, Session, SessionAllocator, SessionMode, UpsertSessionRequest,
+};
 
 use crate::{dns, handlers::ApiError};
 
@@ -38,7 +40,7 @@ pub async fn handle_upsert(
     };
 
     match mode {
-        linkup::SessionMode::Tunneled => {
+        SessionMode::Tunneled => {
             let sessions = SessionAllocator::new(&store);
             let session_name_result = sessions
                 .store_session(server_conf, NameKind::Animal, &desired_name)
