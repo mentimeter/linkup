@@ -30,7 +30,7 @@ pub async fn handle_upsert(
         Ok(conf) => conf,
         Err(e) => {
             return ApiError::new(
-                format!("Failed to parse server config: {} - local server", e),
+                format!("Failed to parse server config: {} - Local Server", e),
                 StatusCode::BAD_REQUEST,
             )
             .into_response();
