@@ -1,5 +1,10 @@
 use std::fmt::Display;
 
+use cloudflare::{
+    endpoints,
+    framework::{client::async_api::Client, response::ApiFailure},
+};
+
 use crate::TunnelData;
 
 #[derive(Debug)]
@@ -38,7 +43,7 @@ pub async fn create_tunnel(
         account_identifier: account_id,
         params: cloudflare::endpoints::cfd_tunnel::create_tunnel::Params {
             name: tunnel_name,
-            tunnel_secret: &tunnel_secret,
+            tunnel_secret: &tunnel_secret.as_bytes().to_vec(),
             config_src: &cloudflare::endpoints::cfd_tunnel::ConfigurationSrc::Local,
             metadata: None,
         },
@@ -50,12 +55,12 @@ pub async fn create_tunnel(
         .map_err(|err| CreateTunnelError::CreateCloudflareTunnel(err.to_string()))?
         .result;
 
-    let create_dns_req = cloudflare::endpoints::dns::CreateDnsRecord {
+    let create_dns_req = cloudflare::endpoints::dns::dns::CreateDnsRecord {
         zone_identifier: zone_id,
-        params: cloudflare::endpoints::dns::CreateDnsRecordParams {
+        params: cloudflare::endpoints::dns::dns::CreateDnsRecordParams {
             proxied: Some(true),
             name: tunnel_name,
-            content: cloudflare::endpoints::dns::DnsContent::CNAME {
+            content: cloudflare::endpoints::dns::dns::DnsContent::CNAME {
                 content: format!("{}.cfargotunnel.com", tunnel.id),
             },
             ttl: None,
@@ -68,7 +73,7 @@ pub async fn create_tunnel(
         .await
         .map_err(|err| CreateTunnelError::CreateDNS(err.to_string()))?;
 
-    let get_zone_req = cloudflare::endpoints::zone::ZoneDetails {
+    let get_zone_req = cloudflare::endpoints::zones::zone::ZoneDetails {
         identifier: zone_id,
     };
 
@@ -134,10 +139,10 @@ pub async fn delete_tunnel(
         .await
         .map_err(|error| DeleteTunnelError::DeleteCloudflareTunnel(error.to_string()))?;
 
-    let get_dns_record_req = cloudflare::endpoints::dns::ListDnsRecords {
+    let get_dns_record_req = cloudflare::endpoints::dns::dns::ListDnsRecords {
         zone_identifier: zone_id,
-        params: cloudflare::endpoints::dns::ListDnsRecordsParams {
-            record_type: Some(cloudflare::endpoints::dns::DnsContent::CNAME {
+        params: cloudflare::endpoints::dns::dns::ListDnsRecordsParams {
+            record_type: Some(cloudflare::endpoints::dns::dns::DnsContent::CNAME {
                 content: format!("{}.cfargotunnel.com", tunnel_id),
             }),
             ..Default::default()
@@ -164,7 +169,7 @@ pub async fn delete_tunnel(
         }
     };
 
-    let delete_dns_record_red = cloudflare::endpoints::dns::DeleteDnsRecord {
+    let delete_dns_record_red = cloudflare::endpoints::dns::dns::DeleteDnsRecord {
         zone_identifier: zone_id,
         identifier: &record.id,
     };
@@ -175,4 +180,19 @@ pub async fn delete_tunnel(
         .map_err(|error| DeleteTunnelError::DeleteDNSRecord(error.to_string()))?;
 
     Ok(())
+}
+
+// TODO(augustoccesar)[2026-04-13]: This function is duplicated on linkup-cli/src/commands/deploy/mod.rs
+//  We can probably find a place to unify them.
+pub async fn tunnel_prefix(client: &Client, zone_id: &str) -> Result<String, ApiFailure> {
+    let req = endpoints::zones::zone::ZoneDetails {
+        identifier: zone_id,
+    };
+
+    let zone = client.request(&req).await?;
+
+    let zone_name = zone.result.name.replace(".", "-");
+    let tunnel_name = format!("linkup-tunnel-{}-", zone_name);
+
+    Ok(tunnel_name)
 }

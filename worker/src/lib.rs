@@ -144,8 +144,7 @@ async fn get_tunnel_handler(
 
     let cf_client = cloudflare_client(&state.cloudflare.api_token);
     let tunnel_prefix =
-        match cloudflare::linkup::tunnel_prefix(&cf_client, &state.cloudflare.tunnel_zone_id).await
-        {
+        match tunnel::tunnel_prefix(&cf_client, &state.cloudflare.tunnel_zone_id).await {
             Ok(prefix) => prefix,
             Err(error) => {
                 console_error!("Failed resolve tunnel prefix: {}", error);
@@ -490,12 +489,12 @@ async fn set_cached_req(cache_key: String, resp: worker::Response) -> worker::Re
     Ok(())
 }
 
-fn cloudflare_client(api_token: &str) -> cloudflare::framework::async_api::Client {
-    cloudflare::framework::async_api::Client::new(
+fn cloudflare_client(api_token: &str) -> cloudflare::framework::client::async_api::Client {
+    cloudflare::framework::client::async_api::Client::new(
         cloudflare::framework::auth::Credentials::UserAuthToken {
             token: api_token.to_string(),
         },
-        cloudflare::framework::HttpApiClientConfig::default(),
+        cloudflare::framework::client::ClientConfig::default(),
         cloudflare::framework::Environment::Production,
     )
     .expect("Cloudflare API Client to have been created")

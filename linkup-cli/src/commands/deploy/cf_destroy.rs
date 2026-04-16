@@ -40,12 +40,12 @@ pub async fn destroy(args: &DestroyArgs) -> Result<()> {
         Box::new(auth),
     );
 
-    let cloudflare_client = cloudflare::framework::async_api::Client::new(
+    let cloudflare_client = cloudflare::framework::client::async_api::Client::new(
         cloudflare::framework::auth::Credentials::UserAuthKey {
             email: args.email.clone(),
             key: args.api_key.clone(),
         },
-        cloudflare::framework::HttpApiClientConfig::default(),
+        cloudflare::framework::client::ClientConfig::default(),
         cloudflare::framework::Environment::Production,
     )
     .expect("Cloudflare API Client to have been created");
@@ -73,7 +73,7 @@ pub async fn destroy(args: &DestroyArgs) -> Result<()> {
 pub async fn destroy_from_cloudflare(
     resources: &TargetCfResources,
     api: &impl CloudflareApi,
-    cloudflare_client: &cloudflare::framework::async_api::Client,
+    cloudflare_client: &cloudflare::framework::client::async_api::Client,
     notifier: &impl DeployNotifier,
 ) -> Result<()> {
     // 1) Check which resources actually exist and need removal
