@@ -18,11 +18,16 @@ mod helpers;
 async fn can_request_underlying_websocket_server(
     #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
 ) {
-    let url = setup_server(server_kind).await;
+    let url = setup_server(server_kind.clone()).await;
     let ws_url = setup_websocket_server().await;
 
     let session_req = create_session_request("ws-session".to_string(), Some(ws_url));
-    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
+
+    let session_resp = match server_kind {
+        ServerKind::Local => post(format!("{}/linkup/sessions", url), session_req).await,
+        ServerKind::Worker => post(format!("{}/linkup/local-session", url), session_req).await,
+    };
+
     assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
     assert_eq!(session_resp.text().await.unwrap(), "ws-session");
 

@@ -17,11 +17,16 @@ mod helpers;
 async fn can_request_underlying_server(
     #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
 ) {
-    let url = setup_server(server_kind).await;
+    let url = setup_server(server_kind.clone()).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
     let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
-    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
+
+    let session_resp = match &server_kind {
+        ServerKind::Local => post(format!("{}/linkup/sessions", url), session_req).await,
+        ServerKind::Worker => post(format!("{}/linkup/local-session", url), session_req).await,
+    };
+
     assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
     assert_eq!(session_resp.text().await.unwrap(), "potatosession");
 
@@ -40,11 +45,16 @@ async fn can_request_underlying_server(
 async fn does_not_follow_redirects(
     #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
 ) {
-    let url = setup_server(server_kind).await;
+    let url = setup_server(server_kind.clone()).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
     let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
-    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
+
+    let session_resp = match &server_kind {
+        ServerKind::Local => post(format!("{}/linkup/sessions", url), session_req).await,
+        ServerKind::Worker => post(format!("{}/linkup/local-session", url), session_req).await,
+    };
+
     assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
     assert_eq!(session_resp.text().await.unwrap(), "potatosession");
 
@@ -66,11 +76,16 @@ async fn does_not_follow_redirects(
 async fn maintains_multiple_set_cookie_headers(
     #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
 ) {
-    let url = setup_server(server_kind).await;
+    let url = setup_server(server_kind.clone()).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
     let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
-    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
+
+    let session_resp = match server_kind {
+        ServerKind::Local => post(format!("{}/linkup/sessions", url), session_req).await,
+        ServerKind::Worker => post(format!("{}/linkup/local-session", url), session_req).await,
+    };
+
     assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
     assert_eq!(session_resp.text().await.unwrap(), "potatosession");
 

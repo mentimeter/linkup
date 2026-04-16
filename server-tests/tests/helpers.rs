@@ -5,7 +5,7 @@ use linkup_local_server::{dns::DnsCatalog, router};
 use reqwest::Url;
 use tokio::net::TcpListener;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ServerKind {
     Local,
     Worker,

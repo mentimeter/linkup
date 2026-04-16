@@ -12,9 +12,12 @@ mod helpers;
 async fn can_respond_to_health_check(
     #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
 ) {
-    let url = setup_server(server_kind).await;
+    let url = setup_server(server_kind.clone()).await;
 
-    let response = get(format!("{}/linkup/health/ping", url)).await;
+    let response = match server_kind {
+        ServerKind::Local => get(format!("{}/linkup/health/ping", url)).await,
+        ServerKind::Worker => get(format!("{}/linkup/check", url)).await,
+    };
 
     assert_eq!(response.status(), reqwest::StatusCode::OK);
 }
@@ -34,9 +37,12 @@ async fn no_such_session(#[values(ServerKind::Local, ServerKind::Worker)] server
 async fn method_not_allowed_config_get(
     #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
 ) {
-    let url = setup_server(server_kind).await;
+    let url = setup_server(server_kind.clone()).await;
 
-    let response = get(format!("{}/linkup/local-session", url)).await;
+    let response = match server_kind {
+        ServerKind::Local => get(format!("{}/linkup/sessions", url)).await,
+        ServerKind::Worker => get(format!("{}/linkup/local-session", url)).await,
+    };
 
     assert_eq!(response.status(), reqwest::StatusCode::METHOD_NOT_ALLOWED);
 }
@@ -46,10 +52,14 @@ async fn method_not_allowed_config_get(
 async fn can_create_session(
     #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
 ) {
-    let url = setup_server(server_kind).await;
+    let url = setup_server(server_kind.clone()).await;
 
     let session_req = create_session_request("potatoname".to_string(), None);
-    let response = post(format!("{}/linkup/local-session", url), session_req).await;
+
+    let response = match server_kind {
+        ServerKind::Local => post(format!("{}/linkup/sessions", url), session_req).await,
+        ServerKind::Worker => post(format!("{}/linkup/local-session", url), session_req).await,
+    };
 
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     assert_eq!(response.text().await.unwrap(), "potatoname");
