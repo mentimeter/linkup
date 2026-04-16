@@ -7,7 +7,6 @@ use http::StatusCode;
 use linkup::{ConfigError, Domain, NameKind, Session, SessionAllocator, SessionService};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 use crate::{http_error::HttpError, kv_store::CfWorkerStringStore, worker_state::WorkerState};
 
@@ -36,6 +35,36 @@ pub enum UpsertSessionRequest {
         )]
         cache_routes: Option<Vec<Regex>>,
     },
+}
+
+impl TryFrom<UpsertSessionRequest> for Session {
+    type Error = ConfigError;
+
+    fn try_from(req: UpsertSessionRequest) -> Result<Self, Self::Error> {
+        let (session_token, services, domains, cache_routes) = match req {
+            UpsertSessionRequest::Named {
+                services,
+                domains,
+                cache_routes,
+                session_token,
+                ..
+            } => (session_token, services, domains, cache_routes),
+            UpsertSessionRequest::Unnamed {
+                services,
+                domains,
+                cache_routes,
+            } => (
+                "preview_session".to_string(),
+                services,
+                domains,
+                cache_routes,
+            ),
+        };
+
+        let session = Session::new(session_token, services, domains, cache_routes)?;
+
+        Ok(session)
+    }
 }
 
 // TODO(augustoccesar)[2026-04-13]: This methods now exists because both the endpoints to
@@ -83,34 +112,4 @@ async fn handle_session_upsert(
     };
 
     (StatusCode::OK, name).into_response()
-}
-
-impl TryFrom<UpsertSessionRequest> for Session {
-    type Error = ConfigError;
-
-    fn try_from(req: UpsertSessionRequest) -> Result<Self, Self::Error> {
-        let (session_token, services, domains, cache_routes) = match req {
-            UpsertSessionRequest::Named {
-                services,
-                domains,
-                cache_routes,
-                session_token,
-                ..
-            } => (session_token, services, domains, cache_routes),
-            UpsertSessionRequest::Unnamed {
-                services,
-                domains,
-                cache_routes,
-            } => (
-                "preview_session".to_string(),
-                services,
-                domains,
-                cache_routes,
-            ),
-        };
-
-        let session = Session::new(session_token, services, domains, cache_routes)?;
-
-        Ok(session)
-    }
 }
