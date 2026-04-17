@@ -1725,7 +1725,7 @@ dependencies = [
 
 [[package]]
 name = "linkup"
-version = "0.1.0"
+version = "3.5.0"
 dependencies = [
  "hex",
  "http",
@@ -1779,7 +1779,7 @@ dependencies = [
 
 [[package]]
 name = "linkup-clients"
-version = "0.1.0"
+version = "3.5.0"
 dependencies = [
  "linkup",
  "reqwest 0.13.2",
@@ -1791,7 +1791,7 @@ dependencies = [
 
 [[package]]
 name = "linkup-local-server"
-version = "0.1.0"
+version = "3.5.0"
 dependencies = [
  "async-trait",
  "axum 0.8.1",
@@ -1818,7 +1818,7 @@ dependencies = [
 
 [[package]]
 name = "linkup-server-tests"
-version = "0.1.0"
+version = "3.5.0"
 dependencies = [
  "anyhow",
  "axum 0.8.1",
@@ -1835,7 +1835,7 @@ dependencies = [
 
 [[package]]
 name = "linkup-worker"
-version = "0.1.0"
+version = "3.5.0"
 dependencies = [
  "axum 0.8.1",
  "base64",

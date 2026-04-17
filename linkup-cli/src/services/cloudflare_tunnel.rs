@@ -68,7 +68,7 @@ impl CloudflareTunnel {
             linkup_session_name
         );
 
-        let worker_client = WorkerClient::new(worker_url, worker_token, crate::CURRENT_VERSION);
+        let worker_client = WorkerClient::new(worker_url, worker_token);
         let tunnel_data = worker_client
             .get_tunnel(linkup_session_name)
             .await

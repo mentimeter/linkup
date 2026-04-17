@@ -39,13 +39,7 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let worker_client = WorkerClient::new(
-        &input_config.linkup.worker_url,
-        &input_config.linkup.worker_token,
-        crate::CURRENT_VERSION,
-    );
-
-    let preview_name = worker_client
+    let preview_name = WorkerClient::new(&url, &input_config.linkup.worker_token)
         .preview_session(&upsert_session_request)
         .await
         .with_context(|| format!("Failed to send preview request to {}", url))?;

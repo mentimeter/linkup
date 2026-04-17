@@ -231,9 +231,7 @@ async fn upload_session_to_worker(
 ) -> Result<String, WorkerClientError> {
     let req = build_upsert_request(desired_name, session);
 
-    WorkerClient::new(url, token, crate::CURRENT_VERSION)
-        .local_session(&req)
-        .await
+    WorkerClient::new(url, token).local_session(&req).await
 }
 
 async fn upload_session_to_local_server(
