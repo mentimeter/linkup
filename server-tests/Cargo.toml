@@ -1,16 +1,13 @@
 [package]
 name = "linkup-server-tests"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dev-dependencies]
 linkup = { workspace = true }
 linkup-local-server = { workspace = true }
 http = { workspace = true }
-reqwest = { workspace = true, features = [
-    "blocking",
-    "rustls",
-] }
+reqwest = { workspace = true, features = ["blocking", "rustls"] }
 anyhow = { workspace = true }
 futures = { workspace = true }
 axum = { workspace = true, features = ["ws"] }
