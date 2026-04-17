@@ -9,14 +9,13 @@ use std::{
 
 use anyhow::Context;
 use indicatif::ProgressBar;
-use reqwest::StatusCode;
+use linkup_clients::LocalServerClient;
 use tokio::time::sleep;
 use url::Url;
 
 use crate::{
     Result, linkup_certs_dir_path, linkup_file_path,
     state::{State, upload_state},
-    worker_client,
 };
 
 use super::{BackgroundService, PidError};
@@ -29,8 +28,6 @@ pub enum Error {
     StoppingPid(#[from] PidError),
     #[error("Failed to reach the local server")]
     ServerUnreachable,
-    #[error("WorkerClient error: {0}")]
-    WorkerClient(#[from] worker_client::Error),
 }
 
 pub struct LocalServer {
@@ -82,15 +79,10 @@ impl LocalServer {
     }
 
     async fn reachable(&self) -> bool {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(1))
-            .build()
-            .expect("failed while creating an HTTP client to check readiness of LocalServer");
-
-        let url = format!("{}linkup/check", Self::url());
-        let response = client.get(url).send().await;
-
-        matches!(response, Ok(res) if res.status() == StatusCode::OK)
+        matches!(
+            LocalServerClient::new(&Self::url()).health_check().await,
+            Ok(true)
+        )
     }
 
     async fn update_state(&self, state: &mut State) -> Result<()> {

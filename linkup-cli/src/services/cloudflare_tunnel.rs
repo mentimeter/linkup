@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 use url::Url;
 
-use crate::{Result, linkup_file_path, state::State, worker_client::WorkerClient};
+use linkup_clients::WorkerClient;
+
+use crate::{Result, linkup_file_path, state::State};
 
 use super::{BackgroundService, PidError};
 

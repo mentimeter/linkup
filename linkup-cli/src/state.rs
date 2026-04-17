@@ -12,10 +12,9 @@ use url::Url;
 
 use linkup::{Domain, Session, SessionService, UpsertSessionRequest};
 
-use crate::{
-    LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services,
-    worker_client::{self, WorkerClient},
-};
+use linkup_clients::{LocalServerClient, WorkerClient};
+
+use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
@@ -198,7 +197,7 @@ pub async fn upload_state(state: &State) -> Result<String> {
     let servers_sessions = ServersSessions::from(state);
     let session_name = &state.linkup.session_name;
 
-    let server_session_name = upload_session_to_server(
+    let server_session_name = upload_session_to_worker(
         &state.linkup.worker_url,
         &state.linkup.worker_token,
         session_name,
@@ -206,13 +205,9 @@ pub async fn upload_state(state: &State) -> Result<String> {
     )
     .await?;
 
-    let local_session_name = upload_session_to_server(
-        &local_url,
-        &state.linkup.worker_token,
-        &server_session_name,
-        servers_sessions.local,
-    )
-    .await?;
+    let local_session_name =
+        upload_session_to_local_server(&local_url, &server_session_name, servers_sessions.local)
+            .await?;
 
     if server_session_name != local_session_name {
         log::error!(
@@ -221,31 +216,43 @@ pub async fn upload_state(state: &State) -> Result<String> {
             &server_session_name
         );
 
-        return Err(worker_client::Error::InconsistentState.into());
+        return Err(anyhow::anyhow!(
+            "your session is in an inconsistent state. Stop your session before trying again."
+        ));
     }
 
     Ok(server_session_name)
 }
 
-async fn upload_session_to_server(
-    linkup_url: &Url,
-    worker_token: &str,
+async fn upload_session_to_worker(
+    url: &Url,
+    token: &str,
     desired_name: &str,
     session: Session,
-) -> Result<String, worker_client::Error> {
-    let session_update_req = UpsertSessionRequest::Named {
+) -> Result<String> {
+    let req = build_upsert_request(desired_name, session);
+
+    Ok(WorkerClient::new(url, token).local_session(&req).await?)
+}
+
+async fn upload_session_to_local_server(
+    url: &Url,
+    desired_name: &str,
+    session: Session,
+) -> Result<String> {
+    let req = build_upsert_request(desired_name, session);
+
+    Ok(LocalServerClient::new(url).upsert_session(&req).await?)
+}
+
+fn build_upsert_request(desired_name: &str, session: Session) -> UpsertSessionRequest {
+    UpsertSessionRequest::Named {
         session_token: session.session_token,
         desired_name: desired_name.to_string(),
         services: session.services,
         domains: session.domains,
         cache_routes: session.cache_routes,
-    };
-
-    let session_name = WorkerClient::new(linkup_url, worker_token)
-        .linkup(&session_update_req)
-        .await?;
-
-    Ok(session_name)
+    }
 }
 
 impl From<&State> for ServersSessions {
