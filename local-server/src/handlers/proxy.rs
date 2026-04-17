@@ -5,8 +5,9 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Uri};
-use linkup::{MemoryStringStore, SessionAllocator, TargetService};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+use linkup::{MemoryStringStore, SessionAllocator, TargetService};
 
 use crate::{HttpsClient, handlers::ApiError, ws};
 

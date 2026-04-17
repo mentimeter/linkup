@@ -3,8 +3,9 @@ use axum::{
     response::IntoResponse,
 };
 use http::{HeaderMap, StatusCode, Uri};
-use linkup::{Session, SessionAllocator};
 use worker::{Fetch, HttpResponse};
+
+use linkup::{Session, SessionAllocator};
 
 use crate::{
     http_error::HttpError, kv_store::CfWorkerStringStore, worker_state::WorkerState,
@@ -42,6 +43,7 @@ pub async fn handle_all(State(state): State<WorkerState>, mut req: Request) -> i
 
     let extra_headers =
         linkup::get_additional_headers(&url, &headers, &session_name, &target_service);
+
     let is_websocket = req
         .headers()
         .get("upgrade")

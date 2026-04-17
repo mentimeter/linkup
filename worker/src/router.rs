@@ -94,11 +94,7 @@ async fn authenticate(
                 }
             },
             None => {
-                // TODO: Remove this once we've migrated all users to the new token
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    "no linkup access token provided. This token was added in linkup 2.0, check to see if your cli is up to date"
-                ).into_response();
+                return (StatusCode::UNAUTHORIZED, "Missing authorization header.").into_response();
             }
         }
     }

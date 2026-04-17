@@ -31,7 +31,7 @@ async fn fetch(
 #[event(scheduled)]
 async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
     let state =
-        WorkerState::try_from(env).expect("LinkupState to be buildable from worker environment");
+        WorkerState::try_from(env).expect("WorkerState to be buildable from worker environment");
 
     let tunnels_keys = state
         .tunnels_kv

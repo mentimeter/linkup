@@ -1,9 +1,10 @@
 use std::process::Command;
 
-use linkup::{Domain, MemoryStringStore, SessionMode, SessionService, UpsertSessionRequest};
-use linkup_local_server::{dns::DnsCatalog, router};
 use reqwest::Url;
 use tokio::net::TcpListener;
+
+use linkup::{Domain, MemoryStringStore, SessionMode, SessionService, UpsertSessionRequest};
+use linkup_local_server::{dns::DnsCatalog, router};
 
 #[derive(Debug, Clone)]
 pub enum ServerKind {
