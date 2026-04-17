@@ -1779,7 +1779,7 @@ dependencies = [
 
 [[package]]
 name = "linkup-clients"
-version = "0.1.0"
+version = "3.5.0"
 dependencies = [
  "linkup",
  "reqwest 0.13.2",
