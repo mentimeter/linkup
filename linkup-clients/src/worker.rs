@@ -38,7 +38,7 @@ struct GetTunnelParams {
 }
 
 impl WorkerClient {
-    pub fn new(url: &Url, worker_token: &str, version: &str) -> Self {
+    pub fn new(url: &Url, worker_token: &str) -> Self {
         let mut headers = header::HeaderMap::new();
         let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", worker_token))
             .expect("token to contain only valid bytes");
@@ -48,7 +48,7 @@ impl WorkerClient {
         headers.insert(header::AUTHORIZATION, auth_value);
         headers.insert(
             "x-linkup-version",
-            header::HeaderValue::from_str(version).expect("version should be valid str"),
+            header::HeaderValue::from_static(CURRENT_VERSION),
         );
 
         let client = reqwest::Client::builder()
@@ -112,3 +112,5 @@ impl WorkerClient {
         }
     }
 }
+
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");

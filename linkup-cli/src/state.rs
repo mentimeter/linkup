@@ -14,9 +14,7 @@ use linkup::{Domain, Session, SessionService, UpsertSessionRequest};
 
 use linkup_clients::{LocalServerClient, WorkerClient};
 
-use crate::{
-    CURRENT_VERSION, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services,
-};
+use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
@@ -234,9 +232,7 @@ async fn upload_session_to_worker(
 ) -> Result<String> {
     let req = build_upsert_request(desired_name, session);
 
-    Ok(WorkerClient::new(url, token, CURRENT_VERSION)
-        .local_session(&req)
-        .await?)
+    Ok(WorkerClient::new(url, token).local_session(&req).await?)
 }
 
 async fn upload_session_to_local_server(

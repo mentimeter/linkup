@@ -16,7 +16,7 @@ use url::Url;
 
 use linkup_clients::WorkerClient;
 
-use crate::{CURRENT_VERSION, Result, linkup_file_path, state::State};
+use crate::{Result, linkup_file_path, state::State};
 
 use super::{BackgroundService, PidError};
 
@@ -68,7 +68,7 @@ impl CloudflareTunnel {
             linkup_session_name
         );
 
-        let worker_client = WorkerClient::new(worker_url, worker_token, CURRENT_VERSION);
+        let worker_client = WorkerClient::new(worker_url, worker_token);
         let tunnel_data = worker_client
             .get_tunnel(linkup_session_name)
             .await
