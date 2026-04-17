@@ -101,6 +101,24 @@ pub enum ConfigError {
 }
 
 impl Session {
+    pub fn new(
+        session_token: String,
+        services: Vec<SessionService>,
+        domains: Vec<Domain>,
+        cache_routes: Option<Vec<Regex>>,
+    ) -> Result<Self, ConfigError> {
+        let session = Self {
+            session_token,
+            services,
+            domains,
+            cache_routes,
+        };
+
+        session.validate()?;
+
+        Ok(session)
+    }
+
     pub fn get_service(&self, service_name: &str) -> Option<&SessionService> {
         self.services
             .iter()
@@ -132,6 +150,51 @@ impl Session {
         let result = hasher.finalize();
         hex::encode(result)
     }
+
+    fn validate(&self) -> Result<(), ConfigError> {
+        if self.services.is_empty() {
+            return Err(ConfigError::Empty);
+        }
+
+        if self.domains.is_empty() {
+            return Err(ConfigError::Empty);
+        }
+
+        let mut service_names: HashSet<&str> = HashSet::new();
+
+        for service in &self.services {
+            let url = &service.location;
+            let origin = &url.origin();
+
+            if !origin.is_tuple() {
+                return Err(ConfigError::InvalidURL(url.to_string()));
+            }
+
+            if url.scheme() != "http" && url.scheme() != "https" {
+                return Err(ConfigError::InvalidURL(url.to_string()));
+            }
+
+            service_names.insert(&service.name);
+        }
+
+        for domain in &self.domains {
+            if !service_names.contains(&domain.default_service.as_str()) {
+                return Err(ConfigError::NoSuchService(
+                    domain.default_service.to_string(),
+                ));
+            }
+
+            if let Some(routes) = &domain.routes {
+                for route in routes {
+                    if !service_names.contains(&route.service.as_str()) {
+                        return Err(ConfigError::NoSuchService(route.service.to_string()));
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl TryFrom<UpsertSessionRequest> for Session {
@@ -158,15 +221,7 @@ impl TryFrom<UpsertSessionRequest> for Session {
             ),
         };
 
-        let session = Self {
-            session_token,
-            services,
-            domains,
-            cache_routes,
-        };
-
-        validate_not_empty(&session)?;
-        validate_services(&session)?;
+        let session = Self::new(session_token, services, domains, cache_routes)?;
 
         Ok(session)
     }
@@ -176,10 +231,9 @@ impl TryFrom<serde_json::Value> for Session {
     type Error = ConfigError;
 
     fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let session = serde_json::from_value(value)?;
+        let session: Session = serde_json::from_value(value)?;
 
-        validate_not_empty(&session)?;
-        validate_services(&session)?;
+        session.validate()?;
 
         Ok(session)
     }
@@ -213,58 +267,6 @@ pub fn create_preview_req_from_config(
         domains: config.domains.clone(),
         cache_routes: config.linkup.cache_routes.clone(),
     }
-}
-
-fn validate_not_empty(session: &Session) -> Result<(), ConfigError> {
-    if session.services.is_empty() {
-        return Err(ConfigError::Empty);
-    }
-    if session.domains.is_empty() {
-        return Err(ConfigError::Empty);
-    }
-
-    Ok(())
-}
-
-fn validate_services(session: &Session) -> Result<(), ConfigError> {
-    let mut service_names: HashSet<&str> = HashSet::new();
-
-    for service in &session.services {
-        validate_url_origin(&service.location)?;
-
-        service_names.insert(&service.name);
-    }
-
-    for domain in &session.domains {
-        if !service_names.contains(&domain.default_service.as_str()) {
-            return Err(ConfigError::NoSuchService(
-                domain.default_service.to_string(),
-            ));
-        }
-
-        if let Some(routes) = &domain.routes {
-            for route in routes {
-                if !service_names.contains(&route.service.as_str()) {
-                    return Err(ConfigError::NoSuchService(route.service.to_string()));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_url_origin(url: &Url) -> Result<(), ConfigError> {
-    let origin = url.origin();
-    if !origin.is_tuple() {
-        return Err(ConfigError::InvalidURL(url.to_string()));
-    }
-
-    if url.scheme() != "http" && url.scheme() != "https" {
-        return Err(ConfigError::InvalidURL(url.to_string()));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
