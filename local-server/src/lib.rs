@@ -1,130 +1,49 @@
+pub mod certificates;
+pub mod dns;
+mod handlers;
+mod ws;
+
 use axum::{
     Extension, Router,
     body::Body,
-    extract::{DefaultBodyLimit, Json, Request},
-    http::StatusCode,
-    response::{IntoResponse, Response},
+    extract::DefaultBodyLimit,
     routing::{any, get, post},
 };
 use axum_server::tls_rustls::RustlsConfig;
 use hickory_server::{
     ServerFuture,
-    authority::{Catalog, ZoneType},
-    proto::{
-        rr::{Name, RData, Record},
-        xfer::Protocol,
-    },
+    proto::{rr::Name, xfer::Protocol},
     resolver::{
         config::{NameServerConfig, NameServerConfigGroup, ResolverOpts},
         name_server::TokioConnectionProvider,
     },
-    server::{RequestHandler, ResponseHandler, ResponseInfo},
-    store::{
-        forwarder::{ForwardAuthority, ForwardConfig},
-        in_memory::InMemoryAuthority,
-    },
+    store::forwarder::{ForwardAuthority, ForwardConfig},
 };
-use http::{HeaderName, HeaderValue, Uri, header::HeaderMap};
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
     client::legacy::{Client, connect::HttpConnector},
     rt::TokioExecutor,
 };
-use linkup::{
-    MemoryStringStore, NameKind, Session, SessionAllocator, TargetService, UpsertSessionRequest,
-    allow_all_cors, get_additional_headers, get_target_service,
-};
+use linkup::MemoryStringStore;
 use rustls::ServerConfig;
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    ops::Deref,
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{net::SocketAddr, path::PathBuf};
 use std::{path::Path, sync::Arc};
-use tokio::{net::UdpSocket, select, signal, sync::RwLock};
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio::{net::UdpSocket, select, signal};
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
-pub mod certificates;
-mod ws;
-
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
-const DISALLOWED_HEADERS: [HeaderName; 2] = [
-    HeaderName::from_static("content-encoding"),
-    HeaderName::from_static("content-length"),
-];
-
-#[derive(Debug)]
-struct ApiError {
-    message: String,
-    status_code: StatusCode,
-}
-
-impl ApiError {
-    fn new(message: String, status_code: StatusCode) -> Self {
-        ApiError {
-            message,
-            status_code,
-        }
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        Response::builder()
-            .status(self.status_code)
-            .header("Content-Type", "text/plain")
-            .body(Body::from(self.message))
-            .unwrap()
-    }
-}
-
-#[derive(Clone)]
-pub struct DnsCatalog(Arc<RwLock<Catalog>>);
-
-impl DnsCatalog {
-    pub fn new() -> Self {
-        Self(Arc::new(RwLock::new(Catalog::new())))
-    }
-}
-
-impl Default for DnsCatalog {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Deref for DnsCatalog {
-    type Target = Arc<RwLock<Catalog>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[async_trait::async_trait]
-impl RequestHandler for DnsCatalog {
-    async fn handle_request<R: ResponseHandler>(
-        &self,
-        request: &hickory_server::server::Request,
-        response_handle: R,
-    ) -> ResponseInfo {
-        let catalog = self.read().await;
-
-        catalog.handle_request(request, response_handle).await
-    }
-}
-
-pub fn linkup_router(config_store: MemoryStringStore, dns_catalog: DnsCatalog) -> Router {
+pub fn router(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) -> Router {
     let client = https_client();
 
     Router::new()
-        .route("/linkup/local-session", post(linkup_config_handler))
-        .route("/linkup/check", get(always_ok))
-        .fallback(any(linkup_request_handler))
+        .route(
+            "/linkup/local-session",
+            post(handlers::sessions::handle_upsert),
+        )
+        .route("/linkup/check", get(handlers::always_ok))
+        .fallback(any(handlers::proxy::handle_all))
         .layer(Extension(config_store))
         .layer(Extension(dns_catalog))
         .layer(Extension(client))
@@ -140,7 +59,7 @@ pub fn linkup_router(config_store: MemoryStringStore, dns_catalog: DnsCatalog) -
 }
 
 pub async fn start(config_store: MemoryStringStore, certs_dir: &Path) {
-    let dns_catalog = DnsCatalog::new();
+    let dns_catalog = dns::DnsCatalog::new();
 
     let http_config_store = config_store.clone();
     let https_config_store = config_store.clone();
@@ -165,7 +84,7 @@ pub async fn start(config_store: MemoryStringStore, certs_dir: &Path) {
 async fn start_server_https(
     config_store: MemoryStringStore,
     certs_dir: &Path,
-    dns_catalog: DnsCatalog,
+    dns_catalog: dns::DnsCatalog,
 ) {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
@@ -185,7 +104,7 @@ async fn start_server_https(
         .with_cert_resolver(Arc::new(sni));
     server_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
-    let app = linkup_router(config_store, dns_catalog);
+    let app = router(config_store, dns_catalog);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 443));
     println!("HTTPS listening on {}", &addr);
@@ -196,8 +115,8 @@ async fn start_server_https(
         .expect("failed to start HTTPS server");
 }
 
-async fn start_server_http(config_store: MemoryStringStore, dns_catalog: DnsCatalog) {
-    let app = linkup_router(config_store, dns_catalog);
+async fn start_server_http(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) {
+    let app = router(config_store, dns_catalog);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 80));
     println!("HTTP listening on {}", &addr);
@@ -211,7 +130,7 @@ async fn start_server_http(config_store: MemoryStringStore, dns_catalog: DnsCata
         .expect("failed to start HTTP server");
 }
 
-async fn start_dns_server(dns_catalog: DnsCatalog) {
+async fn start_dns_server(dns_catalog: dns::DnsCatalog) {
     let cf_name_server = NameServerConfig::new("1.1.1.1:53".parse().unwrap(), Protocol::Udp);
     let forward_config = ForwardConfig {
         name_servers: NameServerConfigGroup::from(vec![cf_name_server]),
@@ -237,259 +156,6 @@ async fn start_dns_server(dns_catalog: DnsCatalog) {
 
     println!("listening on {addr}");
     server.block_until_done().await.unwrap();
-}
-
-async fn linkup_request_handler(
-    Extension(store): Extension<MemoryStringStore>,
-    Extension(client): Extension<HttpsClient>,
-    ws: ws::ExtractOptionalWebSocketUpgrade,
-    req: Request,
-) -> Response {
-    let sessions = SessionAllocator::new(&store);
-
-    let headers: linkup::HeaderMap = req.headers().into();
-    let url = if req.uri().scheme().is_some() {
-        req.uri().to_string()
-    } else {
-        format!(
-            "http://{}{}",
-            req.headers()
-                .get(http::header::HOST)
-                .and_then(|h| h.to_str().ok())
-                .unwrap_or("localhost"),
-            req.uri()
-        )
-    };
-
-    let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
-        Ok(session) => session,
-        Err(_) => {
-            return ApiError::new(
-                "Linkup was unable to determine the session origin of the request. Ensure that your request includes a valid session identifier in the referer or tracestate headers. - Local Server".to_string(),
-                StatusCode::UNPROCESSABLE_ENTITY,
-            )
-                .into_response()
-        }
-    };
-
-    let target_service = match get_target_service(&url, &headers, &config, &session_name) {
-        Some(result) => result,
-        None => {
-            return ApiError::new(
-                "The request belonged to a session, but there was no target for the request. Check that the routing rules in your linkup config have a match for this request. - Local Server".to_string(),
-                StatusCode::NOT_FOUND,
-            )
-                .into_response()
-        }
-    };
-
-    let extra_headers = get_additional_headers(&url, &headers, &session_name, &target_service);
-
-    match ws.0 {
-        Some(downstream_upgrade) => {
-            let mut url = target_service.url;
-            if url.starts_with("http://") {
-                url = url.replace("http://", "ws://");
-            } else if url.starts_with("https://") {
-                url = url.replace("https://", "wss://");
-            }
-
-            let uri = url.parse::<Uri>().unwrap();
-            let host = uri.host().unwrap().to_string();
-            let mut upstream_request = uri.into_client_request().unwrap();
-
-            // Copy over all headers from the incoming request
-            let mut cookie_values: Vec<String> = Vec::new();
-            for (key, value) in req.headers() {
-                if key == http::header::COOKIE {
-                    if let Ok(cookie_value) = value.to_str().map(str::trim)
-                        && !cookie_value.is_empty()
-                    {
-                        cookie_values.push(cookie_value.to_string());
-                    }
-
-                    continue;
-                }
-
-                upstream_request.headers_mut().insert(key, value.clone());
-            }
-
-            if !cookie_values.is_empty() {
-                let combined = cookie_values.join("; ");
-                if let Ok(cookie_header_value) = HeaderValue::from_str(&combined) {
-                    upstream_request
-                        .headers_mut()
-                        .insert(http::header::COOKIE, cookie_header_value);
-                }
-            }
-
-            linkup::normalize_cookie_header(upstream_request.headers_mut());
-
-            // add the extra headers that linkup wants
-            let extra_http_headers: HeaderMap = extra_headers.into();
-            for (key, value) in extra_http_headers.iter() {
-                upstream_request.headers_mut().insert(key, value.clone());
-            }
-
-            // Overriding host header neccesary for tokio_tungstenite
-            upstream_request
-                .headers_mut()
-                .insert(http::header::HOST, HeaderValue::from_str(&host).unwrap());
-
-            let (upstream_ws_stream, upstream_response) =
-                match tokio_tungstenite::connect_async(upstream_request).await {
-                    Ok(connection) => connection,
-                    Err(error) => match error {
-                        tokio_tungstenite::tungstenite::Error::Http(response) => {
-                            let (parts, body) = response.into_parts();
-                            let body = body.unwrap_or_default();
-
-                            return Response::from_parts(parts, Body::from(body));
-                        }
-                        error => {
-                            return Response::builder()
-                                .status(StatusCode::BAD_GATEWAY)
-                                .body(Body::from(error.to_string()))
-                                .unwrap();
-                        }
-                    },
-                };
-
-            let mut downstream_upgrade_response =
-                downstream_upgrade.on_upgrade(ws::context_handle_socket(upstream_ws_stream));
-
-            let downstream_response_headers = downstream_upgrade_response.headers_mut();
-
-            // The headers from the upstream response are more important - trust the upstream server
-            for (upstream_key, upstream_value) in upstream_response.headers() {
-                // Except for content encoding headers, cloudflare does _not_ like them..
-                if !DISALLOWED_HEADERS.contains(upstream_key) {
-                    downstream_response_headers
-                        .insert(upstream_key.clone(), upstream_value.clone());
-                }
-            }
-
-            downstream_response_headers.extend(allow_all_cors());
-
-            downstream_upgrade_response
-        }
-        None => handle_http_req(req, target_service, extra_headers, client).await,
-    }
-}
-
-async fn handle_http_req(
-    mut req: Request,
-    target_service: TargetService,
-    extra_headers: linkup::HeaderMap,
-    client: HttpsClient,
-) -> Response {
-    *req.uri_mut() = Uri::try_from(&target_service.url).unwrap();
-    let extra_http_headers: HeaderMap = extra_headers.into();
-    req.headers_mut().extend(extra_http_headers);
-    // Request uri and host headers should not conflict
-    req.headers_mut().remove(http::header::HOST);
-    linkup::normalize_cookie_header(req.headers_mut());
-
-    if target_service.url.starts_with("http://") {
-        *req.version_mut() = http::Version::HTTP_11;
-    }
-
-    // Send the modified request to the target service.
-    let mut resp = match client.request(req).await {
-        Ok(resp) => resp,
-        Err(e) => {
-            return ApiError::new(
-                format!(
-                    "Failed to proxy request - are all your servers started? {}",
-                    e
-                ),
-                StatusCode::BAD_GATEWAY,
-            )
-            .into_response();
-        }
-    };
-
-    resp.headers_mut().extend(allow_all_cors());
-
-    resp.into_response()
-}
-
-async fn linkup_config_handler(
-    Extension(store): Extension<MemoryStringStore>,
-    Extension(dns_catalog): Extension<DnsCatalog>,
-    Json(upsert_req): Json<UpsertSessionRequest>,
-) -> impl IntoResponse {
-    let (desired_name, req_domains) = match &upsert_req {
-        UpsertSessionRequest::Named {
-            desired_name,
-            domains,
-            ..
-        } => (desired_name.clone(), domains),
-        UpsertSessionRequest::Unnamed { domains, .. } => (String::new(), domains),
-    };
-
-    let domains = req_domains
-        .iter()
-        .map(|domain| domain.domain.clone())
-        .collect::<Vec<String>>();
-
-    let server_conf: Session = match upsert_req.try_into() {
-        Ok(conf) => conf,
-        Err(e) => {
-            return ApiError::new(
-                format!("Failed to parse server config: {} - local server", e),
-                StatusCode::BAD_REQUEST,
-            )
-            .into_response();
-        }
-    };
-
-    let sessions = SessionAllocator::new(&store);
-    let session_name_result = sessions
-        .store_session(server_conf, NameKind::Animal, &desired_name)
-        .await;
-
-    let session_name = match session_name_result {
-        Ok(session_name) => session_name,
-        Err(e) => {
-            return ApiError::new(
-                format!("Failed to store server config: {}", e),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-            .into_response();
-        }
-    };
-
-    for domain in &domains {
-        let full_domain = format!("{session_name}.{domain}");
-
-        register_dns_record(&dns_catalog, &full_domain).await;
-    }
-
-    (StatusCode::OK, session_name).into_response()
-}
-
-async fn always_ok() -> &'static str {
-    "OK"
-}
-
-async fn register_dns_record(dns_catalog: &DnsCatalog, domain: &str) {
-    let mut catalog = dns_catalog.write().await;
-
-    let record_name = Name::from_str(&format!("{}.", domain))
-        .expect("dns record from domain should always succeed");
-
-    let authority = InMemoryAuthority::empty(record_name.clone(), ZoneType::Primary, false);
-
-    let record = Record::from_rdata(
-        record_name.clone(),
-        3600,
-        RData::A(Ipv4Addr::new(127, 0, 0, 1).into()),
-    );
-
-    authority.upsert(record, 0).await;
-
-    catalog.upsert(record_name.clone().into(), vec![Arc::new(authority)]);
 }
 
 fn https_client() -> HttpsClient {
