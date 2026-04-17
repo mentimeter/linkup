@@ -1,6 +1,6 @@
 [package]
 name = "linkup-cli"
-version = "3.5.0"
+version.workspace = true
 edition = "2024"
 build = "build.rs"
 
@@ -12,9 +12,7 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 clap = { version = "4.5.27", features = ["derive", "cargo"] }
 clap_complete = "4.5.42"
-cloudflare = { workspace = true, features = [
-    "rustls-tls",
-] }
+cloudflare = { workspace = true, features = ["rustls-tls"] }
 colored = "3.0.0"
 ctrlc = { version = "3.4.5", features = ["termination"] }
 hickory-resolver = { version = "0.25.2", features = ["tokio"] }

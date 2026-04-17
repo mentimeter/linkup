@@ -1,7 +1,18 @@
 [workspace]
 resolver = "2"
 
-members = ["linkup-cli", "linkup", "linkup-clients", "worker", "local-server", "server-tests", "cloudflare"]
+members = [
+    "linkup-cli",
+    "linkup",
+    "linkup-clients",
+    "worker",
+    "local-server",
+    "server-tests",
+    "cloudflare",
+]
+
+[workspace.package]
+version = "3.5.0"
 
 [workspace.dependencies]
 anyhow = "1.0.95"
