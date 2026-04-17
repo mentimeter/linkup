@@ -1,6 +1,6 @@
 [package]
 name = "linkup-local-server"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [lib]
@@ -26,14 +26,8 @@ rustls-native-certs = "0.8.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = [
-    "macros",
-    "signal",
-    "rt-multi-thread",
-] }
-tokio-tungstenite = { workspace = true, features = [
-    "rustls-tls-native-roots",
-] }
+tokio = { workspace = true, features = ["macros", "signal", "rt-multi-thread"] }
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
 tower-http = { version = "0.6.2", features = ["trace"] }
 tower = "0.5.2"
 rcgen = { version = "0.14.7", features = ["x509-parser"] }
