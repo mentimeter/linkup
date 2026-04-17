@@ -1,6 +1,6 @@
-use linkup::UpsertSessionRequest;
+use linkup::{GetTunnelRequest, TunnelData, UpsertSessionRequest};
 use reqwest::{StatusCode, header};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use url::Url;
 
 #[derive(thiserror::Error, Debug)]
@@ -18,23 +18,6 @@ pub enum Error {
 pub struct WorkerClient {
     url: Url,
     inner: reqwest::Client,
-}
-
-// TODO: This is a copy of the TunnelData from worker. We can/should probably have a shared one.
-#[derive(Serialize, Deserialize)]
-pub struct TunnelData {
-    pub account_id: String,
-    pub name: String,
-    pub url: String,
-    pub id: String,
-    pub secret: String,
-    pub last_started: u64,
-}
-
-// TODO: This is a copy of the GetTunnelParams from worker. We can/should probably have a shared one.
-#[derive(Serialize)]
-struct GetTunnelParams {
-    session_name: String,
 }
 
 impl WorkerClient {
@@ -71,7 +54,7 @@ impl WorkerClient {
     }
 
     pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {
-        let query = GetTunnelParams {
+        let query = GetTunnelRequest {
             session_name: String::from(session_name),
         };
 
