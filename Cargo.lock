@@ -1758,6 +1758,7 @@ dependencies = [
  "hickory-resolver",
  "indicatif",
  "linkup",
+ "linkup-clients",
  "linkup-local-server",
  "log",
  "mockall",
@@ -1773,6 +1774,18 @@ dependencies = [
  "tar",
  "thiserror 2.0.11",
  "tokio",
+ "url",
+]
+
+[[package]]
+name = "linkup-clients"
+version = "0.1.0"
+dependencies = [
+ "linkup",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.11",
  "url",
 ]
 

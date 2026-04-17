@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "linkup-cli",
     "linkup",
+    "linkup-clients",
     "worker",
     "local-server",
     "server-tests",
@@ -33,5 +34,6 @@ tokio-tungstenite = "0.28.0"
 url = { version = "2.5.4", features = ["serde"] }
 
 linkup = { path = "linkup" }
+linkup-clients = { path = "linkup-clients" }
 linkup-local-server = { path = "local-server" }
 cloudflare = { path = "cloudflare", default-features = false }
