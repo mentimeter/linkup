@@ -1,6 +1,6 @@
-use crate::{CURRENT_VERSION, Result};
 use crate::commands::status::{SessionStatus, format_state_domains};
 use crate::state::{config_path, get_config};
+use crate::{CURRENT_VERSION, Result};
 use anyhow::Context;
 use clap::builder::ValueParser;
 use linkup::UpsertSessionRequest;

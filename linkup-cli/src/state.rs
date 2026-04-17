@@ -14,7 +14,9 @@ use linkup::{Domain, Session, SessionService, UpsertSessionRequest};
 
 use linkup_clients::{LocalServerClient, WorkerClient};
 
-use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, CURRENT_VERSION, Result, linkup_file_path, services};
+use crate::{
+    CURRENT_VERSION, LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services,
+};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
