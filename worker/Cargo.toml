@@ -1,16 +1,13 @@
 [package]
 name = "linkup-worker"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-axum = { workspace = true, features = [
-    "json",
-    "query",
-] }
+axum = { workspace = true, features = ["json", "query"] }
 base64 = { workspace = true }
 console_error_panic_hook = { version = "0.1.7" }
 cloudflare = { workspace = true, features = ["default-tls"] }
