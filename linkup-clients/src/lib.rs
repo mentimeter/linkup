@@ -1,5 +1,5 @@
 mod local_server;
 mod worker;
 
-pub use local_server::{Error as LocalServerError, LocalServerClient};
-pub use worker::{Error as WorkerError, TunnelData, WorkerClient};
+pub use local_server::{Error as LocalServerClientError, LocalServerClient};
+pub use worker::{Error as WorkerClientError, TunnelData, WorkerClient};
