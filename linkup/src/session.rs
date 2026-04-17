@@ -205,18 +205,6 @@ impl Session {
     }
 }
 
-impl TryFrom<serde_json::Value> for Session {
-    type Error = ConfigError;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let session: Session = serde_json::from_value(value)?;
-
-        session.validate()?;
-
-        Ok(session)
-    }
-}
-
 impl TryFrom<UpsertSessionRequest> for Session {
     type Error = ConfigError;
 
@@ -242,7 +230,19 @@ impl TryFrom<UpsertSessionRequest> for Session {
             ),
         };
 
-        let session = Session::new(session_token, services, domains, cache_routes)?;
+        let session = Self::new(session_token, services, domains, cache_routes)?;
+
+        Ok(session)
+    }
+}
+
+impl TryFrom<serde_json::Value> for Session {
+    type Error = ConfigError;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        let session: Session = serde_json::from_value(value)?;
+
+        session.validate()?;
 
         Ok(session)
     }
