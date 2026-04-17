@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "linkup-cli/Cargo.toml"
+      - "Cargo.toml"
 
 jobs:
   check_version:
@@ -23,8 +23,8 @@ jobs:
       - name: Check Version
         id: check
         run: |
-          new_version=$(grep '^version = ' linkup-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
-          old_version=$(git show HEAD^:linkup-cli/Cargo.toml | grep '^version = ' | sed -E 's/version = "(.*)"/\1/')
+          new_version=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          old_version=$(git show HEAD^:Cargo.toml | grep '^version = ' | sed -E 's/version = "(.*)"/\1/')
 
           echo "New version: $new_version"
           echo "Old version: $old_version"
@@ -84,7 +84,7 @@ jobs:
       - name: Get Version from Cargo.toml
         id: get_version
         run: |
-          VERSION=$(grep '^version = ' linkup-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          VERSION=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
           echo "release_version=$VERSION" >> $GITHUB_OUTPUT
 
