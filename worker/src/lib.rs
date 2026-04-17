@@ -1,8 +1,9 @@
 use axum::{body::Body, response::Response};
+use linkup::TunnelData;
 use tower_service::Service;
 use worker::{Env, HttpRequest, console_error, console_log, console_warn, event};
 
-use crate::{router::router, tunnel::TunnelData, worker_state::WorkerState};
+use crate::{router::router, worker_state::WorkerState};
 
 mod handlers;
 mod http_error;
