@@ -13,8 +13,6 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("request failed with status {0}: {1}")]
     Response(StatusCode, String),
-    #[error("your session is in an inconsistent state. Stop your session before trying again.")]
-    InconsistentState,
 }
 
 pub struct WorkerClient {
@@ -40,15 +38,17 @@ struct GetTunnelParams {
 }
 
 impl WorkerClient {
-    pub fn new(url: &Url, worker_token: &str) -> Self {
+    pub fn new(url: &Url, worker_token: &str, version: &str) -> Self {
         let mut headers = header::HeaderMap::new();
         let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", worker_token))
             .expect("token to contain only valid bytes");
+
         auth_value.set_sensitive(true);
+
         headers.insert(header::AUTHORIZATION, auth_value);
         headers.insert(
             "x-linkup-version",
-            header::HeaderValue::from_static(crate::CURRENT_VERSION),
+            header::HeaderValue::from_str(version).expect("version should be valid str"),
         );
 
         let client = reqwest::Client::builder()
@@ -62,12 +62,12 @@ impl WorkerClient {
         }
     }
 
-    pub async fn preview(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
-        self.post("/linkup/preview-session", params).await
+    pub async fn local_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
+        self.post("/linkup/local-session", params).await
     }
 
-    pub async fn linkup(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
-        self.post("/linkup/local-session", params).await
+    pub async fn preview_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
+        self.post("/linkup/preview-session", params).await
     }
 
     pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {
@@ -110,11 +110,5 @@ impl WorkerClient {
                 response.text().await.unwrap_or_else(|_| "".to_string()),
             ))
         }
-    }
-}
-
-impl From<&linkup::config::Config> for WorkerClient {
-    fn from(config: &linkup::config::Config) -> Self {
-        Self::new(&config.linkup.worker_url, &config.linkup.worker_token)
     }
 }

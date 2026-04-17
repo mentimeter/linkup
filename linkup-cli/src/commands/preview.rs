@@ -1,10 +1,10 @@
-use crate::Result;
+use crate::{CURRENT_VERSION, Result};
 use crate::commands::status::{SessionStatus, format_state_domains};
 use crate::state::{config_path, get_config};
-use crate::worker_client::WorkerClient;
 use anyhow::Context;
 use clap::builder::ValueParser;
 use linkup::UpsertSessionRequest;
+use linkup_clients::WorkerClient;
 use url::Url;
 
 #[derive(clap::Args)]
@@ -37,8 +37,8 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let preview_name = WorkerClient::from(&input_config)
-        .preview(&upsert_session_request)
+    let preview_name = WorkerClient::new(&url, &input_config.linkup.worker_token, CURRENT_VERSION)
+        .preview_session(&upsert_session_request)
         .await
         .with_context(|| format!("Failed to send preview request to {}", url))?;
 

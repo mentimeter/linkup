@@ -19,6 +19,7 @@ colored = "3.0.0"
 ctrlc = { version = "3.4.5", features = ["termination"] }
 hickory-resolver = { version = "0.25.2", features = ["tokio"] }
 linkup = { workspace = true }
+linkup-clients = { workspace = true }
 linkup-local-server = { workspace = true }
 log = "0.4.25"
 rand = { workspace = true }
