@@ -4,15 +4,11 @@ use axum::{
     response::IntoResponse,
 };
 use http::StatusCode;
+use linkup::TunnelData;
 use serde::Deserialize;
 use worker::console_error;
 
-use crate::{
-    cloudflare_client,
-    http_error::HttpError,
-    tunnel::{self, TunnelData},
-    worker_state::WorkerState,
-};
+use crate::{cloudflare_client, http_error::HttpError, tunnel, worker_state::WorkerState};
 
 #[derive(Deserialize)]
 pub struct GetTunnelParams {
