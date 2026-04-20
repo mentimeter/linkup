@@ -55,6 +55,8 @@ pub async fn handle_all(
         }
     };
 
+    dbg!(&target_service);
+
     let extra_headers =
         crate::get_additional_headers(&url, &headers, &session_name, &target_service);
 

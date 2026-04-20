@@ -1,5 +1,5 @@
 use helpers::ServerKind;
-use linkup::{Domain, SessionMode, SessionService, UpsertSessionRequest};
+use linkup::{Domain, NameKind, SessionMode, SessionService, UpsertSessionRequest};
 use reqwest::Url;
 use rstest::rstest;
 
@@ -96,6 +96,7 @@ pub fn create_preview_request(fe_location: Option<String>) -> String {
     };
     let req = UpsertSessionRequest::Unnamed {
         mode: SessionMode::Tunneled,
+        name_kind: NameKind::SixChar,
         domains: vec![Domain {
             domain: "example.com".to_string(),
             default_service: "frontend".to_string(),

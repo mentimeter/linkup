@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
+use log::debug;
 use rand::distr::{Alphanumeric, SampleString};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -196,42 +197,10 @@ pub async fn upload_state(state: &State) -> Result<String> {
     let servers_sessions = ServersSessions::from(state);
     let session_name = &state.linkup.session_name;
 
-    let server_session_name = upload_session_to_worker(
-        &state.linkup.worker_url,
-        &state.linkup.worker_token,
-        session_name,
-        servers_sessions.remote,
-    )
-    .await?;
+    let session_name =
+        upload_session_to_local_server(&local_url, &session_name, servers_sessions.local).await?;
 
-    let local_session_name =
-        upload_session_to_local_server(&local_url, &server_session_name, servers_sessions.local)
-            .await?;
-
-    if server_session_name != local_session_name {
-        log::error!(
-            "Local session has name: {} and remote has name: {}",
-            &local_session_name,
-            &server_session_name
-        );
-
-        return Err(anyhow!(
-            "Your session is in an inconsistent state. Stop your session before trying again."
-        ));
-    }
-
-    Ok(server_session_name)
-}
-
-async fn upload_session_to_worker(
-    url: &Url,
-    token: &str,
-    desired_name: &str,
-    session: Session,
-) -> Result<String, WorkerClientError> {
-    let req = build_upsert_request(desired_name, session);
-
-    WorkerClient::new(url, token).local_session(&req).await
+    Ok(session_name)
 }
 
 async fn upload_session_to_local_server(
@@ -239,20 +208,16 @@ async fn upload_session_to_local_server(
     desired_name: &str,
     session: Session,
 ) -> Result<String, LocalServerClientError> {
-    let req = build_upsert_request(desired_name, session);
-
-    LocalServerClient::new(url).upsert_session(&req).await
-}
-
-fn build_upsert_request(desired_name: &str, session: Session) -> UpsertSessionRequest {
-    UpsertSessionRequest::Named {
+    let req = UpsertSessionRequest::Named {
         mode: SessionMode::Tunneled,
         session_token: session.session_token,
         desired_name: desired_name.to_string(),
         services: session.services,
         domains: session.domains,
         cache_routes: session.cache_routes,
-    }
+    };
+
+    LocalServerClient::new(url).upsert_session(&req).await
 }
 
 impl From<&State> for ServersSessions {

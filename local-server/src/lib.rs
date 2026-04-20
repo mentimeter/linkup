@@ -31,18 +31,27 @@ use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 use linkup::{MemoryStringStore, get_additional_headers, get_target_service};
+use url::Url;
 
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
-pub fn router(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) -> Router {
+pub fn router(
+    config_store: MemoryStringStore,
+    dns_catalog: dns::DnsCatalog,
+    worker_url: &Url,
+    worker_token: &str,
+) -> Router {
     let client = https_client();
 
     Router::new()
         .route("/linkup/sessions", post(handlers::sessions::handle_upsert))
         .route("/linkup/health/ping", get(handlers::always_ok))
         .fallback(any(handlers::proxy::handle_all))
+        // TODO: make these as a state instead of extensions
         .layer(Extension(config_store))
         .layer(Extension(dns_catalog))
+        .layer(Extension(worker_url.clone()))
+        .layer(Extension(worker_token.to_string()))
         .layer(Extension(client))
         .layer(
             ServiceBuilder::new()
@@ -55,7 +64,12 @@ pub fn router(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) -> 
         )
 }
 
-pub async fn start(config_store: MemoryStringStore, certs_dir: &Path) {
+pub async fn start(
+    config_store: MemoryStringStore,
+    certs_dir: &Path,
+    worker_url: &Url,
+    worker_token: &str,
+) {
     let dns_catalog = dns::DnsCatalog::new();
 
     let http_config_store = config_store.clone();
@@ -63,10 +77,10 @@ pub async fn start(config_store: MemoryStringStore, certs_dir: &Path) {
     let https_certs_dir = PathBuf::from(certs_dir);
 
     select! {
-        () = start_server_http(http_config_store, dns_catalog.clone()) => {
+        () = start_server_http(http_config_store, worker_url, worker_token, dns_catalog.clone()) => {
             println!("HTTP server shut down");
         },
-        () = start_server_https(https_config_store, &https_certs_dir, dns_catalog.clone()) => {
+        () = start_server_https(https_config_store, &https_certs_dir, worker_url, worker_token, dns_catalog.clone()) => {
             println!("HTTPS server shut down");
         },
         () = start_dns_server(dns_catalog.clone()) => {
@@ -81,6 +95,8 @@ pub async fn start(config_store: MemoryStringStore, certs_dir: &Path) {
 async fn start_server_https(
     config_store: MemoryStringStore,
     certs_dir: &Path,
+    worker_url: &Url,
+    worker_token: &str,
     dns_catalog: dns::DnsCatalog,
 ) {
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -101,7 +117,7 @@ async fn start_server_https(
         .with_cert_resolver(Arc::new(sni));
     server_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
-    let app = router(config_store, dns_catalog);
+    let app = router(config_store, dns_catalog, worker_url, worker_token);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 443));
     println!("HTTPS listening on {}", &addr);
@@ -112,8 +128,14 @@ async fn start_server_https(
         .expect("failed to start HTTPS server");
 }
 
-async fn start_server_http(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) {
-    let app = router(config_store, dns_catalog);
+async fn start_server_http(
+    config_store: MemoryStringStore,
+    worker_url: &Url,
+    worker_token: &str,
+    dns_catalog: dns::DnsCatalog,
+) {
+    // TODO: Maybe pass router as parameter to here and https?
+    let app = router(config_store, dns_catalog, worker_url, worker_token);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 80));
     println!("HTTP listening on {}", &addr);

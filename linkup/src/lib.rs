@@ -13,6 +13,7 @@ use std::future::Future;
 
 use http::{HeaderMap as HttpHeaderMap, HeaderValue as HttpHeaderValue};
 use rand::RngExt;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use headers::normalize_cookie_header;
@@ -47,7 +48,8 @@ pub trait StringStore {
     fn put(&self, key: &str, value: &str) -> impl Future<Output = Result<(), SessionError>>;
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NameKind {
     Animal,
     SixChar,

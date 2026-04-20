@@ -1891,6 +1891,7 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "linkup",
+ "linkup-clients",
  "rcgen",
  "rustls",
  "rustls-native-certs",
@@ -1902,6 +1903,7 @@ dependencies = [
  "tokio-tungstenite",
  "tower",
  "tower-http",
+ "url",
 ]
 
 [[package]]

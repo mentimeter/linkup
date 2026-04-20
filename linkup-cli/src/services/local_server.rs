@@ -49,7 +49,7 @@ impl LocalServer {
         Url::parse("http://localhost:80").expect("linkup url invalid")
     }
 
-    fn start(&self) -> Result<()> {
+    fn start(&self, worker_url: &Url, worker_token: &str) -> Result<()> {
         log::debug!("Starting {}", Self::NAME);
 
         let stdout_file = File::create(&self.stdout_file_path)?;
@@ -67,6 +67,10 @@ impl LocalServer {
             "server",
             "--certs-dir",
             linkup_certs_dir_path().to_str().unwrap(),
+            "--worker-url",
+            worker_url.as_str(),
+            "--worker-token",
+            worker_token,
         ]);
 
         command
@@ -115,7 +119,7 @@ impl BackgroundService for LocalServer {
             return Ok(());
         }
 
-        if let Err(e) = self.start() {
+        if let Err(e) = self.start(&state.linkup.worker_url, &state.linkup.worker_token) {
             self.notify_update_with_details(
                 progress_bar,
                 super::RunStatus::Error,

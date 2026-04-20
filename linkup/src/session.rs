@@ -6,7 +6,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::config::Config;
+use crate::{NameKind, config::Config};
 
 pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
 
@@ -45,6 +45,7 @@ pub enum UpsertSessionRequest {
     },
     Unnamed {
         mode: SessionMode,
+        name_kind: NameKind,
         services: Vec<SessionService>,
         domains: Vec<Domain>,
         #[serde(
@@ -273,6 +274,7 @@ pub fn create_preview_req_from_config(
 
     UpsertSessionRequest::Unnamed {
         mode: SessionMode::Tunneled,
+        name_kind: NameKind::SixChar,
         services: session_services,
         domains: config.domains.clone(),
         cache_routes: config.linkup.cache_routes.clone(),

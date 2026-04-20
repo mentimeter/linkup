@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
 use linkup::TunnelData;
+use worker::{console_error, kv::KvStore};
+
+use crate::{cloudflare_client, worker_state::WorkerState};
 
 #[derive(Debug)]
 pub enum CreateTunnelError {
@@ -88,6 +91,57 @@ pub async fn create_tunnel(
     };
 
     Ok(tunnel_data)
+}
+
+// TODO: Better name, better function, better vibes
+pub async fn upsert_tunnel(state: WorkerState, session_name: &str) -> Result<TunnelData, String> {
+    let kv = state.tunnels_kv;
+
+    let cf_client = cloudflare_client(&state.cloudflare.api_token);
+    let tunnel_prefix =
+        match cloudflare::linkup::tunnel_prefix(&cf_client, &state.cloudflare.tunnel_zone_id).await
+        {
+            Ok(prefix) => prefix,
+            Err(error) => {
+                console_error!("Failed resolve tunnel prefix: {}", error);
+
+                return Err("Failed to generate tunnel.".to_string());
+            }
+        };
+
+    let tunnel_name = format!("{}{}", tunnel_prefix, session_name);
+    let tunnel_data: Option<TunnelData> = kv.get(&tunnel_name).json().await.unwrap();
+
+    match tunnel_data {
+        Some(mut tunnel_data) => {
+            tunnel_data.last_started = worker::Date::now().as_millis();
+            kv.put(&tunnel_name, &tunnel_data)
+                .unwrap()
+                .execute()
+                .await
+                .unwrap();
+
+            Ok(tunnel_data)
+        }
+        None => {
+            let tunnel_data = create_tunnel(
+                &state.cloudflare.api_token,
+                &state.cloudflare.account_id,
+                &state.cloudflare.tunnel_zone_id,
+                &tunnel_name,
+            )
+            .await
+            .unwrap();
+
+            kv.put(&tunnel_name, &tunnel_data)
+                .unwrap()
+                .execute()
+                .await
+                .unwrap();
+
+            Ok(tunnel_data)
+        }
+    }
 }
 
 #[derive(Debug)]

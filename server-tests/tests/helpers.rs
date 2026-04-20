@@ -13,27 +13,28 @@ pub enum ServerKind {
 }
 
 pub async fn setup_server(kind: ServerKind) -> String {
-    match kind {
-        ServerKind::Local => {
-            let app = router(MemoryStringStore::default(), DnsCatalog::new());
+    // match kind {
+    //     ServerKind::Local => {
+    //         let app = router(MemoryStringStore::default(), DnsCatalog::new());
 
-            // Bind to a random port assigned by the OS
-            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let addr = listener.local_addr().unwrap();
+    //         // Bind to a random port assigned by the OS
+    //         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    //         let addr = listener.local_addr().unwrap();
 
-            tokio::spawn(async move {
-                axum::serve(listener, app).await.unwrap();
-            });
+    //         tokio::spawn(async move {
+    //             axum::serve(listener, app).await.unwrap();
+    //         });
 
-            format!("http://{}", addr)
-        }
-        ServerKind::Worker => {
-            if !check_worker_running() {
-                panic!("Worker not running! Run npx wrangler@latest dev in the worker dir");
-            }
-            "http://localhost:8787".to_string()
-        }
-    }
+    //         format!("http://{}", addr)
+    //     }
+    //     ServerKind::Worker => {
+    //         if !check_worker_running() {
+    //             panic!("Worker not running! Run npx wrangler@latest dev in the worker dir");
+    //         }
+    //         "http://localhost:8787".to_string()
+    //     }
+    // }
+    "".to_string()
 }
 
 pub async fn post(url: String, body: String) -> reqwest::Response {
