@@ -13,14 +13,12 @@ use axum::{
     routing::{any, get, post},
 };
 use axum_server::tls_rustls::RustlsConfig;
+use hickory_server::net::runtime::TokioRuntimeProvider;
+use hickory_server::store::forwarder::ForwardZoneHandler;
 use hickory_server::{
-    ServerFuture,
-    proto::{rr::Name, xfer::Protocol},
-    resolver::{
-        config::{NameServerConfig, NameServerConfigGroup, ResolverOpts},
-        name_server::TokioConnectionProvider,
-    },
-    store::forwarder::{ForwardAuthority, ForwardConfig},
+    proto::rr::Name,
+    resolver::config::{NameServerConfig, ResolverOpts},
+    store::forwarder::ForwardConfig,
 };
 use hyper_rustls::HttpsConnector;
 use hyper_util::{
@@ -130,14 +128,14 @@ async fn start_server_http(config_store: MemoryStringStore, dns_catalog: dns::Dn
 }
 
 async fn start_dns_server(dns_catalog: dns::DnsCatalog) {
-    let cf_name_server = NameServerConfig::new("1.1.1.1:53".parse().unwrap(), Protocol::Udp);
+    let cf_name_server = NameServerConfig::udp("1.1.1.1".parse().unwrap());
     let forward_config = ForwardConfig {
-        name_servers: NameServerConfigGroup::from(vec![cf_name_server]),
+        name_servers: vec![cf_name_server],
         options: Some(ResolverOpts::default()),
     };
 
     let forwarder =
-        ForwardAuthority::builder_with_config(forward_config, TokioConnectionProvider::default())
+        ForwardZoneHandler::builder_with_config(forward_config, TokioRuntimeProvider::default())
             .with_origin(Name::root())
             .build()
             .unwrap();
@@ -150,7 +148,7 @@ async fn start_dns_server(dns_catalog: dns::DnsCatalog) {
     let addr = SocketAddr::from(([0, 0, 0, 0], 8053));
     let sock = UdpSocket::bind(&addr).await.unwrap();
 
-    let mut server = ServerFuture::new(dns_catalog);
+    let mut server = hickory_server::Server::new(dns_catalog);
     server.register_socket(sock);
 
     println!("listening on {addr}");

@@ -1,11 +1,11 @@
 use std::{net::Ipv4Addr, ops::Deref, str::FromStr, sync::Arc};
 
 use hickory_server::{
-    authority::{Catalog, ZoneType},
-    proto::rr::{RData, Record},
-    resolver::Name,
-    server::{RequestHandler, ResponseHandler, ResponseInfo},
-    store::in_memory::InMemoryAuthority,
+    net::runtime::{Time, TokioRuntimeProvider},
+    proto::rr::{Name, RData, Record},
+    server::{Request, RequestHandler, ResponseHandler, ResponseInfo},
+    store::in_memory::InMemoryZoneHandler,
+    zone_handler::{AxfrPolicy, Catalog, ZoneType},
 };
 use tokio::sync::RwLock;
 
@@ -34,14 +34,16 @@ impl Deref for DnsCatalog {
 
 #[async_trait::async_trait]
 impl RequestHandler for DnsCatalog {
-    async fn handle_request<R: ResponseHandler>(
+    async fn handle_request<R: ResponseHandler, T: Time>(
         &self,
-        request: &hickory_server::server::Request,
+        request: &Request,
         response_handle: R,
     ) -> ResponseInfo {
         let catalog = self.read().await;
 
-        catalog.handle_request(request, response_handle).await
+        catalog
+            .handle_request::<R, T>(request, response_handle)
+            .await
     }
 }
 
@@ -51,7 +53,8 @@ pub async fn register_dns_record(dns_catalog: &DnsCatalog, domain: &str) {
     let record_name = Name::from_str(&format!("{}.", domain))
         .expect("dns record from domain should always succeed");
 
-    let authority = InMemoryAuthority::empty(record_name.clone(), ZoneType::Primary, false);
+    let authority: InMemoryZoneHandler<TokioRuntimeProvider> =
+        InMemoryZoneHandler::empty(record_name.clone(), ZoneType::Primary, AxfrPolicy::Deny);
 
     let record = Record::from_rdata(
         record_name.clone(),
