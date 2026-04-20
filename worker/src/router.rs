@@ -24,6 +24,15 @@ pub fn router(state: WorkerState) -> Router {
         .route("/linkup/tunnel", get(handlers::v1::tunnel::handle_get))
         .route("/linkup/check", get(handlers::always_ok))
         .route("/linkup/no-tunnel", get(no_tunnel))
+        // V2
+        .route(
+            "/linkup/v2/sessions/preview",
+            post(handlers::v2::sessions::upsert_preview),
+        )
+        .route(
+            "/linkup/v2/sessions/tunneled",
+            post(handlers::v2::sessions::upsert_tunneled),
+        )
         .route_layer(from_fn_with_state(state.clone(), authenticate))
         // Fallback for all other requests
         .fallback(any(handlers::proxy::handle_all))

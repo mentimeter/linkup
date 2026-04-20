@@ -37,8 +37,16 @@ pub fn router(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) -> 
 
     Router::new()
         .route(
-            "/linkup/local-session",
-            post(handlers::sessions::handle_upsert),
+            "/linkup/sessions/preview",
+            post(handlers::sessions::upsert_preview),
+        )
+        .route(
+            "/linkup/sessions/tunneled",
+            post(handlers::sessions::upsert_tunneled),
+        )
+        .route(
+            "/linkup/sessions/local-only",
+            post(handlers::sessions::upsert_local_only),
         )
         .route("/linkup/check", get(handlers::always_ok))
         .fallback(any(handlers::proxy::handle_all))

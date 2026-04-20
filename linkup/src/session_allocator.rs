@@ -54,6 +54,30 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         Err(SessionError::NoSuchSession(url.to_string()))
     }
 
+    pub async fn strict_store_session(
+        &self,
+        session_name: &str,
+        session: &Session,
+    ) -> Result<(), SessionError> {
+        if session_name.is_empty() {
+            return Err(SessionError::EmptySessionName);
+        }
+
+        if let Some(existing_session) = self.get_session_config(session_name).await?
+            && existing_session.session_token != session.session_token
+        {
+            return Err(SessionError::SessionNameConflict);
+        }
+
+        let serialized_session = serde_json::to_string(&session)
+            .map_err(|error| SessionError::ConfigErr(error.to_string()))?;
+
+        self.store.put(session_name, &serialized_session).await?;
+
+        Ok(())
+    }
+
+    // TODO(@augustoccesar)[2026-04-20]: Deprecate post 4.0 migration
     pub async fn store_session(
         &self,
         session: Session,
@@ -72,6 +96,7 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         Ok(name)
     }
 
+    // TODO(@augustoccesar)[2026-04-20]: Deprecate post 4.0 migration
     async fn choose_name(
         &self,
         desired_name: &str,
@@ -86,7 +111,7 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
             return Ok(desired_name.to_owned());
         }
 
-        self.new_session_name(name_kind, desired_name, session)
+        self.new_session_name(&name_kind, desired_name, session)
             .await
     }
 
@@ -107,13 +132,13 @@ impl<'a, S: StringStore> SessionAllocator<'a, S> {
         Ok(Some(session_config))
     }
 
-    async fn new_session_name(
+    pub async fn new_session_name(
         &self,
-        name_kind: NameKind,
+        name_kind: &NameKind,
         desired_name: &str,
         session: &Session,
     ) -> Result<String, SessionError> {
-        if name_kind == NameKind::SixChar {
+        if name_kind == &NameKind::SixChar {
             return Ok(session.sha()[..6].to_string());
         }
 
