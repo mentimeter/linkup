@@ -109,16 +109,17 @@ impl CloudflareTunnel {
         opts.cache_size = 0; // Disable caching
 
         let resolver = TokioResolver::builder_tokio()
-            .expect("TokioResolver to be buildable from resolver config")
+            .expect("TokioResolver to be buildable")
             .with_options(opts)
-            .build();
+            .build()
+            .expect("TokioResolver to be buildable from ResolverOpts");
 
         let domain = tunnel_url.host_str().unwrap();
 
         let response = resolver.lookup(domain, RecordType::A).await;
 
         if let Ok(lookup) = response {
-            let addresses = lookup.iter().collect::<Vec<_>>();
+            let addresses = lookup.answers().iter().collect::<Vec<_>>();
 
             if !addresses.is_empty() {
                 log::debug!("DNS has propogated for {}.", domain);
