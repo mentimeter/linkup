@@ -374,7 +374,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_request_session_by_subdomain() {
         let string_store = MemoryStringStore::default();
-        let sessions = SessionAllocator::new(&string_store);
+        let sessions = SessionAllocator::new(string_store);
 
         let config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let config: Session = config_value.try_into().unwrap();
@@ -520,7 +520,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_target_url() {
         let string_store = MemoryStringStore::default();
-        let sessions = SessionAllocator::new(&string_store);
+        let sessions = SessionAllocator::new(string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
@@ -610,7 +610,7 @@ mod tests {
     #[tokio::test]
     async fn test_repeatable_rewritten_routes() {
         let string_store = MemoryStringStore::default();
-        let sessions = SessionAllocator::new(&string_store);
+        let sessions = SessionAllocator::new(string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
@@ -661,7 +661,7 @@ mod tests {
     #[tokio::test]
     async fn test_iframable() {
         let string_store = MemoryStringStore::default();
-        let sessions = SessionAllocator::new(&string_store);
+        let sessions = SessionAllocator::new(string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();

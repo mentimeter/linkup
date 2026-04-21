@@ -1,12 +1,11 @@
-use axum::{Extension, Json, response::IntoResponse};
+use axum::{Json, extract::State, response::IntoResponse};
 use http::StatusCode;
-use linkup::{MemoryStringStore, NameKind, Session, SessionAllocator, UpsertSessionRequest};
+use linkup::{NameKind, Session, UpsertSessionRequest};
 
-use crate::{dns, handlers::ApiError};
+use crate::{ServerState, dns, handlers::ApiError};
 
 pub async fn handle_upsert(
-    Extension(store): Extension<MemoryStringStore>,
-    Extension(dns_catalog): Extension<dns::DnsCatalog>,
+    State(server_state): State<ServerState>,
     Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     let (desired_name, req_domains) = match &upsert_req {
@@ -34,8 +33,8 @@ pub async fn handle_upsert(
         }
     };
 
-    let sessions = SessionAllocator::new(&store);
-    let session_name_result = sessions
+    let session_name_result = server_state
+        .session_allocator
         .store_session(server_conf, NameKind::Animal, &desired_name)
         .await;
 
@@ -53,7 +52,7 @@ pub async fn handle_upsert(
     for domain in &domains {
         let full_domain = format!("{session_name}.{domain}");
 
-        dns::register_dns_record(&dns_catalog, &full_domain).await;
+        dns::register_dns_record(&server_state.dns_catalog, &full_domain).await;
     }
 
     (StatusCode::OK, session_name).into_response()

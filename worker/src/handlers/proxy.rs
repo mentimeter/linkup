@@ -3,22 +3,16 @@ use axum::{
     response::IntoResponse,
 };
 use http::{HeaderMap, StatusCode, Uri};
-use linkup::{Session, SessionAllocator, get_additional_headers, get_target_service};
+use linkup::{Session, get_additional_headers, get_target_service};
 use worker::{Fetch, HttpResponse};
 
-use crate::{
-    http_error::HttpError, kv_store::CfWorkerStringStore, worker_state::WorkerState,
-    ws::handle_ws_resp,
-};
+use crate::{http_error::HttpError, worker_state::WorkerState, ws::handle_ws_resp};
 
 #[worker::send]
 pub async fn handle_all(State(state): State<WorkerState>, mut req: Request) -> impl IntoResponse {
-    let store = CfWorkerStringStore::new(state.sessions_kv.clone());
-    let sessions = SessionAllocator::new(&store);
-
     let headers: linkup::HeaderMap = req.headers().into();
     let url = req.uri().to_string();
-    let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
+    let (session_name, config) = match state.session_allocator.get_request_session(&url, &headers).await {
         Ok(session) => session,
         Err(_) => {
             return HttpError::new(
