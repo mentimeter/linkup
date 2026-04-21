@@ -1,5 +1,5 @@
 use helpers::ServerKind;
-use linkup::{CreatePreviewRequest, StorableDomain, StorableService};
+use linkup::{Domain, SessionService, UpsertSessionRequest};
 use reqwest::Url;
 use rstest::rstest;
 
@@ -84,13 +84,13 @@ pub fn create_preview_request(fe_location: Option<String>) -> String {
         Some(location) => location,
         None => "http://example.com".to_string(),
     };
-    let req = CreatePreviewRequest {
-        domains: vec![StorableDomain {
+    let req = UpsertSessionRequest::Unnamed {
+        domains: vec![Domain {
             domain: "example.com".to_string(),
             default_service: "frontend".to_string(),
             routes: None,
         }],
-        services: vec![StorableService {
+        services: vec![SessionService {
             name: "frontend".to_string(),
             location: Url::parse(&location).unwrap(),
             rewrites: None,

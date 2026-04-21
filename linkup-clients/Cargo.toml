@@ -1,0 +1,22 @@
+[package]
+name = "linkup-clients"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+linkup = { workspace = true }
+reqwest = { workspace = true, features = ["rustls"] }
+rustls = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+http-body = "1.0.1"
+hyper-rustls = { version = "0.27.5", default-features = false, features = [
+    "http1",
+    "http2",
+    "ring",
+] }
+hyper-util = { version = "0.1.10", features = ["client-legacy"] }
+rustls-native-certs = "0.8.1"

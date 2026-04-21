@@ -90,8 +90,8 @@ pub fn setup_self_signed_certificates(
         if !is_nss_installed() {
             println!("It seems like you have Firefox installed.");
             println!(
-            "For self-signed certificates to work with Firefox, you need to have nss installed."
-        );
+                "For self-signed certificates to work with Firefox, you need to have nss installed."
+            );
             let nss_url = if cfg!(target_os = "macos") {
                 "`brew install nss`"
             } else {

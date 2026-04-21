@@ -4,11 +4,11 @@ use std::{
 };
 
 use crate::{
-    commands, is_sudo, linkup_certs_dir_path,
-    local_config::{self, managed_domains, top_level_domains, LocalState},
-    sudo_su, Result,
+    Result, commands, is_sudo, linkup_certs_dir_path,
+    state::{self, State, managed_domains, top_level_domains},
+    sudo_su,
 };
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Subcommand;
 use linkup_local_server::certificates::{
     setup_self_signed_certificates, uninstall_self_signed_certificates,
@@ -50,7 +50,7 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
 
     ensure_resolver_dir()?;
 
-    let domains = managed_domains(LocalState::load().ok().as_ref(), config_arg);
+    let domains = managed_domains(State::load().ok().as_ref(), config_arg);
 
     install_resolvers(&top_level_domains(&domains))?;
 
@@ -76,9 +76,10 @@ pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
 
     commands::stop(&commands::StopArgs {}, false)?;
 
-    let managed_top_level_domains = local_config::top_level_domains(
-        &local_config::managed_domains(LocalState::load().ok().as_ref(), config_arg),
-    );
+    let managed_top_level_domains = state::top_level_domains(&state::managed_domains(
+        State::load().ok().as_ref(),
+        config_arg,
+    ));
 
     uninstall_resolvers(&managed_top_level_domains)?;
     uninstall_self_signed_certificates(&linkup_certs_dir_path())

@@ -1,6 +1,6 @@
 use std::{env, fs, io::ErrorKind, path::PathBuf};
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use thiserror::Error;
@@ -10,10 +10,9 @@ pub use linkup::Version;
 
 mod commands;
 mod env_files;
-mod local_config;
 mod release;
 mod services;
-mod worker_client;
+mod state;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
@@ -206,9 +205,6 @@ enum Commands {
     #[clap(about = "Stop a running linkup session")]
     Stop(commands::StopArgs),
 
-    #[clap(about = "Reset a linkup session")]
-    Reset(commands::ResetArgs),
-
     #[clap(about = "Route session traffic to a local service")]
     Local(commands::LocalArgs),
 
@@ -247,7 +243,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::init();
+    let env = env_logger::Env::new().filter_or("LINKUP_LOG", "info");
+    env_logger::Builder::from_env(env).init();
 
     let cli = Cli::parse();
 
@@ -257,9 +254,8 @@ async fn main() -> anyhow::Result<()> {
 
     match &cli.command {
         Commands::Health(args) => commands::health(args),
-        Commands::Start(args) => commands::start(args, true, &cli.config).await,
+        Commands::Start(args) => commands::start(args, &cli.config).await,
         Commands::Stop(args) => commands::stop(args, true),
-        Commands::Reset(args) => commands::reset(args).await,
         Commands::Local(args) => commands::local(args).await,
         Commands::Remote(args) => commands::remote(args).await,
         Commands::Status(args) => commands::status(args),

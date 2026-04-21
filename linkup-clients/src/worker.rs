@@ -1,9 +1,7 @@
-use linkup::{CreatePreviewRequest, UpdateSessionRequest};
-use reqwest::{header, StatusCode};
-use serde::{Deserialize, Serialize};
+use linkup::{GetTunnelRequest, TunnelData, UpsertSessionRequest};
+use reqwest::{StatusCode, header};
+use serde::Serialize;
 use url::Url;
-
-use crate::local_config::YamlLocalConfig;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -15,8 +13,6 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("request failed with status {0}: {1}")]
     Response(StatusCode, String),
-    #[error("your session is in an inconsistent state. Stop your session before trying again.")]
-    InconsistentState,
 }
 
 pub struct WorkerClient {
@@ -24,33 +20,18 @@ pub struct WorkerClient {
     inner: reqwest::Client,
 }
 
-// TODO: This is a copy of the TunnelData from worker. We can/should probably have a shared one.
-#[derive(Serialize, Deserialize)]
-pub struct TunnelData {
-    pub account_id: String,
-    pub name: String,
-    pub url: String,
-    pub id: String,
-    pub secret: String,
-    pub last_started: u64,
-}
-
-// TODO: This is a copy of the GetTunnelParams from worker. We can/should probably have a shared one.
-#[derive(Serialize)]
-struct GetTunnelParams {
-    session_name: String,
-}
-
 impl WorkerClient {
     pub fn new(url: &Url, worker_token: &str) -> Self {
         let mut headers = header::HeaderMap::new();
         let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", worker_token))
             .expect("token to contain only valid bytes");
+
         auth_value.set_sensitive(true);
+
         headers.insert(header::AUTHORIZATION, auth_value);
         headers.insert(
             "x-linkup-version",
-            header::HeaderValue::from_static(crate::CURRENT_VERSION),
+            header::HeaderValue::from_static(CURRENT_VERSION),
         );
 
         let client = reqwest::Client::builder()
@@ -64,16 +45,16 @@ impl WorkerClient {
         }
     }
 
-    pub async fn preview(&self, params: &CreatePreviewRequest) -> Result<String, Error> {
-        self.post("/linkup/preview-session", params).await
-    }
-
-    pub async fn linkup(&self, params: &UpdateSessionRequest) -> Result<String, Error> {
+    pub async fn local_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
         self.post("/linkup/local-session", params).await
     }
 
+    pub async fn preview_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
+        self.post("/linkup/preview-session", params).await
+    }
+
     pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {
-        let query = GetTunnelParams {
+        let query = GetTunnelRequest {
             session_name: String::from(session_name),
         };
 
@@ -103,21 +84,16 @@ impl WorkerClient {
             .send()
             .await?;
 
-        match response.status() {
-            StatusCode::OK => {
-                let content = response.text().await?;
-                Ok(content)
-            }
-            _ => Err(Error::Response(
+        if response.status().is_success() {
+            let content = response.text().await?;
+            Ok(content)
+        } else {
+            Err(Error::Response(
                 response.status(),
                 response.text().await.unwrap_or_else(|_| "".to_string()),
-            )),
+            ))
         }
     }
 }
 
-impl From<&YamlLocalConfig> for WorkerClient {
-    fn from(config: &YamlLocalConfig) -> Self {
-        Self::new(&config.linkup.worker_url, &config.linkup.worker_token)
-    }
-}
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");

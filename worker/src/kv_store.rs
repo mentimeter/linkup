@@ -1,6 +1,7 @@
 use linkup::{SessionError, StringStore};
 use worker::kv::KvStore;
 
+#[derive(Clone)]
 pub struct CfWorkerStringStore {
     kv: KvStore,
 }
@@ -12,15 +13,15 @@ impl CfWorkerStringStore {
 }
 
 impl StringStore for CfWorkerStringStore {
-    async fn get(&self, key: String) -> Result<Option<String>, SessionError> {
-        match self.kv.get(key.as_str()).text().await {
+    async fn get(&self, key: &str) -> Result<Option<String>, SessionError> {
+        match self.kv.get(key).text().await {
             Ok(v) => Ok(v),
             Err(e) => Err(SessionError::GetError(e.to_string())),
         }
     }
 
-    async fn exists(&self, key: String) -> Result<bool, SessionError> {
-        let value = match self.kv.get(key.as_str()).text().await {
+    async fn exists(&self, key: &str) -> Result<bool, SessionError> {
+        let value = match self.kv.get(key).text().await {
             Ok(v) => Ok(v),
             Err(e) => return Err(SessionError::GetError(e.to_string())),
         }?;
@@ -31,8 +32,8 @@ impl StringStore for CfWorkerStringStore {
         }
     }
 
-    async fn put(&self, key: String, value: String) -> Result<(), SessionError> {
-        let mut put = match self.kv.put(&key, value) {
+    async fn put(&self, key: &str, value: &str) -> Result<(), SessionError> {
+        let mut put = match self.kv.put(key, value) {
             Ok(p) => p,
             Err(e) => return Err(SessionError::PutError(e.to_string())),
         };

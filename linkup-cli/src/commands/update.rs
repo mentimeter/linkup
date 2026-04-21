@@ -2,7 +2,7 @@ use anyhow::Context;
 #[cfg(not(target_os = "linux"))]
 use std::fs;
 
-use crate::{commands, current_version, linkup_exe_path, release, InstallationMethod, Result};
+use crate::{InstallationMethod, Result, commands, current_version, linkup_exe_path, release};
 
 #[cfg(target_os = "linux")]
 use crate::{is_sudo, sudo_su};

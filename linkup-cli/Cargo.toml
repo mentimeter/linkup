@@ -1,7 +1,7 @@
 [package]
 name = "linkup-cli"
-version = "3.5.0"
-edition = "2021"
+version.workspace = true
+edition = "2024"
 build = "build.rs"
 
 [[bin]]
@@ -9,41 +9,42 @@ name = "linkup"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1"
-clap = { version = "4.5.27", features = ["derive", "cargo"] }
-clap_complete = "4.5.42"
-cloudflare = { path = "../cloudflare", default-features = false, features = [
-    "rustls-tls",
-] }
-colored = "3.0.0"
-ctrlc = { version = "3.4.5", features = ["termination"] }
-hickory-resolver = { version = "0.25.2", features = ["tokio"] }
-linkup = { path = "../linkup" }
-linkup-local-server = { path = "../local-server" }
-log = "0.4.25"
-rand = "0.10.0"
-regex = "1.11.1"
-reqwest = { version = "0.13.2", default-features = false, features = [
+anyhow = { workspace = true }
+base64 = { workspace = true }
+cloudflare = { workspace = true, features = ["rustls-tls"] }
+hex = { workspace = true }
+linkup = { workspace = true }
+linkup-clients = { workspace = true }
+linkup-local-server = { workspace = true }
+rand = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true, features = [
     "json",
     "multipart",
     "blocking",
     "rustls",
     "query",
 ] }
-serde = "1.0.217"
-serde_json = "1.0.137"
-serde_yaml = "0.9.34-deprecated"
-tokio = { version = "1.43.0", features = ["macros"] }
-thiserror = "2.0.11"
-url = { version = "2.5.4", features = ["serde"] }
-base64 = "0.22.1"
-env_logger = "0.11.6"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
+url = { workspace = true }
+
+clap = { version = "4.5.27", features = ["derive", "cargo"] }
+clap_complete = "4.5.42"
+colored = "3.0.0"
 crossterm = "0.29.0"
-sysinfo = "0.38.2"
-sha2 = "0.10.8"
-hex = "0.4.3"
-tar = "0.4.43"
+ctrlc = { version = "3.4.5", features = ["termination"] }
+env_logger = "0.11.6"
 flate2 = "1.0.35"
+hickory-resolver = { version = "0.26.0", features = ["tokio"] }
+indicatif = "0.18.4"
+log = "0.4.25"
+serde_yaml = "0.9.34-deprecated"
+sysinfo = "0.38.2"
+tar = "0.4.43"
 
 [dev-dependencies]
 mockall = "0.14.0"

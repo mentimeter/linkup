@@ -1,12 +1,12 @@
 use std::{future::Future, pin::Pin};
 
-use axum::extract::{ws::WebSocket, FromRequestParts, WebSocketUpgrade};
+use axum::extract::{FromRequestParts, WebSocketUpgrade, ws::WebSocket};
 use futures::{SinkExt, StreamExt};
-use http::{request::Parts, StatusCode};
+use http::{StatusCode, request::Parts};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
-    tungstenite::{self, Message},
     MaybeTlsStream, WebSocketStream,
+    tungstenite::{self, Message},
 };
 
 pub struct ExtractOptionalWebSocketUpgrade(pub Option<WebSocketUpgrade>);
@@ -76,7 +76,7 @@ pub fn context_handle_socket(
 ) -> WrappedSocketHandler {
     Box::new(move |downstream: WebSocket| {
         Box::pin(async move {
-            use futures::future::{select, Either};
+            use futures::future::{Either, select};
 
             let (mut upstream_write, mut upstream_read) = upstream_ws.split();
             let (mut downstream_write, mut downstream_read) = downstream.split();

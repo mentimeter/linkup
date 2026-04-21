@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::TunnelData;
+use linkup::TunnelData;
 
 #[derive(Debug)]
 pub enum CreateTunnelError {
@@ -154,13 +154,13 @@ pub async fn delete_tunnel(
         0 => {
             return Err(DeleteTunnelError::GetDNSRecord(
                 "Fetching DNS for tunnel returned empty".to_string(),
-            ))
+            ));
         }
         1 => &records[0],
         2.. => {
             return Err(DeleteTunnelError::GetDNSRecord(
                 "Fetching DNS for tunnel returned more than one record".to_string(),
-            ))
+            ));
         }
     };
 

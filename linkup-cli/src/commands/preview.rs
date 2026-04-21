@@ -1,10 +1,11 @@
-use crate::commands::status::{format_state_domains, SessionStatus};
-use crate::local_config::{config_path, get_config};
-use crate::worker_client::WorkerClient;
 use crate::Result;
+use crate::commands::status::{SessionStatus, format_state_domains};
+use crate::state::{config_path, get_config};
 use anyhow::Context;
 use clap::builder::ValueParser;
-use linkup::CreatePreviewRequest;
+use linkup::UpsertSessionRequest;
+use linkup_clients::WorkerClient;
+use url::Url;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -14,7 +15,7 @@ pub struct Args {
         required = true,
         num_args = 1..,
     )]
-    services: Vec<(String, String)>,
+    services: Vec<(String, Url)>,
 
     #[arg(long, help = "Print the request body instead of sending it.")]
     print_request: bool,
@@ -23,12 +24,12 @@ pub struct Args {
 pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
     let config_path = config_path(config)?;
     let input_config = get_config(&config_path)?;
-    let create_preview_request: CreatePreviewRequest =
-        input_config.create_preview_request(&args.services);
+    let upsert_session_request: UpsertSessionRequest =
+        linkup::create_preview_req_from_config(&input_config, &args.services);
     let url = input_config.linkup.worker_url.clone();
 
     if args.print_request {
-        let create_req_json = serde_json::to_string(&create_preview_request)
+        let create_req_json = serde_json::to_string(&upsert_session_request)
             .context("Failed to encode request to JSON string")?;
 
         println!("{}", create_req_json);
@@ -36,8 +37,8 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let preview_name = WorkerClient::from(&input_config)
-        .preview(&create_preview_request)
+    let preview_name = WorkerClient::new(&url, &input_config.linkup.worker_token)
+        .preview_session(&upsert_session_request)
         .await
         .with_context(|| format!("Failed to send preview request to {}", url))?;
 

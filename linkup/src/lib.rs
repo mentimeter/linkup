@@ -1,8 +1,12 @@
+pub mod config;
+pub mod serde_ext;
+
 mod headers;
 mod memory_session_store;
 mod name_gen;
 mod session;
 mod session_allocator;
+mod tunnel;
 mod versioning;
 
 use std::future::Future;
@@ -17,6 +21,7 @@ pub use memory_session_store::*;
 pub use name_gen::{random_animal, random_six_char};
 pub use session::*;
 pub use session_allocator::*;
+pub use tunnel::*;
 pub use versioning::*;
 
 use url::Url;
@@ -37,9 +42,9 @@ pub enum SessionError {
 // this workspace), we should return `impl Future` instead of having `async fn` so that we can add and ensure
 // any desired bounds.
 pub trait StringStore {
-    fn get(&self, key: String) -> impl Future<Output = Result<Option<String>, SessionError>>;
-    fn exists(&self, key: String) -> impl Future<Output = Result<bool, SessionError>>;
-    fn put(&self, key: String, value: String) -> impl Future<Output = Result<(), SessionError>>;
+    fn get(&self, key: &str) -> impl Future<Output = Result<Option<String>, SessionError>>;
+    fn exists(&self, key: &str) -> impl Future<Output = Result<bool, SessionError>>;
+    fn put(&self, key: &str, value: &str) -> impl Future<Output = Result<(), SessionError>>;
 }
 
 #[derive(PartialEq)]
@@ -162,32 +167,32 @@ pub fn get_target_service(
 
     // If there was a destination created in a previous linkup, we don't want to
     // re-do path rewrites, so we use the destination service.
-    if let Some(destination_service) = headers.get(HeaderName::LinkupDestination) {
-        if let Some(service) = config.services.get(destination_service) {
-            let target = redirect(target.clone(), &service.origin, Some(path.to_string()));
-            return Some(TargetService {
-                name: destination_service.to_string(),
-                url: target.to_string(),
-            });
-        }
+    if let Some(destination_service) = headers.get(HeaderName::LinkupDestination)
+        && let Some(service) = config.get_service(destination_service)
+    {
+        let target = redirect(target.clone(), &service.location, Some(path.to_string()));
+        return Some(TargetService {
+            name: destination_service.to_string(),
+            url: target.to_string(),
+        });
     }
 
-    let url_target = config.domains.get(&get_target_domain(url, session_name));
+    let url_target = config.get_domain(&get_target_domain(url, session_name));
 
     // Forwarded hosts persist over the tunnel
-    let forwarded_host_target = config.domains.get(&get_target_domain(
+    let forwarded_host_target = config.get_domain(&get_target_domain(
         headers.get_or_default(HeaderName::ForwardedHost, "does-not-exist"),
         session_name,
     ));
 
     // This is more for e2e tests to work
-    let referer_target = config.domains.get(&get_target_domain(
+    let referer_target = config.get_domain(&get_target_domain(
         headers.get_or_default(HeaderName::Referer, "does-not-exist"),
         session_name,
     ));
 
     // This one is for redirects, where the referer doesn't exist
-    let origin_target = config.domains.get(&get_target_domain(
+    let origin_target = config.get_domain(&get_target_domain(
         headers.get_or_default(HeaderName::Origin, "does-not-exist"),
         session_name,
     ));
@@ -203,30 +208,34 @@ pub fn get_target_service(
     };
 
     if let Some(domain) = target_domain {
-        let service_name = domain
-            .routes
-            .iter()
-            .find_map(|route| {
-                if route.path.is_match(path) {
-                    Some(route.service.clone())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| domain.default_service.clone());
+        let service_name = match &domain.routes {
+            Some(routes) => routes
+                .iter()
+                .find_map(|route| {
+                    if route.path.is_match(path) {
+                        Some(route.service.clone())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| domain.default_service.clone()),
+            None => domain.default_service.clone(),
+        };
 
-        if let Some(service) = config.services.get(&service_name) {
+        if let Some(service) = config.get_service(&service_name) {
             let mut new_path = path.to_string();
-            for modifier in &service.rewrites {
-                if modifier.source.is_match(&new_path) {
-                    new_path = modifier
-                        .source
-                        .replace_all(&new_path, &modifier.target)
-                        .to_string();
+            if let Some(rewrites) = &service.rewrites {
+                for modifier in rewrites {
+                    if modifier.source.is_match(&new_path) {
+                        new_path = modifier
+                            .source
+                            .replace_all(&new_path, &modifier.target)
+                            .to_string();
+                    }
                 }
             }
 
-            let target = redirect(target, &service.origin, Some(new_path));
+            let target = redirect(target, &service.location, Some(new_path));
             return Some(TargetService {
                 name: service_name,
                 url: target.to_string(),
@@ -365,13 +374,13 @@ mod tests {
     #[tokio::test]
     async fn test_get_request_session_by_subdomain() {
         let string_store = MemoryStringStore::default();
-        let sessions = SessionAllocator::new(&string_store);
+        let sessions = SessionAllocator::new(string_store);
 
         let config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let config: Session = config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(config, NameKind::Animal, "".to_string())
+            .store_session(config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -511,13 +520,13 @@ mod tests {
     #[tokio::test]
     async fn test_get_target_url() {
         let string_store = MemoryStringStore::default();
-        let sessions = SessionAllocator::new(&string_store);
+        let sessions = SessionAllocator::new(string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "".to_string())
+            .store_session(input_config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -601,13 +610,13 @@ mod tests {
     #[tokio::test]
     async fn test_repeatable_rewritten_routes() {
         let string_store = MemoryStringStore::default();
-        let sessions = SessionAllocator::new(&string_store);
+        let sessions = SessionAllocator::new(string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "".to_string())
+            .store_session(input_config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -652,13 +661,13 @@ mod tests {
     #[tokio::test]
     async fn test_iframable() {
         let string_store = MemoryStringStore::default();
-        let sessions = SessionAllocator::new(&string_store);
+        let sessions = SessionAllocator::new(string_store);
 
         let input_config_value: serde_json::Value = serde_json::from_str(CONF_STR).unwrap();
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "".to_string())
+            .store_session(input_config, NameKind::Animal, "")
             .await
             .unwrap();
 

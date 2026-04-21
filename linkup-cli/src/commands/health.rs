@@ -8,12 +8,7 @@ use std::{
     fs::{self},
 };
 
-use crate::{
-    linkup_dir_path,
-    local_config::LocalState,
-    services::{self, find_service_pid, BackgroundService},
-    Result,
-};
+use crate::{Result, linkup_dir_path, services, state::State};
 
 use super::local_dns;
 
@@ -62,7 +57,7 @@ struct Session {
 }
 
 impl Session {
-    fn load(state: Option<&LocalState>) -> Self {
+    fn load(state: Option<&State>) -> Self {
         match state {
             Some(state) => Self {
                 name: Some(state.linkup.session_name.clone()),
@@ -90,23 +85,21 @@ struct OrphanProcess {
 pub struct BackgroundServices {
     pub linkup_server: BackgroundServiceHealth,
     cloudflared: BackgroundServiceHealth,
-    dns_server: BackgroundServiceHealth,
     possible_orphan_processes: Vec<OrphanProcess>,
 }
 
 #[derive(Debug, Serialize)]
 pub enum BackgroundServiceHealth {
-    Unknown,
     NotInstalled,
     Stopped,
     Running(u32),
 }
 
 impl BackgroundServices {
-    pub fn load(state: Option<&LocalState>) -> Self {
-        let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
+    pub fn load(_state: Option<&State>) -> Self {
+        let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(2);
 
-        let linkup_server = match find_service_pid(services::LocalServer::ID) {
+        let linkup_server = match services::local_server::find_pid() {
             Some(pid) => {
                 managed_pids.push(pid);
 
@@ -115,8 +108,8 @@ impl BackgroundServices {
             None => BackgroundServiceHealth::Stopped,
         };
 
-        let cloudflared = if services::is_cloudflared_installed() {
-            match find_service_pid(services::CloudflareTunnel::ID) {
+        let cloudflared = if services::cloudflared::is_installed() {
+            match services::cloudflared::find_pid() {
                 Some(pid) => {
                     managed_pids.push(pid);
 
@@ -128,33 +121,9 @@ impl BackgroundServices {
             BackgroundServiceHealth::NotInstalled
         };
 
-        let dns_server = match find_service_pid(services::LocalDnsServer::ID) {
-            Some(pid) => {
-                managed_pids.push(pid);
-
-                BackgroundServiceHealth::Running(pid.as_u32())
-            }
-            None => match state {
-                // If there is no state, we cannot know if local-dns is installed since we depend on
-                // the domains listed on it.
-                Some(state) => {
-                    if local_dns::is_installed(&crate::local_config::managed_domains(
-                        Some(state),
-                        &None,
-                    )) {
-                        BackgroundServiceHealth::Stopped
-                    } else {
-                        BackgroundServiceHealth::NotInstalled
-                    }
-                }
-                None => BackgroundServiceHealth::Unknown,
-            },
-        };
-
         Self {
             linkup_server,
             cloudflared,
-            dns_server,
             possible_orphan_processes: find_potential_orphan_processes(managed_pids),
         }
     }
@@ -174,10 +143,10 @@ fn find_potential_orphan_processes(managed_pids: Vec<services::Pid>) -> Vec<Orph
         }
 
         // Check if the process is a child of the current process (health command).
-        if let Some(parent_pid) = process.parent() {
-            if parent_pid == current_pid {
-                continue;
-            }
+        if let Some(parent_pid) = process.parent()
+            && parent_pid == current_pid
+        {
+            continue;
         }
 
         let command = process.cmd();
@@ -283,11 +252,11 @@ struct LocalDNS {
 }
 
 impl LocalDNS {
-    fn load(state: Option<&LocalState>) -> Result<Self> {
+    fn load(state: Option<&State>) -> Result<Self> {
         // If there is no state, we cannot know if local-dns is installed since we depend on
         // the domains listed on it.
         let is_installed = state.as_ref().map(|state| {
-            local_dns::is_installed(&crate::local_config::managed_domains(Some(state), &None))
+            local_dns::is_installed(&crate::state::managed_domains(Some(state), &None))
         });
 
         Ok(Self {
@@ -309,7 +278,7 @@ struct Health {
 
 impl Health {
     pub fn load() -> Result<Self> {
-        let state = LocalState::load().ok();
+        let state = State::load().ok();
         let session = Session::load(state.as_ref());
 
         Ok(Self {
@@ -360,15 +329,6 @@ impl Display for Health {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-            BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
-        }
-
-        write!(f, "  - DNS Server     ")?;
-        match &self.background_services.dns_server {
-            BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
-            BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
-            BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-            BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
         write!(f, "  - Cloudflared    ")?;
@@ -376,7 +336,6 @@ impl Display for Health {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,
             BackgroundServiceHealth::Stopped => writeln!(f, "{}", "NOT RUNNING".yellow())?,
             BackgroundServiceHealth::Running(pid) => writeln!(f, "{} ({})", "RUNNING".blue(), pid)?,
-            BackgroundServiceHealth::Unknown => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
         writeln!(f, "{}", "Linkup:".bold().italic())?;
