@@ -16,7 +16,7 @@ pub async fn setup_server(kind: ServerKind) -> String {
         ServerKind::Local => {
             let state = ServerState {
                 session_allocator: SessionAllocator::new(MemoryStringStore::default()),
-                https_client: linkup_local_server::https_client(),
+                https_client: linkup_clients::https_client(),
                 dns_catalog: DnsCatalog::new(),
                 https_certs_dir: PathBuf::default(),
             };
