@@ -7,6 +7,8 @@ use std::{
 };
 
 use anyhow::Context;
+use linkup::{Session, TunneledSessionResponse, UpsertSessionRequest};
+use reqwest::StatusCode;
 use sysinfo::Pid;
 use tokio::time::sleep;
 use url::Url;
@@ -14,10 +16,7 @@ use url::Url;
 use linkup_clients::LocalServerClient;
 
 use super::{PidError, ServiceId};
-use crate::{
-    Result, linkup_certs_dir_path, linkup_file_path,
-    state::{State, upload_state},
-};
+use crate::{Result, linkup_certs_dir_path, linkup_file_path, services, state::State};
 
 const ID: ServiceId = ServiceId("linkup-local-server");
 const NAME: &str = "Linkup local server";
@@ -106,6 +105,34 @@ async fn update_state(state: &mut State) -> Result<()> {
         .expect("failed to update local state file with session name");
 
     Ok(())
+}
+
+pub async fn upload_state(state: &State) -> Result<TunneledSessionResponse> {
+    let local_server_client = LocalServerClient::new(&services::local_server::url());
+
+    let desired_session_name = &state.linkup.session_name;
+    let session: Session = state.into();
+
+    let upsert_request = UpsertSessionRequest::Named {
+        session_token: session.session_token,
+        desired_name: desired_session_name.to_string(),
+        services: session.services,
+        domains: session.domains,
+        cache_routes: session.cache_routes,
+    };
+
+    let session_response = local_server_client.tunneled_session(&upsert_request).await;
+
+    let session_response = match session_response {
+        Ok(session_response) => session_response,
+        Err(linkup_clients::LocalServerClientError::Response(StatusCode::CONFLICT, _)) => {
+            // TODO(@augustoccesar)[2026-04-21]: Handle
+            todo!("Create with a new name")
+        }
+        Err(error) => return Err(error.into()),
+    };
+
+    Ok(session_response)
 }
 
 fn spawn_process() -> Result<()> {

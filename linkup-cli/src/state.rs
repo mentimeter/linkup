@@ -7,15 +7,12 @@ use std::{
 use anyhow::Context;
 use rand::distr::{Alphanumeric, SampleString};
 use regex::Regex;
-use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{Domain, Session, SessionService, TunneledSessionResponse, UpsertSessionRequest};
+use linkup::{Domain, Session, SessionService};
 
-use linkup_clients::LocalServerClient;
-
-use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services};
+use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
@@ -182,38 +179,6 @@ pub fn get_config(config_path: &str) -> Result<linkup::config::Config> {
 
     serde_yaml::from_str(&content)
         .with_context(|| "Failed to deserialize config file {config_path:?}")
-}
-
-// This method gets the local state and uploads it to both the local linkup server and
-// the remote linkup server (worker).
-pub async fn upload_state(state: &State) -> Result<TunneledSessionResponse> {
-    let desired_session_name = &state.linkup.session_name;
-
-    let local_server_client = LocalServerClient::new(&services::local_server::url());
-    let session_response = local_server_client
-        .tunneled_session(&build_upsert_request(desired_session_name, state.into()))
-        .await;
-
-    let session_response = match session_response {
-        Ok(session_response) => session_response,
-        Err(linkup_clients::LocalServerClientError::Response(StatusCode::CONFLICT, _)) => {
-            // TODO(@augustoccesar)[2026-04-21]: Handle
-            todo!("Create with a new name")
-        }
-        Err(error) => return Err(error.into()),
-    };
-
-    Ok(session_response)
-}
-
-fn build_upsert_request(desired_name: &str, session: Session) -> UpsertSessionRequest {
-    UpsertSessionRequest::Named {
-        session_token: session.session_token,
-        desired_name: desired_name.to_string(),
-        services: session.services,
-        domains: session.domains,
-        cache_routes: session.cache_routes,
-    }
 }
 
 impl From<&State> for Session {

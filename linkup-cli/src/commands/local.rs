@@ -3,7 +3,7 @@ use colored::Colorize;
 
 use crate::{
     Result, services,
-    state::{ServiceTarget, State, upload_state},
+    state::{ServiceTarget, State},
 };
 
 #[derive(clap::Args)]
@@ -63,7 +63,7 @@ pub async fn local(args: &Args) -> Result<()> {
     }
 
     state.save()?;
-    upload_state(&state).await?;
+    services::local_server::upload_state(&state).await?;
 
     if args.all {
         println!("Linkup is routing all traffic to the local servers");
