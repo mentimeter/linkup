@@ -8,11 +8,7 @@ use std::{
     fs::{self},
 };
 
-use crate::{
-    Result, linkup_dir_path,
-    services::{self, BackgroundService},
-    state::State,
-};
+use crate::{Result, linkup_dir_path, services, state::State};
 
 use super::local_dns;
 
@@ -101,9 +97,9 @@ pub enum BackgroundServiceHealth {
 
 impl BackgroundServices {
     pub fn load(_state: Option<&State>) -> Self {
-        let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(4);
+        let mut managed_pids: Vec<services::Pid> = Vec::with_capacity(2);
 
-        let linkup_server = match services::LocalServer::find_pid() {
+        let linkup_server = match services::local_server::find_pid() {
             Some(pid) => {
                 managed_pids.push(pid);
 
@@ -112,8 +108,8 @@ impl BackgroundServices {
             None => BackgroundServiceHealth::Stopped,
         };
 
-        let cloudflared = if services::is_cloudflared_installed() {
-            match services::CloudflareTunnel::find_pid() {
+        let cloudflared = if services::cloudflared::is_installed() {
+            match services::cloudflared::find_pid() {
                 Some(pid) => {
                     managed_pids.push(pid);
 
