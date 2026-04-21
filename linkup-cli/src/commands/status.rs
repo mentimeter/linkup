@@ -203,7 +203,7 @@ pub fn format_state_domains(session_name: &str, domains: &[Domain]) -> Vec<Strin
 }
 
 fn linkup_services(state: &State) -> Vec<LocalService> {
-    let local_url = services::LocalServer::url();
+    let local_url = services::local_server::url();
 
     vec![
         LocalService {
