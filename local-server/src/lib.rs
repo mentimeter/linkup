@@ -5,7 +5,6 @@ mod ws;
 
 use axum::{
     Router,
-    body::Body,
     extract::DefaultBodyLimit,
     routing::{any, get, post},
 };
@@ -17,11 +16,6 @@ use hickory_server::{
     resolver::config::{NameServerConfig, ResolverOpts},
     store::forwarder::ForwardConfig,
 };
-use hyper_rustls::HttpsConnector;
-use hyper_util::{
-    client::legacy::{Client, connect::HttpConnector},
-    rt::TokioExecutor,
-};
 use linkup::{MemoryStringStore, SessionAllocator};
 use rustls::ServerConfig;
 use std::{net::SocketAddr, path::PathBuf};
@@ -32,12 +26,14 @@ use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 use crate::dns::DnsCatalog;
 
-type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
+pub use linkup_clients::{HttpsClient, https_client};
+
+type AxumHttpsClient = HttpsClient<axum::body::Body>;
 
 #[derive(Clone)]
 pub struct ServerState {
     pub session_allocator: SessionAllocator<MemoryStringStore>,
-    pub https_client: HttpsClient,
+    pub https_client: AxumHttpsClient,
     pub dns_catalog: DnsCatalog,
     pub https_certs_dir: PathBuf,
 }
@@ -165,28 +161,6 @@ async fn start_dns_server(dns_catalog: DnsCatalog) {
 
     println!("listening on {addr}");
     server.block_until_done().await.unwrap();
-}
-
-pub fn https_client() -> HttpsClient {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-
-    let mut roots = rustls::RootCertStore::empty();
-    for cert in rustls_native_certs::load_native_certs().expect("could not load platform certs") {
-        roots.add(cert).unwrap();
-    }
-
-    let tls = rustls::ClientConfig::builder()
-        .with_root_certificates(roots)
-        .with_no_client_auth();
-
-    let https = hyper_rustls::HttpsConnectorBuilder::new()
-        .with_tls_config(tls)
-        .https_or_http()
-        .enable_http1()
-        .enable_http2()
-        .build();
-
-    Client::builder(TokioExecutor::new()).build(https)
 }
 
 async fn shutdown_signal() {
