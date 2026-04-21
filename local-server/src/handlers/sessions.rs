@@ -5,24 +5,24 @@ use linkup::UpsertSessionRequest;
 use crate::ServerState;
 
 pub async fn upsert_preview(
-    State(server_state): State<ServerState>,
-    Json(upsert_req): Json<UpsertSessionRequest>,
+    State(_server_state): State<ServerState>,
+    Json(_upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Directly proxies the request to the worker. For preview there is no work to be done on the server side.
     StatusCode::NOT_FOUND
 }
 
 pub async fn upsert_tunneled(
-    State(server_state): State<ServerState>,
-    Json(upsert_req): Json<UpsertSessionRequest>,
+    State(_server_state): State<ServerState>,
+    Json(_upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Proxy to the worker and to the local storage
     StatusCode::NOT_FOUND
 }
 
 pub async fn upsert_local_only(
-    State(server_state): State<ServerState>,
-    Json(upsert_req): Json<UpsertSessionRequest>,
+    State(_server_state): State<ServerState>,
+    Json(_upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Local work only.
     StatusCode::NOT_FOUND

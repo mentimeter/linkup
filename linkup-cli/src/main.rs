@@ -243,7 +243,8 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    env_logger::init();
+    let env = env_logger::Env::new().filter_or("LINKUP_LOG", "info");
+    env_logger::Builder::from_env(env).init();
 
     let cli = Cli::parse();
 

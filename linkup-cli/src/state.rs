@@ -13,12 +13,9 @@ use url::Url;
 
 use linkup::{Domain, Session, SessionService, TunneledSessionResponse, UpsertSessionRequest};
 
-use linkup_clients::{LocalServerClient, WorkerClient};
+use linkup_clients::LocalServerClient;
 
-use crate::{
-    LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path,
-    services::{self, LocalServer},
-};
+use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
@@ -192,7 +189,7 @@ pub fn get_config(config_path: &str) -> Result<linkup::config::Config> {
 pub async fn upload_state(state: &State) -> Result<TunneledSessionResponse> {
     let desired_session_name = &state.linkup.session_name;
 
-    let local_server_client = LocalServerClient::new(&LocalServer::url());
+    let local_server_client = LocalServerClient::new(&services::local_server::url());
     let session_response = local_server_client
         .tunneled_session(&build_upsert_request(desired_session_name, state.into()))
         .await;

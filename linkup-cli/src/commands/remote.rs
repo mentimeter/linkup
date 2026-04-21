@@ -1,6 +1,5 @@
 use crate::{
-    Result,
-    services::{self, BackgroundService},
+    Result, services,
     state::{ServiceTarget, State, upload_state},
 };
 
@@ -37,7 +36,7 @@ pub async fn remote(args: &Args) -> Result<()> {
 
     let mut state = State::load()?;
 
-    if services::LocalServer::find_pid().is_none() {
+    if services::local_server::find_pid().is_none() {
         println!(
             "{}",
             "Seems like your local Linkup server is not running. Please run 'linkup start' first."

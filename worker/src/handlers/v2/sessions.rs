@@ -1,14 +1,13 @@
 use axum::{Json, extract::State, response::IntoResponse};
-use http::StatusCode;
 
-use linkup::{Session, SessionAllocator, UpsertSessionRequest};
+use linkup::UpsertSessionRequest;
 
-use crate::{http_error::HttpError, kv_store::CfWorkerStringStore, worker_state::WorkerState};
+use crate::worker_state::WorkerState;
 
 #[worker::send]
 pub async fn upsert_preview(
-    State(state): State<WorkerState>,
-    Json(upsert_req): Json<UpsertSessionRequest>,
+    State(_state): State<WorkerState>,
+    Json(_upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Create session, but don't create tunnel infrastructure.
     // TODO(@augustoccesar)[2026-04-21]: Reject any service with localhost
@@ -16,8 +15,8 @@ pub async fn upsert_preview(
 
 #[worker::send]
 pub async fn upsert_tunneled(
-    State(state): State<WorkerState>,
-    Json(upsert_req): Json<UpsertSessionRequest>,
+    State(_state): State<WorkerState>,
+    Json(_upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Create session and tunnel infrastructure.
     // TODO(@augustoccesar)[2026-04-21]: remember to convert localhost's into tunnel url. This was done before by the CLI

@@ -2,24 +2,25 @@ use std::{
     env,
     fs::File,
     os::unix::process::CommandExt,
-    path::PathBuf,
     process::{self, Stdio},
     time::Duration,
 };
 
 use anyhow::Context;
-use indicatif::ProgressBar;
-use linkup::TunneledSessionResponse;
-use linkup_clients::LocalServerClient;
+use sysinfo::Pid;
 use tokio::time::sleep;
 use url::Url;
 
+use linkup_clients::LocalServerClient;
+
+use super::{PidError, ServiceId};
 use crate::{
     Result, linkup_certs_dir_path, linkup_file_path,
     state::{State, upload_state},
 };
 
-use super::{BackgroundService, PidError};
+const ID: ServiceId = ServiceId("linkup-local-server");
+const NAME: &str = "Linkup local server";
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -31,135 +32,107 @@ pub enum Error {
     ServerUnreachable,
 }
 
-pub struct LocalServer {
-    stdout_file_path: PathBuf,
-    stderr_file_path: PathBuf,
+pub fn url() -> Url {
+    Url::parse("http://localhost:80").expect("linkup url invalid")
 }
 
-impl LocalServer {
-    pub fn new() -> Self {
-        Self {
-            stdout_file_path: linkup_file_path("localserver-stdout"),
-            stderr_file_path: linkup_file_path("localserver-stderr"),
+pub async fn start(state: &mut State) -> Result<()> {
+    if super::find_pid(ID).is_some() {
+        log::info!("Already running.");
+
+        return Ok(());
+    }
+
+    log::info!("Starting...");
+    spawn_process()?;
+
+    let mut reachable = is_reachable().await;
+    let mut attempts: u8 = 0;
+    loop {
+        match (reachable, attempts) {
+            (true, _) => break,
+            (false, 0..10) => {
+                sleep(Duration::from_millis(1000)).await;
+                attempts += 1;
+
+                log::info!("Waiting for server... retry #{attempts}");
+
+                reachable = is_reachable().await;
+            }
+            (false, 10..) => {
+                log::error!("Failed to reach server");
+
+                return Err(Error::ServerUnreachable.into());
+            }
+        }
+    }
+    log::info!("Ready!");
+
+    log::info!("Uploading state...");
+    match update_state(state).await {
+        Ok(_) => {
+            log::info!("Finished setting up!");
+        }
+        Err(e) => {
+            log::error!("Failed to upload state: {e}");
+            return Err(e);
         }
     }
 
-    /// For internal communication to local-server, we only use the port 80 (HTTP).
-    pub fn url() -> Url {
-        Url::parse("http://localhost:80").expect("linkup url invalid")
-    }
-
-    fn start(&self) -> Result<()> {
-        log::debug!("Starting {}", Self::NAME);
-
-        let stdout_file = File::create(&self.stdout_file_path)?;
-        let stderr_file = File::create(&self.stderr_file_path)?;
-
-        let mut command = process::Command::new(
-            env::current_exe().context("Failed to get the current executable")?,
-        );
-        command.env(
-            "RUST_LOG",
-            "info,hickory_server=warn,hyper_util=warn,h2=warn,tower_http=info",
-        );
-        command.env("LINKUP_SERVICE_ID", Self::ID);
-        command.args([
-            "server",
-            "--certs-dir",
-            linkup_certs_dir_path().to_str().unwrap(),
-        ]);
-
-        command
-            .process_group(0)
-            .stdout(stdout_file)
-            .stderr(stderr_file)
-            .stdin(Stdio::null())
-            .spawn()?;
-
-        Ok(())
-    }
-
-    async fn reachable(&self) -> bool {
-        matches!(
-            LocalServerClient::new(&Self::url()).health_check().await,
-            Ok(true)
-        )
-    }
-
-    async fn update_state(&self, state: &mut State) -> Result<TunneledSessionResponse> {
-        let session_response = upload_state(state).await?;
-
-        state.linkup.session_name = session_response.session_name.clone();
-        state
-            .save()
-            .expect("failed to update local state file with session name");
-
-        Ok(session_response)
-    }
+    Ok(())
 }
 
-impl BackgroundService<TunneledSessionResponse> for LocalServer {
-    const ID: &str = "linkup-local-server";
-    const NAME: &str = "Linkup local server";
+pub fn stop() {
+    super::stop(ID);
+}
 
-    async fn run_with_progress(
-        &self,
-        state: &mut State,
-        progress_bar: &ProgressBar,
-    ) -> Result<TunneledSessionResponse> {
-        self.notify_update(progress_bar, super::RunStatus::Starting);
+pub fn find_pid() -> Option<Pid> {
+    super::find_pid(ID)
+}
 
-        if !self.reachable().await {
-            if let Err(e) = self.start() {
-                self.notify_update_with_details(
-                    progress_bar,
-                    super::RunStatus::Error,
-                    "Failed to start",
-                );
+async fn is_reachable() -> bool {
+    matches!(
+        LocalServerClient::new(&url()).health_check().await,
+        Ok(true)
+    )
+}
 
-                return Err(e);
-            }
-        }
+async fn update_state(state: &mut State) -> Result<()> {
+    let tunneled_session = upload_state(state).await?;
 
-        let mut reachable = self.reachable().await;
-        let mut attempts: u8 = 0;
-        loop {
-            match (reachable, attempts) {
-                (true, _) => break,
-                (false, 0..10) => {
-                    sleep(Duration::from_millis(1000)).await;
-                    attempts += 1;
+    state.linkup.session_name = tunneled_session.session_name;
+    state
+        .save()
+        .expect("failed to update local state file with session name");
 
-                    self.notify_update_with_details(
-                        progress_bar,
-                        super::RunStatus::Starting,
-                        format!("Waiting for server... retry #{}", attempts),
-                    );
+    Ok(())
+}
 
-                    reachable = self.reachable().await;
-                }
-                (false, 10..) => {
-                    self.notify_update_with_details(
-                        progress_bar,
-                        super::RunStatus::Error,
-                        "Failed to reach server",
-                    );
+fn spawn_process() -> Result<()> {
+    log::debug!("Starting {}", NAME);
 
-                    return Err(Error::ServerUnreachable.into());
-                }
-            }
-        }
+    let stdout_file = File::create(linkup_file_path("localserver-stdout"))?;
+    let stderr_file = File::create(linkup_file_path("localserver-stderr"))?;
 
-        match self.update_state(state).await {
-            Ok(tunneled_session) => {
-                self.notify_update(progress_bar, super::RunStatus::Started);
+    let mut command =
+        process::Command::new(env::current_exe().context("Failed to get the current executable")?);
+    command.env(
+        "RUST_LOG",
+        "info,hickory_server=warn,hyper_util=warn,h2=warn,tower_http=info",
+    );
+    command.env("LINKUP_SERVICE_ID", ID.to_string());
+    command.args([
+        "server",
+        "--certs-dir",
+        linkup_certs_dir_path().to_str().unwrap(),
+    ]);
 
-                Ok(tunneled_session)
-            }
-            Err(e) => {
-                self.notify_update(progress_bar, super::RunStatus::Error);
-                return Err(e);
-            }
-        }
-    }
+    command
+        .process_group(0)
+        .stdout(stdout_file)
+        .stderr(stderr_file)
+        .stdin(Stdio::null())
+        .spawn()?;
+
+    Ok(())
 }
