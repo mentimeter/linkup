@@ -1,12 +1,11 @@
 use axum::{Json, extract::State, response::IntoResponse};
 use http::StatusCode;
-use linkup::{NameKind, Session, UpsertSessionRequest};
+use linkup::UpsertSessionRequest;
 
-use crate::{ServerState, dns, handlers::ApiError};
+use crate::ServerState;
 
 pub async fn upsert_preview(
-    Extension(store): Extension<MemoryStringStore>,
-    Extension(dns_catalog): Extension<dns::DnsCatalog>,
+    State(server_state): State<ServerState>,
     Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Directly proxies the request to the worker. For preview there is no work to be done on the server side.
@@ -14,8 +13,7 @@ pub async fn upsert_preview(
 }
 
 pub async fn upsert_tunneled(
-    Extension(store): Extension<MemoryStringStore>,
-    Extension(dns_catalog): Extension<dns::DnsCatalog>,
+    State(server_state): State<ServerState>,
     Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Proxy to the worker and to the local storage
@@ -23,8 +21,7 @@ pub async fn upsert_tunneled(
 }
 
 pub async fn upsert_local_only(
-    Extension(store): Extension<MemoryStringStore>,
-    Extension(dns_catalog): Extension<dns::DnsCatalog>,
+    State(server_state): State<ServerState>,
     Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Local work only.
