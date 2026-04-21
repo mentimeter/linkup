@@ -4,9 +4,9 @@ pub mod tunnel;
 
 use axum::response::IntoResponse;
 use http::StatusCode;
-use linkup::{NameKind, Session, SessionAllocator, UpsertSessionRequest};
+use linkup::{NameKind, Session, UpsertSessionRequest};
 
-use crate::{http_error::HttpError, kv_store::CfWorkerStringStore, worker_state::WorkerState};
+use crate::{http_error::HttpError, worker_state::WorkerState};
 
 // TODO(augustoccesar)[2026-04-13]: This methods now exists because both the endpoints to
 //  create a preview session and a local session are exactly the same with the only
@@ -18,9 +18,6 @@ pub async fn handle_session_upsert(
     req: UpsertSessionRequest,
     name_kind: NameKind,
 ) -> impl IntoResponse {
-    let store = CfWorkerStringStore::new(state.sessions_kv.clone());
-    let sessions = SessionAllocator::new(&store);
-
     let desired_name = match &req {
         UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
         UpsertSessionRequest::Unnamed { .. } => String::new(),
@@ -37,7 +34,8 @@ pub async fn handle_session_upsert(
         }
     };
 
-    let session_name = sessions
+    let session_name = state
+        .session_allocator
         .store_session(session, name_kind, &desired_name)
         .await;
 

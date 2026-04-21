@@ -4,12 +4,13 @@ use crate::{
     random_six_char,
 };
 
-pub struct SessionAllocator<'a, S: StringStore> {
-    store: &'a S,
+#[derive(Clone)]
+pub struct SessionAllocator<S: StringStore> {
+    store: S,
 }
 
-impl<'a, S: StringStore> SessionAllocator<'a, S> {
-    pub fn new(store: &'a S) -> Self {
+impl<S: StringStore> SessionAllocator<S> {
+    pub fn new(store: S) -> Self {
         Self { store }
     }
 
@@ -191,7 +192,7 @@ mod tests {
     #[tokio::test]
     async fn identical_preview_requests_reuse_same_name() {
         let store = MemoryStringStore::default();
-        let allocator = SessionAllocator::new(&store);
+        let allocator = SessionAllocator::new(store);
         let request_json = serde_json::json!({
             "services": [
                 {

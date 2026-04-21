@@ -1,6 +1,7 @@
 use linkup::{SessionError, StringStore};
 use worker::kv::KvStore;
 
+#[derive(Clone)]
 pub struct CfWorkerStringStore {
     kv: KvStore,
 }

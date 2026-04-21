@@ -1,8 +1,8 @@
-use axum::{Extension, Json, response::IntoResponse};
+use axum::{Json, extract::State, response::IntoResponse};
 use http::StatusCode;
-use linkup::{MemoryStringStore, NameKind, Session, SessionAllocator, UpsertSessionRequest};
+use linkup::{NameKind, Session, UpsertSessionRequest};
 
-use crate::{dns, handlers::ApiError};
+use crate::{ServerState, dns, handlers::ApiError};
 
 pub async fn upsert_preview(
     Extension(store): Extension<MemoryStringStore>,
