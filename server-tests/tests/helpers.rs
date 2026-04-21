@@ -1,7 +1,7 @@
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
-use linkup::{Domain, MemoryStringStore, SessionService, UpsertSessionRequest};
-use linkup_local_server::{dns::DnsCatalog, router};
+use linkup::{Domain, MemoryStringStore, SessionAllocator, SessionService, UpsertSessionRequest};
+use linkup_local_server::{ServerState, dns::DnsCatalog, router};
 use reqwest::Url;
 use tokio::net::TcpListener;
 
@@ -14,7 +14,14 @@ pub enum ServerKind {
 pub async fn setup_server(kind: ServerKind) -> String {
     match kind {
         ServerKind::Local => {
-            let app = router(MemoryStringStore::default(), DnsCatalog::new());
+            let state = ServerState {
+                session_allocator: SessionAllocator::new(MemoryStringStore::default()),
+                https_client: linkup_local_server::https_client(),
+                dns_catalog: DnsCatalog::new(),
+                https_certs_dir: PathBuf::default(),
+            };
+
+            let app = router(state);
 
             // Bind to a random port assigned by the OS
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

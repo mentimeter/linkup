@@ -1,25 +1,19 @@
 use axum::{
-    Extension,
     body::Body,
-    extract::Request,
+    extract::{Request, State},
     response::{IntoResponse, Response},
 };
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Uri};
-use linkup::{
-    MemoryStringStore, SessionAllocator, TargetService, get_additional_headers, get_target_service,
-};
+use linkup::{TargetService, get_additional_headers, get_target_service};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
-use crate::{HttpsClient, handlers::ApiError, ws};
+use crate::{HttpsClient, ServerState, handlers::ApiError, ws};
 
 pub async fn handle_all(
-    Extension(store): Extension<MemoryStringStore>,
-    Extension(client): Extension<HttpsClient>,
+    State(server_state): State<ServerState>,
     ws: ws::ExtractOptionalWebSocketUpgrade,
     req: Request,
 ) -> Response {
-    let sessions = SessionAllocator::new(&store);
-
     let headers: linkup::HeaderMap = req.headers().into();
     let url = if req.uri().scheme().is_some() {
         req.uri().to_string()
@@ -34,7 +28,7 @@ pub async fn handle_all(
         )
     };
 
-    let (session_name, config) = match sessions.get_request_session(&url, &headers).await {
+    let (session_name, config) = match server_state.session_allocator.get_request_session(&url, &headers).await {
         Ok(session) => session,
         Err(_) => {
             return ApiError::new(
@@ -146,7 +140,15 @@ pub async fn handle_all(
 
             downstream_upgrade_response
         }
-        None => handle_http_req(req, target_service, extra_headers, client).await,
+        None => {
+            handle_http_req(
+                req,
+                target_service,
+                extra_headers,
+                server_state.https_client,
+            )
+            .await
+        }
     }
 }
 

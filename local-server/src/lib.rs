@@ -4,7 +4,7 @@ mod handlers;
 mod ws;
 
 use axum::{
-    Extension, Router,
+    Router,
     body::Body,
     extract::DefaultBodyLimit,
     routing::{any, get, post},
@@ -22,7 +22,7 @@ use hyper_util::{
     client::legacy::{Client, connect::HttpConnector},
     rt::TokioExecutor,
 };
-use linkup::MemoryStringStore;
+use linkup::{MemoryStringStore, SessionAllocator};
 use rustls::ServerConfig;
 use std::{net::SocketAddr, path::PathBuf};
 use std::{path::Path, sync::Arc};
@@ -30,11 +30,19 @@ use tokio::{net::UdpSocket, select, signal};
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
+use crate::dns::DnsCatalog;
+
 type HttpsClient = Client<HttpsConnector<HttpConnector>, Body>;
 
-pub fn router(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) -> Router {
-    let client = https_client();
+#[derive(Clone)]
+pub struct ServerState {
+    pub session_allocator: SessionAllocator<MemoryStringStore>,
+    pub https_client: HttpsClient,
+    pub dns_catalog: DnsCatalog,
+    pub https_certs_dir: PathBuf,
+}
 
+pub fn router(server_state: ServerState) -> Router {
     Router::new()
         .route(
             "/linkup/local-session",
@@ -42,9 +50,7 @@ pub fn router(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) -> 
         )
         .route("/linkup/check", get(handlers::always_ok))
         .fallback(any(handlers::proxy::handle_all))
-        .layer(Extension(config_store))
-        .layer(Extension(dns_catalog))
-        .layer(Extension(client))
+        .with_state(server_state)
         .layer(
             ServiceBuilder::new()
                 .layer(DefaultBodyLimit::max(1024 * 1024 * 100)) // Set max body size to 100MB
@@ -56,21 +62,22 @@ pub fn router(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) -> 
         )
 }
 
-pub async fn start(config_store: MemoryStringStore, certs_dir: &Path) {
-    let dns_catalog = dns::DnsCatalog::new();
-
-    let http_config_store = config_store.clone();
-    let https_config_store = config_store.clone();
-    let https_certs_dir = PathBuf::from(certs_dir);
+pub async fn start(string_store: MemoryStringStore, certs_dir: &Path) {
+    let server_state = ServerState {
+        session_allocator: SessionAllocator::new(string_store),
+        https_client: https_client(),
+        dns_catalog: dns::DnsCatalog::new(),
+        https_certs_dir: PathBuf::from(certs_dir),
+    };
 
     select! {
-        () = start_server_http(http_config_store, dns_catalog.clone()) => {
+        () = start_server_http(server_state.clone()) => {
             println!("HTTP server shut down");
         },
-        () = start_server_https(https_config_store, &https_certs_dir, dns_catalog.clone()) => {
+        () = start_server_https(server_state.clone()) => {
             println!("HTTPS server shut down");
         },
-        () = start_dns_server(dns_catalog.clone()) => {
+        () = start_dns_server(server_state.dns_catalog) => {
             println!("DNS server shut down");
         },
         () = shutdown_signal() => {
@@ -79,19 +86,15 @@ pub async fn start(config_store: MemoryStringStore, certs_dir: &Path) {
     }
 }
 
-async fn start_server_https(
-    config_store: MemoryStringStore,
-    certs_dir: &Path,
-    dns_catalog: dns::DnsCatalog,
-) {
+async fn start_server_https(server_state: ServerState) {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let sni = match certificates::WildcardSniResolver::load_dir(certs_dir) {
+    let sni = match certificates::WildcardSniResolver::load_dir(&server_state.https_certs_dir) {
         Ok(sni) => sni,
         Err(error) => {
             eprintln!(
                 "Failed to load certificates from {:?} into SNI: {}",
-                certs_dir, error
+                &server_state.https_certs_dir, error
             );
             return;
         }
@@ -102,7 +105,7 @@ async fn start_server_https(
         .with_cert_resolver(Arc::new(sni));
     server_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
-    let app = router(config_store, dns_catalog);
+    let app = router(server_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 443));
     println!("HTTPS listening on {}", &addr);
@@ -113,8 +116,8 @@ async fn start_server_https(
         .expect("failed to start HTTPS server");
 }
 
-async fn start_server_http(config_store: MemoryStringStore, dns_catalog: dns::DnsCatalog) {
-    let app = router(config_store, dns_catalog);
+async fn start_server_http(server_state: ServerState) {
+    let app = router(server_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 80));
     println!("HTTP listening on {}", &addr);
@@ -128,7 +131,7 @@ async fn start_server_http(config_store: MemoryStringStore, dns_catalog: dns::Dn
         .expect("failed to start HTTP server");
 }
 
-async fn start_dns_server(dns_catalog: dns::DnsCatalog) {
+async fn start_dns_server(dns_catalog: DnsCatalog) {
     let cf_name_server = NameServerConfig::udp("1.1.1.1".parse().unwrap());
     let forward_config = ForwardConfig {
         name_servers: vec![cf_name_server],
@@ -156,7 +159,7 @@ async fn start_dns_server(dns_catalog: dns::DnsCatalog) {
     server.block_until_done().await.unwrap();
 }
 
-fn https_client() -> HttpsClient {
+pub fn https_client() -> HttpsClient {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     let mut roots = rustls::RootCertStore::empty();

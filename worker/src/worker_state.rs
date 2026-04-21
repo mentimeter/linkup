@@ -1,5 +1,7 @@
-use linkup::Version;
+use linkup::{SessionAllocator, Version};
 use worker::{Env, kv::KvStore};
+
+use crate::kv_store::CfWorkerStringStore;
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -15,7 +17,7 @@ pub struct CloudflareEnvironemnt {
 #[allow(dead_code)]
 pub struct WorkerState {
     pub min_supported_client_version: Version,
-    pub sessions_kv: KvStore,
+    pub session_allocator: SessionAllocator<CfWorkerStringStore>,
     pub tunnels_kv: KvStore,
     pub cloudflare: CloudflareEnvironemnt,
     pub env: Env,
@@ -41,9 +43,11 @@ impl TryFrom<Env> for WorkerState {
         let cf_api_token = value.var("CLOUDFLARE_API_TOKEN")?;
         let worker_token = value.var("WORKER_TOKEN")?;
 
+        let session_allocator = SessionAllocator::new(CfWorkerStringStore::new(sessions_kv));
+
         let state = WorkerState {
             min_supported_client_version,
-            sessions_kv,
+            session_allocator,
             tunnels_kv,
             cloudflare: CloudflareEnvironemnt {
                 account_id: cf_account_id.to_string(),
