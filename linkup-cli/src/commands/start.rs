@@ -3,15 +3,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Error, anyhow};
-use colored::Colorize;
-use indicatif::{MultiProgress, ProgressBar};
+use anyhow::{Context, anyhow};
+use linkup_clients::WorkerClient;
 
 use crate::{Result, state::State};
 use crate::{
     commands::status::{SessionStatus, format_state_domains},
     env_files::write_to_env_file,
-    services::{self, BackgroundService},
+    services::{self},
     state::{config_path, config_to_state, get_config},
 };
 
@@ -22,60 +21,20 @@ pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
     let mut state = load_and_save_state(config_arg)?;
     set_linkup_env(state.clone())?;
 
-    let local_server = services::LocalServer::new();
-    let cloudflare_tunnel = services::CloudflareTunnel::new();
+    services::local_server::start(&mut state).await?;
 
-    let multi_progress = MultiProgress::new();
+    let worker_client = WorkerClient::new(&state.linkup.worker_url, &state.linkup.worker_token);
+    let tunnel_data = worker_client.get_tunnel(&state.linkup.session_name).await?;
 
-    multi_progress
-        .println("Background services:")
-        .expect("printing should not fail");
-    multi_progress
-        .println(format!("{:<20} {:<10}", "NAME".bold(), "STATUS".bold()))
-        .expect("printing should not fail");
+    services::cloudflared::start(&mut state, &tunnel_data).await?;
 
-    let local_server_progress = multi_progress.add(ProgressBar::new_spinner());
-    local_server.prepare_progress_bar(&local_server_progress);
-
-    let cloudflare_tunnel_progress = multi_progress.add(ProgressBar::new_spinner());
-    cloudflare_tunnel.prepare_progress_bar(&cloudflare_tunnel_progress);
-
-    // To make sure that we get the last update to the display thread before the error is bubbled up,
-    // we store any error that might happen on one of the steps and only return it after we have
-    // send the message to the display thread to stop and we join it.
-    let mut exit_error: Option<Error> = None;
-
-    match local_server
-        .run_with_progress(&mut state, &local_server_progress)
-        .await
-    {
-        Ok(_) => (),
-        Err(err) => exit_error = Some(err),
-    }
-
-    if exit_error.is_none() {
-        match cloudflare_tunnel
-            .run_with_progress(&mut state, &cloudflare_tunnel_progress)
-            .await
-        {
-            Ok(_) => (),
-            Err(err) => exit_error = Some(err),
-        }
-    }
-
-    local_server_progress.finish();
-    cloudflare_tunnel_progress.finish();
-
-    if let Some(exit_error) = exit_error {
-        return Err(exit_error).context("Failed to start CLI");
-    }
+    println!();
 
     let status = SessionStatus {
         name: state.linkup.session_name.clone(),
         domains: format_state_domains(&state.linkup.session_name, &state.domains),
     };
 
-    print!("\n\n");
     status.print();
 
     Ok(())
