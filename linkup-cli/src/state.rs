@@ -192,7 +192,7 @@ pub fn get_config(config_path: &str) -> Result<linkup::config::Config> {
 // This method gets the local state and uploads it to both the local linkup server and
 // the remote linkup server (worker).
 pub async fn upload_state(state: &State) -> Result<String> {
-    let local_url = services::LocalServer::url();
+    let local_url = services::local_server::url();
 
     let servers_sessions = ServersSessions::from(state);
     let session_name = &state.linkup.session_name;
