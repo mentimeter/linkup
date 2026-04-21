@@ -9,6 +9,7 @@ axum = { workspace = true, features = ["ws"] }
 futures = { workspace = true }
 http = { workspace = true }
 linkup = { workspace = true }
+linkup-clients = { workspace = true }
 linkup-local-server = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "rustls"] }
 serde_json = { workspace = true }
