@@ -56,7 +56,12 @@ pub enum UpsertSessionRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct UpsertSessionResponse {
+pub struct SessionResponse {
+    pub session_name: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TunneledSessionResponse {
     pub session_name: String,
     pub tunnel_data: TunnelData,
 }

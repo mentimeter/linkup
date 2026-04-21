@@ -33,7 +33,7 @@ pub enum PidError {
     BadPidFile(String),
 }
 
-pub trait BackgroundService {
+pub trait BackgroundService<R> {
     const ID: &str;
     const NAME: &str;
 
@@ -47,7 +47,7 @@ pub trait BackgroundService {
         &self,
         local_state: &mut State,
         progress_bar: &ProgressBar,
-    ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<R>;
 
     fn stop() {
         if let Some(pid) = Self::find_pid() {

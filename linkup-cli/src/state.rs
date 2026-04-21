@@ -7,14 +7,18 @@ use std::{
 use anyhow::Context;
 use rand::distr::{Alphanumeric, SampleString};
 use regex::Regex;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{Domain, Session, SessionService, UpsertSessionRequest};
+use linkup::{Domain, Session, SessionService, TunneledSessionResponse, UpsertSessionRequest};
 
 use linkup_clients::{LocalServerClient, WorkerClient};
 
-use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path, services};
+use crate::{
+    LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path,
+    services::{self, LocalServer},
+};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
@@ -123,12 +127,6 @@ impl Display for ServiceTarget {
     }
 }
 
-#[derive(Debug)]
-pub struct ServersSessions {
-    pub local: Session,
-    pub remote: Session,
-}
-
 pub fn config_to_state(config: linkup::config::Config, config_path: String) -> State {
     let random_token = Alphanumeric.sample_string(&mut rand::rng(), 16);
 
@@ -191,58 +189,24 @@ pub fn get_config(config_path: &str) -> Result<linkup::config::Config> {
 
 // This method gets the local state and uploads it to both the local linkup server and
 // the remote linkup server (worker).
-pub async fn upload_state(state: &State) -> Result<String> {
-    let local_url = services::LocalServer::url();
+pub async fn upload_state(state: &State) -> Result<TunneledSessionResponse> {
+    let desired_session_name = &state.linkup.session_name;
 
-    let servers_sessions = ServersSessions::from(state);
-    let session_name = &state.linkup.session_name;
+    let local_server_client = LocalServerClient::new(&LocalServer::url());
+    let session_response = local_server_client
+        .tunneled_session(&build_upsert_request(desired_session_name, state.into()))
+        .await;
 
-    let server_session_name = upload_session_to_worker(
-        &state.linkup.worker_url,
-        &state.linkup.worker_token,
-        session_name,
-        servers_sessions.remote,
-    )
-    .await?;
+    let session_response = match session_response {
+        Ok(session_response) => session_response,
+        Err(linkup_clients::LocalServerClientError::Response(StatusCode::CONFLICT, _)) => {
+            // TODO(@augustoccesar)[2026-04-21]: Handle
+            todo!("Create with a new name")
+        }
+        Err(error) => return Err(error.into()),
+    };
 
-    let local_session_name =
-        upload_session_to_local_server(&local_url, &server_session_name, servers_sessions.local)
-            .await?;
-
-    if server_session_name != local_session_name {
-        log::error!(
-            "Local session has name: {} and remote has name: {}",
-            &local_session_name,
-            &server_session_name
-        );
-
-        return Err(anyhow::anyhow!(
-            "your session is in an inconsistent state. Stop your session before trying again."
-        ));
-    }
-
-    Ok(server_session_name)
-}
-
-async fn upload_session_to_worker(
-    url: &Url,
-    token: &str,
-    desired_name: &str,
-    session: Session,
-) -> Result<String> {
-    let req = build_upsert_request(desired_name, session);
-
-    Ok(WorkerClient::new(url, token).local_session(&req).await?)
-}
-
-async fn upload_session_to_local_server(
-    url: &Url,
-    desired_name: &str,
-    session: Session,
-) -> Result<String> {
-    let req = build_upsert_request(desired_name, session);
-
-    Ok(LocalServerClient::new(url).upsert_session(&req).await?)
+    Ok(session_response)
 }
 
 fn build_upsert_request(desired_name: &str, session: Session) -> UpsertSessionRequest {
@@ -255,9 +219,9 @@ fn build_upsert_request(desired_name: &str, session: Session) -> UpsertSessionRe
     }
 }
 
-impl From<&State> for ServersSessions {
+impl From<&State> for Session {
     fn from(state: &State) -> Self {
-        let local_server_services = state
+        let session_services = state
             .services
             .iter()
             .map(|service| SessionService {
@@ -269,42 +233,67 @@ impl From<&State> for ServersSessions {
                 },
                 rewrites: service.config.rewrites.clone(),
             })
-            .collect::<Vec<SessionService>>();
+            .collect::<Vec<_>>();
 
-        let remote_server_services = state
-            .services
-            .iter()
-            .map(|service| SessionService {
-                name: service.config.name.clone(),
-                location: if service.current == ServiceTarget::Remote {
-                    service.config.remote.clone()
-                } else {
-                    state.get_tunnel_url()
-                },
-                rewrites: service.config.rewrites.clone(),
-            })
-            .collect::<Vec<SessionService>>();
-
-        let local_session = Session {
+        Session {
             session_token: state.linkup.session_token.clone(),
-            services: local_server_services,
+            services: session_services,
             domains: state.domains.clone(),
             cache_routes: state.linkup.cache_routes.clone(),
-        };
-
-        let remote_session = Session {
-            session_token: state.linkup.session_token.clone(),
-            services: remote_server_services,
-            domains: state.domains.clone(),
-            cache_routes: state.linkup.cache_routes.clone(),
-        };
-
-        ServersSessions {
-            local: local_session,
-            remote: remote_session,
         }
     }
 }
+
+// impl From<&State> for ServersSessions {
+//     fn from(state: &State) -> Self {
+//         let local_server_services = state
+//             .services
+//             .iter()
+//             .map(|service| SessionService {
+//                 name: service.config.name.clone(),
+//                 location: if service.current == ServiceTarget::Remote {
+//                     service.config.remote.clone()
+//                 } else {
+//                     service.config.local.clone()
+//                 },
+//                 rewrites: service.config.rewrites.clone(),
+//             })
+//             .collect::<Vec<SessionService>>();
+
+//         let remote_server_services = state
+//             .services
+//             .iter()
+//             .map(|service| SessionService {
+//                 name: service.config.name.clone(),
+//                 location: if service.current == ServiceTarget::Remote {
+//                     service.config.remote.clone()
+//                 } else {
+//                     state.get_tunnel_url()
+//                 },
+//                 rewrites: service.config.rewrites.clone(),
+//             })
+//             .collect::<Vec<SessionService>>();
+
+//         let local_session = Session {
+//             session_token: state.linkup.session_token.clone(),
+//             services: local_server_services,
+//             domains: state.domains.clone(),
+//             cache_routes: state.linkup.cache_routes.clone(),
+//         };
+
+//         let remote_session = Session {
+//             session_token: state.linkup.session_token.clone(),
+//             services: remote_server_services,
+//             domains: state.domains.clone(),
+//             cache_routes: state.linkup.cache_routes.clone(),
+//         };
+
+//         ServersSessions {
+//             local: local_session,
+//             remote: remote_session,
+//         }
+//     }
+// }
 
 pub fn managed_domains(state: Option<&State>, cfg_path: &Option<String>) -> Vec<String> {
     let config_domains = match config_path(cfg_path).ok() {

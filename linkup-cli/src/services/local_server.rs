@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::Context;
 use indicatif::ProgressBar;
+use linkup::TunneledSessionResponse;
 use linkup_clients::LocalServerClient;
 use tokio::time::sleep;
 use url::Url;
@@ -85,43 +86,39 @@ impl LocalServer {
         )
     }
 
-    async fn update_state(&self, state: &mut State) -> Result<()> {
-        let session_name = upload_state(state).await?;
+    async fn update_state(&self, state: &mut State) -> Result<TunneledSessionResponse> {
+        let session_response = upload_state(state).await?;
 
-        state.linkup.session_name = session_name;
+        state.linkup.session_name = session_response.session_name.clone();
         state
             .save()
             .expect("failed to update local state file with session name");
 
-        Ok(())
+        Ok(session_response)
     }
 }
 
-impl BackgroundService for LocalServer {
+impl BackgroundService<TunneledSessionResponse> for LocalServer {
     const ID: &str = "linkup-local-server";
     const NAME: &str = "Linkup local server";
 
-    async fn run_with_progress(&self, state: &mut State, progress_bar: &ProgressBar) -> Result<()> {
+    async fn run_with_progress(
+        &self,
+        state: &mut State,
+        progress_bar: &ProgressBar,
+    ) -> Result<TunneledSessionResponse> {
         self.notify_update(progress_bar, super::RunStatus::Starting);
 
-        if self.reachable().await {
-            self.notify_update_with_details(
-                progress_bar,
-                super::RunStatus::Started,
-                "Was already running",
-            );
+        if !self.reachable().await {
+            if let Err(e) = self.start() {
+                self.notify_update_with_details(
+                    progress_bar,
+                    super::RunStatus::Error,
+                    "Failed to start",
+                );
 
-            return Ok(());
-        }
-
-        if let Err(e) = self.start() {
-            self.notify_update_with_details(
-                progress_bar,
-                super::RunStatus::Error,
-                "Failed to start",
-            );
-
-            return Err(e);
+                return Err(e);
+            }
         }
 
         let mut reachable = self.reachable().await;
@@ -154,15 +151,15 @@ impl BackgroundService for LocalServer {
         }
 
         match self.update_state(state).await {
-            Ok(_) => {
+            Ok(tunneled_session) => {
                 self.notify_update(progress_bar, super::RunStatus::Started);
+
+                Ok(tunneled_session)
             }
             Err(e) => {
                 self.notify_update(progress_bar, super::RunStatus::Error);
                 return Err(e);
             }
         }
-
-        Ok(())
     }
 }

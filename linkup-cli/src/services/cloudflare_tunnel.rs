@@ -9,6 +9,7 @@ use std::{
 
 use hickory_resolver::{TokioResolver, config::ResolverOpts, proto::rr::RecordType};
 use indicatif::ProgressBar;
+use linkup::TunnelData;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
@@ -54,33 +55,9 @@ impl CloudflareTunnel {
         }
     }
 
-    async fn start(
-        &self,
-        worker_url: &Url,
-        worker_token: &str,
-        linkup_session_name: &str,
-    ) -> Result<Url> {
+    async fn start(&self, tunnel_data: &TunnelData) -> Result<Url> {
         let stdout_file = File::create(&self.stdout_file_path)?;
         let stderr_file = File::create(&self.stderr_file_path)?;
-
-        log::info!(
-            "Trying to acquire tunnel with name: {}",
-            linkup_session_name
-        );
-
-        let worker_client = WorkerClient::new(worker_url, worker_token);
-        let tunnel_data = worker_client
-            .get_tunnel(linkup_session_name)
-            .await
-            .map_err(|e| Error::FailedToStart(e.to_string()))?;
-        let tunnel_url = Url::parse(&tunnel_data.url).expect("tunnel_data url to be valid URL");
-
-        save_tunnel_credentials(
-            &tunnel_data.account_id,
-            &tunnel_data.id,
-            &tunnel_data.secret,
-        )?;
-        create_config_yml(&tunnel_data.id)?;
 
         log::debug!("Starting tunnel with name: {}", self.pidfile_path.display());
         log::debug!("Starting tunnel with name: {}", tunnel_data.name);
@@ -101,7 +78,7 @@ impl CloudflareTunnel {
             ])
             .spawn()?;
 
-        Ok(tunnel_url)
+        Ok(tunnel_data.url.parse().unwrap())
     }
 
     async fn dns_propagated(&self, tunnel_url: &Url) -> bool {
@@ -145,11 +122,16 @@ impl CloudflareTunnel {
     }
 }
 
-impl BackgroundService for CloudflareTunnel {
+impl BackgroundService<()> for CloudflareTunnel {
     const ID: &str = "cloudflare-tunnel";
     const NAME: &str = "Cloudflare Tunnel";
 
-    async fn run_with_progress(&self, state: &mut State, progress_bar: &ProgressBar) -> Result<()> {
+    async fn run_with_progress(
+        &self,
+        state: &mut State,
+        tunnel_data: &TunnelData,
+        progress_bar: &ProgressBar,
+    ) -> Result<()> {
         if !state.should_use_tunnel() {
             self.notify_update_with_details(
                 progress_bar,
@@ -182,13 +164,7 @@ impl BackgroundService for CloudflareTunnel {
 
         self.notify_update(progress_bar, super::RunStatus::Starting);
 
-        let tunnel_url = self
-            .start(
-                &state.linkup.worker_url,
-                &state.linkup.worker_token,
-                &state.linkup.session_name,
-            )
-            .await;
+        let tunnel_url = self.start(tunnel_data).await;
 
         match tunnel_url {
             Ok(tunnel_url) => {

@@ -11,6 +11,7 @@ pub async fn upsert_preview(
     Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Create session, but don't create tunnel infrastructure.
+    // TODO(@augustoccesar)[2026-04-21]: Reject any service with localhost
 }
 
 #[worker::send]
@@ -19,6 +20,7 @@ pub async fn upsert_tunneled(
     Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
     // Create session and tunnel infrastructure.
+    // TODO(@augustoccesar)[2026-04-21]: remember to convert localhost's into tunnel url. This was done before by the CLI
 }
 
 // pub async fn handle_post(state: WorkerState, req: UpsertSessionRequest) -> impl IntoResponse {

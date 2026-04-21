@@ -7,7 +7,7 @@ use http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Uri};
 use linkup::{TargetService, get_additional_headers, get_target_service};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
-use crate::{AxumHttpsClient, HttpsClient, ServerState, handlers::ApiError, ws};
+use crate::{AxumHttpsClient, ServerState, handlers::ApiError, ws};
 
 pub async fn handle_all(
     State(server_state): State<ServerState>,
