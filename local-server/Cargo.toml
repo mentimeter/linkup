@@ -13,6 +13,7 @@ axum = { workspace = true, features = ["http2", "json", "ws"] }
 futures = { workspace = true }
 http = { workspace = true }
 linkup = { workspace = true }
+linkup-clients = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -21,16 +22,8 @@ tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
 
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 hickory-server = { version = "0.26.0", features = ["resolver"] }
-hyper = { version = "1.5.2", features = ["server"] }
-hyper-rustls = { version = "0.27.5", default-features = false, features = [
-    "http1",
-    "http2",
-    "ring",
-] }
-hyper-util = { version = "0.1.10", features = ["client-legacy"] }
 rcgen = { version = "0.14.7", features = ["x509-parser"] }
-rustls = { version = "0.23.37", default-features = false, features = ["ring"] }
-rustls-native-certs = "0.8.1"
+rustls = { workspace = true }
 rustls-pemfile = "2.2.0"
 tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["trace"] }
