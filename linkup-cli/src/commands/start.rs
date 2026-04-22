@@ -10,7 +10,7 @@ use crate::{Result, state::State};
 use crate::{
     commands::status::{SessionStatus, format_state_domains},
     env_files::write_to_env_file,
-    services::{self},
+    services,
     state::{config_path, config_to_state, get_config},
 };
 

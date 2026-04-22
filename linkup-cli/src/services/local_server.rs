@@ -7,16 +7,16 @@ use std::{
 };
 
 use anyhow::Context;
-use linkup::{Session, TunneledSessionResponse, UpsertSessionRequest};
 use reqwest::StatusCode;
 use sysinfo::Pid;
 use tokio::time::sleep;
 use url::Url;
 
+use linkup::{Session, TunneledSessionResponse, UpsertSessionRequest};
 use linkup_clients::LocalServerClient;
 
 use super::{PidError, ServiceId};
-use crate::{Result, linkup_certs_dir_path, linkup_file_path, services, state::State};
+use crate::{Result, linkup_certs_dir_path, linkup_file_path, state::State};
 
 const ID: ServiceId = ServiceId("linkup-local-server");
 const NAME: &str = "Linkup local server";
@@ -108,7 +108,7 @@ async fn update_state(state: &mut State) -> Result<()> {
 }
 
 pub async fn upload_state(state: &State) -> Result<TunneledSessionResponse> {
-    let local_server_client = LocalServerClient::new(&services::local_server::url());
+    let local_server_client = LocalServerClient::new(&url());
 
     let desired_session_name = &state.linkup.session_name;
     let session: Session = state.into();
