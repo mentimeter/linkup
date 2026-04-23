@@ -1,23 +1,97 @@
 use axum::{Json, extract::State, response::IntoResponse};
 use http::StatusCode;
-use linkup::UpsertSessionRequest;
+use linkup::{NameKind, Session, UpsertSessionRequest};
+use linkup_clients::WorkerClientError;
 
-use crate::ServerState;
+use crate::{ServerState, dns, handlers::ApiError};
 
 pub async fn upsert_preview(
-    State(_server_state): State<ServerState>,
-    Json(_upsert_req): Json<UpsertSessionRequest>,
+    State(server_state): State<ServerState>,
+    Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    // Directly proxies the request to the worker. For preview there is no work to be done on the server side.
-    StatusCode::NOT_FOUND
+    match server_state
+        .worker_client
+        .preview_session(&upsert_req)
+        .await
+    {
+        Ok(session_response) => Json(session_response).into_response(),
+        Err(error) => match error {
+            WorkerClientError::Response(status_code, message) => {
+                ApiError::new(message, status_code).into_response()
+            }
+            _ => ApiError::new(
+                format!("Failed to request to Worker: {}", error),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response(),
+        },
+    }
 }
 
 pub async fn upsert_tunneled(
-    State(_server_state): State<ServerState>,
-    Json(_upsert_req): Json<UpsertSessionRequest>,
+    State(server_state): State<ServerState>,
+    Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    // Proxy to the worker and to the local storage
-    StatusCode::NOT_FOUND
+    let tunneled_session = match server_state
+        .worker_client
+        .tunneled_session(&upsert_req)
+        .await
+    {
+        Ok(tunneled_session) => tunneled_session,
+        Err(error) => match error {
+            WorkerClientError::Response(StatusCode::CONFLICT, _) => {
+                return ApiError::new("Conflict".to_string(), StatusCode::CONFLICT).into_response();
+            }
+            _ => {
+                return ApiError::new(
+                    format!("Failed to request to Worker: {}", error),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+                .into_response();
+            }
+        },
+    };
+
+    let session: Session = match upsert_req.try_into() {
+        Ok(conf) => conf,
+        Err(e) => {
+            return ApiError::new(
+                format!("Failed to parse server config: {} - local server", e),
+                StatusCode::BAD_REQUEST,
+            )
+            .into_response();
+        }
+    };
+
+    let local_session_result = server_state
+        .session_allocator
+        .store_session(&session, NameKind::Animal, &tunneled_session.session_name)
+        .await;
+
+    if let Err(error) = local_session_result {
+        return ApiError::new(
+            format!("Failed to store server config: {}", error),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )
+        .into_response();
+    }
+
+    let domains = session
+        .domains
+        .iter()
+        .map(|domain| domain.domain.clone())
+        .collect::<Vec<String>>();
+
+    for domain in &domains {
+        let full_domain = format!(
+            "{session_name}.{domain}",
+            session_name = tunneled_session.session_name
+        );
+
+        dns::register_dns_record(&server_state.dns_catalog, &full_domain).await;
+    }
+
+    (StatusCode::OK, Json(tunneled_session)).into_response()
 }
 
 pub async fn upsert_local_only(
@@ -27,58 +101,3 @@ pub async fn upsert_local_only(
     // Local work only.
     StatusCode::NOT_FOUND
 }
-
-// pub async fn handle_upsert(
-// Extension(store): Extension<MemoryStringStore>,
-// Extension(dns_catalog): Extension<dns::DnsCatalog>,
-// Json(upsert_req): Json<UpsertSessionRequest>,
-// ) -> impl IntoResponse {
-//     let (desired_name, req_domains) = match &upsert_req {
-//         UpsertSessionRequest::Named {
-//             desired_name,
-//             domains,
-//             ..
-//         } => (desired_name.clone(), domains),
-//         UpsertSessionRequest::Unnamed { domains, .. } => (String::new(), domains),
-//     };
-
-//     let domains = req_domains
-//         .iter()
-//         .map(|domain| domain.domain.clone())
-//         .collect::<Vec<String>>();
-
-//     let server_conf: Session = match upsert_req.try_into() {
-//         Ok(conf) => conf,
-//         Err(e) => {
-//             return ApiError::new(
-//                 format!("Failed to parse server config: {} - local server", e),
-//                 StatusCode::BAD_REQUEST,
-//             )
-//             .into_response();
-//         }
-//     };
-
-//     let sessions = SessionAllocator::new(&store);
-//     let session_name_result = sessions
-//         .store_session(server_conf, NameKind::Animal, &desired_name)
-//         .await;
-
-//     let session_name = match session_name_result {
-//         Ok(session_name) => session_name,
-//         Err(e) => {
-//             return ApiError::new(
-//                 format!("Failed to store server config: {}", e),
-//                 StatusCode::INTERNAL_SERVER_ERROR,
-//             )
-//             .into_response();
-//         }
-//     };
-
-//     for domain in &domains {
-//         let full_domain = format!("{session_name}.{domain}");
-
-//         dns::register_dns_record(&dns_catalog, &full_domain).await;
-//     }
-
-//     (StatusCode::OK, session_name).into_response()
-// }

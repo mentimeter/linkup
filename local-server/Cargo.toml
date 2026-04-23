@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "signal", "rt-multi-thread"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
+url = { workspace = true }
 
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 hickory-server = { version = "0.26.0", features = ["resolver"] }

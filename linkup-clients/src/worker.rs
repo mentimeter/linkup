@@ -1,4 +1,6 @@
-use linkup::{GetTunnelRequest, TunnelData, UpsertSessionRequest};
+use linkup::{
+    GetTunnelRequest, SessionResponse, TunnelData, TunneledSessionResponse, UpsertSessionRequest,
+};
 use reqwest::{StatusCode, header};
 use serde::{Serialize, de::DeserializeOwned};
 use url::Url;
@@ -15,6 +17,7 @@ pub enum Error {
     Response(StatusCode, String),
 }
 
+#[derive(Clone)]
 pub struct WorkerClient {
     url: Url,
     inner: reqwest::Client,
@@ -45,11 +48,17 @@ impl WorkerClient {
         }
     }
 
-    pub async fn tunneled_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
+    pub async fn tunneled_session(
+        &self,
+        params: &UpsertSessionRequest,
+    ) -> Result<TunneledSessionResponse, Error> {
         self.post("/linkup/v2/sessions/tunneled", params).await
     }
 
-    pub async fn preview_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
+    pub async fn preview_session(
+        &self,
+        params: &UpsertSessionRequest,
+    ) -> Result<SessionResponse, Error> {
         self.post("/linkup/v2/sessions/preview", params).await
     }
 

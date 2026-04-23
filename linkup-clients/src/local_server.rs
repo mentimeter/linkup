@@ -61,6 +61,7 @@ impl LocalServerClient {
         &self,
         _params: &UpsertSessionRequest,
     ) -> Result<String, Error> {
+        // TODO(@augustoccesar)[2026-04-23]: Implement
         todo!()
     }
 

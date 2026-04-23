@@ -226,9 +226,10 @@ impl TryFrom<UpsertSessionRequest> for Session {
                 services,
                 domains,
                 cache_routes,
+                session_token,
                 ..
             } => (
-                PREVIEW_SESSION_TOKEN.to_string(),
+                session_token.unwrap_or_else(|| PREVIEW_SESSION_TOKEN.to_string()),
                 services,
                 domains,
                 cache_routes,

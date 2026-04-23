@@ -1,6 +1,7 @@
 use std::{path::PathBuf, process::Command};
 
 use linkup::{Domain, MemoryStringStore, SessionAllocator, SessionService, UpsertSessionRequest};
+use linkup_clients::WorkerClient;
 use linkup_local_server::{ServerState, dns::DnsCatalog, router};
 use reqwest::Url;
 use tokio::net::TcpListener;
@@ -19,6 +20,10 @@ pub async fn setup_server(kind: ServerKind) -> String {
                 https_client: linkup_clients::https_client(),
                 dns_catalog: DnsCatalog::new(),
                 https_certs_dir: PathBuf::default(),
+                worker_client: WorkerClient::new(
+                    &Url::parse("http://localhost").unwrap(),
+                    "token123",
+                ),
             };
 
             let app = router(state);

@@ -386,7 +386,7 @@ mod tests {
         let config: Session = config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(config, NameKind::Animal, "")
+            .store_session(&config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -532,7 +532,7 @@ mod tests {
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "")
+            .store_session(&input_config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -622,7 +622,7 @@ mod tests {
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "")
+            .store_session(&input_config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -673,7 +673,7 @@ mod tests {
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "")
+            .store_session(&input_config, NameKind::Animal, "")
             .await
             .unwrap();
 

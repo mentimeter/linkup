@@ -62,8 +62,7 @@ pub async fn local(args: &Args) -> Result<()> {
         }
     }
 
-    state.save()?;
-    services::local_server::upload_state(&state).await?;
+    services::local_server::update_state(&mut state).await?;
 
     if args.all {
         println!("Linkup is routing all traffic to the local servers");

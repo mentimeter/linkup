@@ -81,15 +81,15 @@ impl<S: StringStore> SessionAllocator<S> {
     // TODO(@augustoccesar)[2026-04-20]: Deprecate post 4.0 migration
     pub async fn store_session(
         &self,
-        session: Session,
+        session: &Session,
         name_kind: NameKind,
         desired_name: &str,
     ) -> Result<String, SessionError> {
         let name = self
-            .choose_name(desired_name, &session.session_token, name_kind, &session)
+            .choose_name(desired_name, &session.session_token, name_kind, session)
             .await?;
 
-        let serialized_session = serde_json::to_string(&session)
+        let serialized_session = serde_json::to_string(session)
             .map_err(|error| SessionError::ConfigErr(error.to_string()))?;
 
         self.store.put(&name, &serialized_session).await?;
@@ -228,11 +228,11 @@ mod tests {
         second_session.services.reverse();
 
         let first_name = allocator
-            .store_session(first_session, NameKind::SixChar, "")
+            .store_session(&first_session, NameKind::SixChar, "")
             .await
             .unwrap();
         let second_name = allocator
-            .store_session(second_session, NameKind::SixChar, "")
+            .store_session(&second_session, NameKind::SixChar, "")
             .await
             .unwrap();
 

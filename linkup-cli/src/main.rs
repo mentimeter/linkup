@@ -1,4 +1,4 @@
-use std::{env, fs, io::ErrorKind, path::PathBuf};
+use std::{env, fs, io::ErrorKind, path::PathBuf, process};
 
 use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
@@ -242,17 +242,21 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     let env = env_logger::Env::new().filter_or("LINKUP_LOG", "info");
     env_logger::Builder::from_env(env).init();
 
     let cli = Cli::parse();
 
-    ensure_linkup_dir()?;
+    if let Err(error) = ensure_linkup_dir() {
+        log::error!("Exited with error: {error}");
+
+        process::exit(1);
+    }
 
     display_update_message(&cli.command).await;
 
-    match &cli.command {
+    let result = match &cli.command {
         Commands::Health(args) => commands::health(args),
         Commands::Start(args) => commands::start(args, &cli.config).await,
         Commands::Stop(args) => commands::stop(args, true),
@@ -262,10 +266,16 @@ async fn main() -> anyhow::Result<()> {
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
-        Commands::Server(args) => commands::server(args).await,
+        Commands::Server(args) => commands::server(args, &cli.config).await,
         Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,
         Commands::Update(args) => commands::update(args).await,
         Commands::Deploy(args) => commands::deploy(args).await,
         Commands::Destroy(args) => commands::destroy(args).await,
+    };
+
+    if let Err(error) = result {
+        log::error!("Exited with error: {error}");
+
+        process::exit(1);
     }
 }

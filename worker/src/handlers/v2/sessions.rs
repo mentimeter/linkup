@@ -1,69 +1,169 @@
 use axum::{Json, extract::State, response::IntoResponse};
 
-use linkup::UpsertSessionRequest;
+use http::StatusCode;
+use linkup::{
+    NameKind, Session, SessionError, SessionResponse, TunneledSessionResponse, UpsertSessionRequest,
+};
 
-use crate::worker_state::WorkerState;
+use crate::{http_error::HttpError, tunnel, worker_state::WorkerState};
 
 #[worker::send]
 pub async fn upsert_preview(
-    State(_state): State<WorkerState>,
-    Json(_upsert_req): Json<UpsertSessionRequest>,
+    State(state): State<WorkerState>,
+    Json(req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    // Create session, but don't create tunnel infrastructure.
-    // TODO(@augustoccesar)[2026-04-21]: Reject any service with localhost
+    let session: Session = match req.clone().try_into() {
+        Ok(conf) => conf,
+        Err(e) => {
+            return HttpError::new(
+                format!("Failed to parse server config: {} - Worker", e),
+                StatusCode::BAD_REQUEST,
+            )
+            .into_response();
+        }
+    };
+
+    for service in &session.services {
+        if let Some(host) = service.location.host()
+            && &host.to_string() == "localhost"
+        {
+            return HttpError::new(
+                "Preview session cannot contain services pointing to localhost".to_string(),
+                StatusCode::BAD_REQUEST,
+            )
+            .into_response();
+        }
+    }
+
+    let desired_name = match &req {
+        UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
+        UpsertSessionRequest::Unnamed { .. } => {
+            let desired_name = state
+                .session_allocator
+                .new_session_name(&NameKind::Animal, "", &session)
+                .await;
+
+            match desired_name {
+                Ok(desired_name) => desired_name,
+                Err(error) => match error {
+                    SessionError::SessionNameConflict => {
+                        return HttpError::new("Conflict".to_string(), StatusCode::CONFLICT)
+                            .into_response();
+                    }
+                    _ => {
+                        return HttpError::new(
+                            format!("Failed generate new session name: {}", error),
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        )
+                        .into_response();
+                    }
+                },
+            }
+        }
+    };
+
+    let session_name = match state
+        .session_allocator
+        .store_session(&session, NameKind::SixChar, &desired_name)
+        .await
+    {
+        Ok(session_name) => session_name,
+        Err(e) => {
+            return HttpError::new(
+                format!("Failed to store server config: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response();
+        }
+    };
+
+    (StatusCode::OK, Json(SessionResponse { session_name })).into_response()
 }
 
 #[worker::send]
 pub async fn upsert_tunneled(
-    State(_state): State<WorkerState>,
-    Json(_upsert_req): Json<UpsertSessionRequest>,
+    State(state): State<WorkerState>,
+    Json(req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    // Create session and tunnel infrastructure.
-    // TODO(@augustoccesar)[2026-04-21]: remember to convert localhost's into tunnel url. This was done before by the CLI
+    let mut session: Session = match req.clone().try_into() {
+        Ok(conf) => conf,
+        Err(e) => {
+            return HttpError::new(
+                format!("Failed to parse server config: {} - Worker", e),
+                StatusCode::BAD_REQUEST,
+            )
+            .into_response();
+        }
+    };
+
+    let desired_name = match &req {
+        UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
+        UpsertSessionRequest::Unnamed { .. } => {
+            let desired_name = state
+                .session_allocator
+                .new_session_name(&NameKind::Animal, "", &session)
+                .await;
+
+            match desired_name {
+                Ok(desired_name) => desired_name,
+                Err(error) => match error {
+                    SessionError::SessionNameConflict => {
+                        return HttpError::new("Conflict".to_string(), StatusCode::CONFLICT)
+                            .into_response();
+                    }
+                    _ => {
+                        return HttpError::new(
+                            format!("Failed generate new session name: {}", error),
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                        )
+                        .into_response();
+                    }
+                },
+            }
+        }
+    };
+
+    let tunnel_data = match tunnel::upsert_tunnel(&state, &desired_name).await {
+        Ok(data) => data,
+        Err(e) => {
+            return HttpError::new(
+                format!("Failed to upsert tunnel: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response();
+        }
+    };
+
+    for service in session.services.iter_mut() {
+        if let Some(host) = service.location.host()
+            && &host.to_string() == "localhost"
+        {
+            service.location = tunnel_data
+                .url
+                .parse()
+                .expect("tunnel url should be valid URL");
+        }
+    }
+
+    let session_name = match state
+        .session_allocator
+        .store_session(&session, NameKind::Animal, &desired_name)
+        .await
+    {
+        Ok(session_name) => session_name,
+        Err(e) => {
+            return HttpError::new(
+                format!("Failed to store server config: {}", e),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response();
+        }
+    };
+
+    let response = TunneledSessionResponse {
+        session_name,
+        tunnel_data,
+    };
+
+    (StatusCode::OK, Json(response)).into_response()
 }
-
-// pub async fn handle_post(state: WorkerState, req: UpsertSessionRequest) -> impl IntoResponse {
-//     let store = CfWorkerStringStore::new(state.sessions_kv.clone());
-//     let sessions = SessionAllocator::new(&store);
-
-//     let session: Session = match req.try_into() {
-//         Ok(conf) => conf,
-//         Err(e) => {
-//             return HttpError::new(
-//                 format!("Failed to parse server config: {} - Worker", e),
-//                 StatusCode::BAD_REQUEST,
-//             )
-//             .into_response();
-//         }
-//     };
-
-//     let desired_name = match &req {
-//         UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
-//         UpsertSessionRequest::Unnamed { name_kind, .. } => {
-//             // TODO(@augustoccesar)[2026-04-20]: Remove unwrap
-//             sessions
-//                 .new_session_name(name_kind, "", &session)
-//                 .await
-//                 .unwrap()
-//         }
-//     };
-
-//     // let session_name = sessions
-//     //     .store_session(session, name_kind, &desired_name)
-//     //     .await;
-
-//     // let name = match session_name {
-//     //     Ok(session_name) => session_name,
-//     //     Err(e) => {
-//     //         return HttpError::new(
-//     //             format!("Failed to store server config: {}", e),
-//     //             StatusCode::INTERNAL_SERVER_ERROR,
-//     //         )
-//     //         .into_response();
-//     //     }
-//     // };
-
-//     // (StatusCode::OK, name).into_response()
-
-//     StatusCode::OK
-// }

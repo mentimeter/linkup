@@ -1904,6 +1904,7 @@ dependencies = [
  "tokio-tungstenite",
  "tower",
  "tower-http",
+ "url",
 ]
 
 [[package]]
@@ -1922,6 +1923,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "url",
 ]
 
 [[package]]

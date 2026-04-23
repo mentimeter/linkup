@@ -206,57 +206,6 @@ impl From<&State> for Session {
     }
 }
 
-// impl From<&State> for ServersSessions {
-//     fn from(state: &State) -> Self {
-//         let local_server_services = state
-//             .services
-//             .iter()
-//             .map(|service| SessionService {
-//                 name: service.config.name.clone(),
-//                 location: if service.current == ServiceTarget::Remote {
-//                     service.config.remote.clone()
-//                 } else {
-//                     service.config.local.clone()
-//                 },
-//                 rewrites: service.config.rewrites.clone(),
-//             })
-//             .collect::<Vec<SessionService>>();
-
-//         let remote_server_services = state
-//             .services
-//             .iter()
-//             .map(|service| SessionService {
-//                 name: service.config.name.clone(),
-//                 location: if service.current == ServiceTarget::Remote {
-//                     service.config.remote.clone()
-//                 } else {
-//                     state.get_tunnel_url()
-//                 },
-//                 rewrites: service.config.rewrites.clone(),
-//             })
-//             .collect::<Vec<SessionService>>();
-
-//         let local_session = Session {
-//             session_token: state.linkup.session_token.clone(),
-//             services: local_server_services,
-//             domains: state.domains.clone(),
-//             cache_routes: state.linkup.cache_routes.clone(),
-//         };
-
-//         let remote_session = Session {
-//             session_token: state.linkup.session_token.clone(),
-//             services: remote_server_services,
-//             domains: state.domains.clone(),
-//             cache_routes: state.linkup.cache_routes.clone(),
-//         };
-
-//         ServersSessions {
-//             local: local_session,
-//             remote: remote_session,
-//         }
-//     }
-// }
-
 pub fn managed_domains(state: Option<&State>, cfg_path: &Option<String>) -> Vec<String> {
     let config_domains = match config_path(cfg_path).ok() {
         Some(cfg_path) => match get_config(&cfg_path) {
