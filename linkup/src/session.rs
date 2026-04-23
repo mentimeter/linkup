@@ -44,6 +44,7 @@ pub enum UpsertSessionRequest {
     },
     Unnamed {
         name_kind: NameKind,
+        session_token: Option<String>,
         services: Vec<SessionService>,
         domains: Vec<Domain>,
         #[serde(
@@ -277,6 +278,7 @@ pub fn create_preview_req_from_config(
 
     UpsertSessionRequest::Unnamed {
         name_kind: NameKind::SixChar,
+        session_token: None,
         services: session_services,
         domains: config.domains.clone(),
         cache_routes: config.linkup.cache_routes.clone(),

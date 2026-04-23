@@ -86,6 +86,7 @@ pub fn create_preview_request(fe_location: Option<String>) -> String {
     };
     let req = UpsertSessionRequest::Unnamed {
         name_kind: NameKind::SixChar,
+        session_token: None,
         domains: vec![Domain {
             domain: "example.com".to_string(),
             default_service: "frontend".to_string(),
