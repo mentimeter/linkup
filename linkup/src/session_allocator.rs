@@ -194,6 +194,7 @@ mod tests {
         let store = MemoryStringStore::default();
         let allocator = SessionAllocator::new(store);
         let request_json = serde_json::json!({
+            "name_kind": "six_char",
             "services": [
                 {
                     "name": "frontend",
