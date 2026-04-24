@@ -67,8 +67,11 @@ impl WorkerClient {
             session_name: String::from(session_name),
         };
 
-        let endpoint = self.url.join("/linkup/tunnel")?;
-        let response = self.inner.get(endpoint).query(&query).send().await?;
+        let mut endpoint = self.url.join("/linkup/tunnel")?;
+        endpoint
+            .query_pairs_mut()
+            .append_pair("session_name", &query.session_name);
+        let response: reqwest::Response = self.inner.get(endpoint).send().await?;
 
         match response.status() {
             StatusCode::OK => {

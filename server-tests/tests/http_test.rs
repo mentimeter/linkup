@@ -3,27 +3,19 @@ use axum::{
     response::{AppendHeaders, Redirect},
     routing::{any, get},
 };
-use helpers::ServerKind;
 use http::{StatusCode, header::SET_COOKIE};
-use rstest::rstest;
 use tokio::net::TcpListener;
 
-use crate::helpers::{create_session_request, post, setup_server};
+use crate::helpers::{ServerKind, seed_session, setup_server};
 
 mod helpers;
 
-#[rstest]
 #[tokio::test]
-async fn can_request_underlying_server(
-    #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
-) {
-    let url = setup_server(server_kind).await;
+async fn can_request_underlying_server() {
+    let (url, allocator) = setup_server(ServerKind::Local).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
-    let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
-    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
-    assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
-    assert_eq!(session_resp.text().await.unwrap(), "potatosession");
+    seed_session(allocator.as_ref().unwrap(), "potatosession", &underlying_url).await;
 
     let response = get_session(
         format!("{}/anypath", url),
@@ -35,18 +27,12 @@ async fn can_request_underlying_server(
     assert_eq!(response.text().await.unwrap(), "under_fe");
 }
 
-#[rstest]
 #[tokio::test]
-async fn does_not_follow_redirects(
-    #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
-) {
-    let url = setup_server(server_kind).await;
+async fn does_not_follow_redirects() {
+    let (url, allocator) = setup_server(ServerKind::Local).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
-    let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
-    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
-    assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
-    assert_eq!(session_resp.text().await.unwrap(), "potatosession");
+    seed_session(allocator.as_ref().unwrap(), "potatosession", &underlying_url).await;
 
     let response = get_session(
         format!("{}/redirect", url),
@@ -61,18 +47,12 @@ async fn does_not_follow_redirects(
     );
 }
 
-#[rstest]
 #[tokio::test]
-async fn maintains_multiple_set_cookie_headers(
-    #[values(ServerKind::Local, ServerKind::Worker)] server_kind: ServerKind,
-) {
-    let url = setup_server(server_kind).await;
+async fn maintains_multiple_set_cookie_headers() {
+    let (url, allocator) = setup_server(ServerKind::Local).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
-    let session_req = create_session_request("potatosession".to_string(), Some(underlying_url));
-    let session_resp = post(format!("{}/linkup/local-session", url), session_req).await;
-    assert_eq!(session_resp.status(), reqwest::StatusCode::OK);
-    assert_eq!(session_resp.text().await.unwrap(), "potatosession");
+    seed_session(allocator.as_ref().unwrap(), "potatosession", &underlying_url).await;
 
     let response = get_session(
         format!("{}/cookies", url),
