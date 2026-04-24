@@ -15,7 +15,12 @@ async fn can_request_underlying_server() {
     let (url, allocator) = setup_server(ServerKind::Local).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
-    seed_session(allocator.as_ref().unwrap(), "potatosession", &underlying_url).await;
+    seed_session(
+        allocator.as_ref().unwrap(),
+        "potatosession",
+        &underlying_url,
+    )
+    .await;
 
     let response = get_session(
         format!("{}/anypath", url),
@@ -32,7 +37,12 @@ async fn does_not_follow_redirects() {
     let (url, allocator) = setup_server(ServerKind::Local).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
-    seed_session(allocator.as_ref().unwrap(), "potatosession", &underlying_url).await;
+    seed_session(
+        allocator.as_ref().unwrap(),
+        "potatosession",
+        &underlying_url,
+    )
+    .await;
 
     let response = get_session(
         format!("{}/redirect", url),
@@ -52,7 +62,12 @@ async fn maintains_multiple_set_cookie_headers() {
     let (url, allocator) = setup_server(ServerKind::Local).await;
     let underlying_url = setup_underlying_server("under_fe".to_string()).await;
 
-    seed_session(allocator.as_ref().unwrap(), "potatosession", &underlying_url).await;
+    seed_session(
+        allocator.as_ref().unwrap(),
+        "potatosession",
+        &underlying_url,
+    )
+    .await;
 
     let response = get_session(
         format!("{}/cookies", url),

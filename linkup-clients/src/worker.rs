@@ -1,6 +1,4 @@
-use linkup::{
-    GetTunnelRequest, SessionResponse, TunnelData, TunneledSessionResponse, UpsertSessionRequest,
-};
+use linkup::{SessionResponse, TunneledSessionResponse, UpsertSessionRequest};
 use reqwest::{StatusCode, header};
 use serde::{Serialize, de::DeserializeOwned};
 use url::Url;
@@ -60,29 +58,6 @@ impl WorkerClient {
         params: &UpsertSessionRequest,
     ) -> Result<SessionResponse, Error> {
         self.post("/linkup/v2/sessions/preview", params).await
-    }
-
-    pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {
-        let query = GetTunnelRequest {
-            session_name: String::from(session_name),
-        };
-
-        let mut endpoint = self.url.join("/linkup/tunnel")?;
-        endpoint
-            .query_pairs_mut()
-            .append_pair("session_name", &query.session_name);
-        let response: reqwest::Response = self.inner.get(endpoint).send().await?;
-
-        match response.status() {
-            StatusCode::OK => {
-                let content: TunnelData = response.json().await?;
-                Ok(content)
-            }
-            _ => Err(Error::Response(
-                response.status(),
-                response.text().await.unwrap_or_else(|_| "".to_string()),
-            )),
-        }
     }
 
     // TODO(@augustoccesar)[2026-04-21]: This is the same on local_server. Can probably be combined

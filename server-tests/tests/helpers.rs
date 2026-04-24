@@ -16,7 +16,9 @@ pub enum ServerKind {
     Worker,
 }
 
-pub async fn setup_server(kind: ServerKind) -> (String, Option<SessionAllocator<MemoryStringStore>>) {
+pub async fn setup_server(
+    kind: ServerKind,
+) -> (String, Option<SessionAllocator<MemoryStringStore>>) {
     match kind {
         ServerKind::Local => {
             let session_allocator = SessionAllocator::new(MemoryStringStore::default());
@@ -109,7 +111,10 @@ pub async fn seed_session(
         cache_routes: None,
     };
     let session = Session::try_from(req).unwrap();
-    allocator.strict_store_session(name, &session).await.unwrap();
+    allocator
+        .strict_store_session(name, &session)
+        .await
+        .unwrap();
 }
 
 pub fn check_worker_running() -> bool {
