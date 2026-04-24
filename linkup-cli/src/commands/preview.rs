@@ -3,11 +3,11 @@ use clap::builder::ValueParser;
 use url::Url;
 
 use linkup::UpsertSessionRequest;
-use linkup_clients::LocalServerClient;
+use linkup_clients::WorkerClient;
 
+use crate::Result;
 use crate::commands::status::{SessionStatus, format_state_domains};
 use crate::state::{config_path, get_config};
-use crate::{Result, services};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -38,11 +38,14 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let local_server_client = LocalServerClient::new(&services::local_server::url());
-    let preview_session = local_server_client
+    let worker_client = WorkerClient::new(
+        &input_config.linkup.worker_url,
+        &input_config.linkup.worker_token,
+    );
+
+    let preview_session = worker_client
         .preview_session(&upsert_session_request)
-        .await
-        .context("Failed to send preview request")?;
+        .await?;
 
     let preview_name = preview_session.session_name;
     let domains = format_state_domains(&preview_name, &input_config.domains);

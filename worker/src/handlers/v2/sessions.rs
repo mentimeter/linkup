@@ -2,7 +2,7 @@ use axum::{Json, extract::State, response::IntoResponse};
 
 use http::StatusCode;
 use linkup::{
-    NameKind, Session, SessionError, SessionResponse, TunneledSessionResponse, UpsertSessionRequest,
+    Session, SessionError, SessionResponse, TunneledSessionResponse, UpsertSessionRequest,
 };
 
 use crate::{http_error::HttpError, tunnel, worker_state::WorkerState};
@@ -37,10 +37,10 @@ pub async fn upsert_preview(
 
     let session_name = match &req {
         UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
-        UpsertSessionRequest::Unnamed { .. } => {
+        UpsertSessionRequest::Unnamed { name_kind, .. } => {
             let desired_name = state
                 .session_allocator
-                .new_session_name(&NameKind::Animal, "", &session)
+                .new_session_name(name_kind, "", &session)
                 .await;
 
             match desired_name {
@@ -97,10 +97,10 @@ pub async fn upsert_tunneled(
 
     let desired_name = match &req {
         UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
-        UpsertSessionRequest::Unnamed { .. } => {
+        UpsertSessionRequest::Unnamed { name_kind, .. } => {
             let desired_name = state
                 .session_allocator
-                .new_session_name(&NameKind::Animal, "", &session)
+                .new_session_name(name_kind, "", &session)
                 .await;
 
             match desired_name {
