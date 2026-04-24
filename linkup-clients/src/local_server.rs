@@ -57,14 +57,6 @@ impl LocalServerClient {
         self.post("/linkup/sessions/tunneled", params).await
     }
 
-    pub async fn local_only_session(
-        &self,
-        _params: &UpsertSessionRequest,
-    ) -> Result<String, Error> {
-        // TODO(@augustoccesar)[2026-04-23]: Implement
-        todo!()
-    }
-
     // TODO(@augustoccesar)[2026-04-21]: This is the same on worker. Can probably be combined
     async fn post<T: Serialize, R: DeserializeOwned>(
         &self,

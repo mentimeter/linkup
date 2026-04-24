@@ -93,11 +93,3 @@ pub async fn upsert_tunneled(
 
     (StatusCode::OK, Json(tunneled_session)).into_response()
 }
-
-pub async fn upsert_local_only(
-    State(_server_state): State<ServerState>,
-    Json(_upsert_req): Json<UpsertSessionRequest>,
-) -> impl IntoResponse {
-    // Local work only.
-    StatusCode::NOT_FOUND
-}

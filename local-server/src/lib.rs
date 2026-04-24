@@ -51,10 +51,6 @@ pub fn router(server_state: ServerState) -> Router {
             "/linkup/sessions/tunneled",
             post(handlers::sessions::upsert_tunneled),
         )
-        .route(
-            "/linkup/sessions/local-only",
-            post(handlers::sessions::upsert_local_only),
-        )
         .route("/linkup/check", get(handlers::always_ok))
         .fallback(any(handlers::proxy::handle_all))
         .with_state(server_state)
