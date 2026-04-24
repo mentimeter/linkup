@@ -13,6 +13,7 @@
 
 # We don't want to save KV IDs in our source code
 **/wrangler.toml
+**/wrangler.toml.dev
 
 # Side effects of running the wrangler cli
 **/.wrangler
