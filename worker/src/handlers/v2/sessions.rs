@@ -35,7 +35,7 @@ pub async fn upsert_preview(
         }
     }
 
-    let desired_name = match &req {
+    let session_name = match &req {
         UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
         UpsertSessionRequest::Unnamed { .. } => {
             let desired_name = state
@@ -45,37 +45,36 @@ pub async fn upsert_preview(
 
             match desired_name {
                 Ok(desired_name) => desired_name,
-                Err(error) => match error {
-                    SessionError::SessionNameConflict => {
-                        return HttpError::new("Conflict".to_string(), StatusCode::CONFLICT)
-                            .into_response();
-                    }
-                    _ => {
-                        return HttpError::new(
-                            format!("Failed generate new session name: {}", error),
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                        )
-                        .into_response();
-                    }
-                },
+                Err(error) => {
+                    return HttpError::new(
+                        format!("Failed generate new session name: {}", error),
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                    )
+                    .into_response();
+                }
             }
         }
     };
 
-    let session_name = match state
+    if let Err(error) = state
         .session_allocator
-        .store_session(&session, NameKind::SixChar, &desired_name)
+        .strict_store_session(&session_name, &session)
         .await
     {
-        Ok(session_name) => session_name,
-        Err(e) => {
-            return HttpError::new(
-                format!("Failed to store server config: {}", e),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-            .into_response();
+        match error {
+            SessionError::SessionNameConflict => {
+                return HttpError::new("Conflict".to_string(), StatusCode::CONFLICT)
+                    .into_response();
+            }
+            _ => {
+                return HttpError::new(
+                    format!("Failed to store server config: {}", error),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+                .into_response();
+            }
         }
-    };
+    }
 
     (StatusCode::OK, Json(SessionResponse { session_name })).into_response()
 }
@@ -106,19 +105,13 @@ pub async fn upsert_tunneled(
 
             match desired_name {
                 Ok(desired_name) => desired_name,
-                Err(error) => match error {
-                    SessionError::SessionNameConflict => {
-                        return HttpError::new("Conflict".to_string(), StatusCode::CONFLICT)
-                            .into_response();
-                    }
-                    _ => {
-                        return HttpError::new(
-                            format!("Failed generate new session name: {}", error),
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                        )
-                        .into_response();
-                    }
-                },
+                Err(error) => {
+                    return HttpError::new(
+                        format!("Failed generate new session name: {}", error),
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                    )
+                    .into_response();
+                }
             }
         }
     };
@@ -145,23 +138,28 @@ pub async fn upsert_tunneled(
         }
     }
 
-    let session_name = match state
+    if let Err(error) = state
         .session_allocator
-        .store_session(&session, NameKind::Animal, &desired_name)
+        .strict_store_session(&desired_name, &session)
         .await
     {
-        Ok(session_name) => session_name,
-        Err(e) => {
-            return HttpError::new(
-                format!("Failed to store server config: {}", e),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-            .into_response();
+        match error {
+            SessionError::SessionNameConflict => {
+                return HttpError::new(
+                    format!("Failed to store server config: {}", error),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+                .into_response();
+            }
+            _ => {
+                return HttpError::new("Conflict".to_string(), StatusCode::CONFLICT)
+                    .into_response();
+            }
         }
-    };
+    }
 
     let response = TunneledSessionResponse {
-        session_name,
+        session_name: desired_name,
         tunnel_data,
     };
 
