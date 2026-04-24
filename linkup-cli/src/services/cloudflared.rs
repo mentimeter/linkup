@@ -8,7 +8,6 @@ use std::{
 };
 
 use hickory_resolver::{TokioResolver, config::ResolverOpts, proto::rr::RecordType};
-use log::debug;
 use serde::{Deserialize, Serialize};
 use sysinfo::Pid;
 use tokio::time::sleep;
@@ -52,20 +51,14 @@ pub fn is_installed() -> bool {
     res.success()
 }
 
-pub async fn start(state: &mut State, tunnel_data: &TunnelData) -> Result<()> {
+pub async fn start(tunnel_data: &TunnelData) -> Result<Url> {
     let pidfile_path = linkup_file_path("cloudflared-pid");
     let tunnel_url = Url::parse(&tunnel_data.url).expect("tunnel_data url to be valid URL");
-
-    if !state.should_use_tunnel() {
-        log::info!("Skipping. State file requested no tunnel.");
-
-        return Ok(());
-    }
 
     if super::find_pid(ID).is_some() {
         log::info!("Already running. Skipping starting tunnel.");
 
-        return Ok(());
+        return Ok(tunnel_url);
     }
 
     log::info!("Starting...");
@@ -112,18 +105,9 @@ pub async fn start(state: &mut State, tunnel_data: &TunnelData) -> Result<()> {
         }
     }
 
-    match update_state(state, &tunnel_url) {
-        Ok(_) => {
-            log::info!("Started");
-        }
-        Err(e) => {
-            log::error!("Failed to start");
+    log::info!("Started!");
 
-            return Err(e);
-        }
-    }
-
-    Ok(())
+    Ok(tunnel_url)
 }
 
 pub fn stop() {
@@ -132,6 +116,17 @@ pub fn stop() {
 
 pub fn find_pid() -> Option<Pid> {
     super::find_pid(ID)
+}
+
+pub fn update_state(state: &mut State, tunnel_url: &Url) -> Result<()> {
+    log::debug!("Adding tunnel url {} to the state", tunnel_url.as_str());
+
+    state.linkup.tunnel = Some(tunnel_url.clone());
+    state
+        .save()
+        .expect("failed to update local state file with tunnel url");
+
+    Ok(())
 }
 
 async fn spawn_process(tunnel_data: &TunnelData, pidfile_path: &Path) -> Result<()> {
@@ -193,17 +188,6 @@ async fn has_dns_propagated(tunnel_url: &Url) -> bool {
     }
 
     false
-}
-
-fn update_state(state: &mut State, tunnel_url: &Url) -> Result<()> {
-    debug!("Adding tunnel url {} to the state", tunnel_url.as_str());
-
-    state.linkup.tunnel = Some(tunnel_url.clone());
-    state
-        .save()
-        .expect("failed to update local state file with tunnel url");
-
-    Ok(())
 }
 
 fn save_tunnel_credentials(

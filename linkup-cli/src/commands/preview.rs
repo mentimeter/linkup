@@ -1,11 +1,13 @@
+use anyhow::Context;
+use clap::builder::ValueParser;
+use url::Url;
+
+use linkup::UpsertSessionRequest;
+use linkup_clients::WorkerClient;
+
 use crate::Result;
 use crate::commands::status::{SessionStatus, format_state_domains};
 use crate::state::{config_path, get_config};
-use anyhow::Context;
-use clap::builder::ValueParser;
-use linkup::UpsertSessionRequest;
-use linkup_clients::WorkerClient;
-use url::Url;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -26,7 +28,6 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
     let input_config = get_config(&config_path)?;
     let upsert_session_request: UpsertSessionRequest =
         linkup::create_preview_req_from_config(&input_config, &args.services);
-    let url = input_config.linkup.worker_url.clone();
 
     if args.print_request {
         let create_req_json = serde_json::to_string(&upsert_session_request)
@@ -37,14 +38,21 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let preview_name = WorkerClient::new(&url, &input_config.linkup.worker_token)
+    let worker_client = WorkerClient::new(
+        &input_config.linkup.worker_url,
+        &input_config.linkup.worker_token,
+    );
+
+    let preview_session = worker_client
         .preview_session(&upsert_session_request)
-        .await
-        .with_context(|| format!("Failed to send preview request to {}", url))?;
+        .await?;
+
+    let preview_name = preview_session.session_name;
+    let domains = format_state_domains(&preview_name, &input_config.domains);
 
     let status = SessionStatus {
-        name: preview_name.clone(),
-        domains: format_state_domains(&preview_name, &input_config.domains),
+        name: preview_name,
+        domains,
     };
 
     status.print();

@@ -55,17 +55,41 @@ impl<S: StringStore> SessionAllocator<S> {
         Err(SessionError::NoSuchSession(url.to_string()))
     }
 
+    pub async fn strict_store_session(
+        &self,
+        session_name: &str,
+        session: &Session,
+    ) -> Result<(), SessionError> {
+        if session_name.is_empty() {
+            return Err(SessionError::EmptySessionName);
+        }
+
+        if let Some(existing_session) = self.get_session_config(session_name).await?
+            && existing_session.session_token != session.session_token
+        {
+            return Err(SessionError::SessionNameConflict);
+        }
+
+        let serialized_session = serde_json::to_string(&session)
+            .map_err(|error| SessionError::ConfigErr(error.to_string()))?;
+
+        self.store.put(session_name, &serialized_session).await?;
+
+        Ok(())
+    }
+
+    // TODO(@augustoccesar)[2026-04-20]: Deprecate post 4.0 migration
     pub async fn store_session(
         &self,
-        session: Session,
+        session: &Session,
         name_kind: NameKind,
         desired_name: &str,
     ) -> Result<String, SessionError> {
         let name = self
-            .choose_name(desired_name, &session.session_token, name_kind, &session)
+            .choose_name(desired_name, &session.session_token, name_kind, session)
             .await?;
 
-        let serialized_session = serde_json::to_string(&session)
+        let serialized_session = serde_json::to_string(session)
             .map_err(|error| SessionError::ConfigErr(error.to_string()))?;
 
         self.store.put(&name, &serialized_session).await?;
@@ -73,6 +97,7 @@ impl<S: StringStore> SessionAllocator<S> {
         Ok(name)
     }
 
+    // TODO(@augustoccesar)[2026-04-20]: Deprecate post 4.0 migration
     async fn choose_name(
         &self,
         desired_name: &str,
@@ -87,7 +112,7 @@ impl<S: StringStore> SessionAllocator<S> {
             return Ok(desired_name.to_owned());
         }
 
-        self.new_session_name(name_kind, desired_name, session)
+        self.new_session_name(&name_kind, desired_name, session)
             .await
     }
 
@@ -108,13 +133,13 @@ impl<S: StringStore> SessionAllocator<S> {
         Ok(Some(session_config))
     }
 
-    async fn new_session_name(
+    pub async fn new_session_name(
         &self,
-        name_kind: NameKind,
+        name_kind: &NameKind,
         desired_name: &str,
         session: &Session,
     ) -> Result<String, SessionError> {
-        if name_kind == NameKind::SixChar {
+        if name_kind == &NameKind::SixChar {
             return Ok(session.sha()[..6].to_string());
         }
 
@@ -169,6 +194,7 @@ mod tests {
         let store = MemoryStringStore::default();
         let allocator = SessionAllocator::new(store);
         let request_json = serde_json::json!({
+            "name_kind": "six_char",
             "services": [
                 {
                     "name": "frontend",
@@ -203,11 +229,11 @@ mod tests {
         second_session.services.reverse();
 
         let first_name = allocator
-            .store_session(first_session, NameKind::SixChar, "")
+            .store_session(&first_session, NameKind::SixChar, "")
             .await
             .unwrap();
         let second_name = allocator
-            .store_session(second_session, NameKind::SixChar, "")
+            .store_session(&second_session, NameKind::SixChar, "")
             .await
             .unwrap();
 

@@ -1,6 +1,11 @@
+#![allow(dead_code)]
+
 use std::{path::PathBuf, process::Command};
 
-use linkup::{Domain, MemoryStringStore, SessionAllocator, SessionService, UpsertSessionRequest};
+use linkup::{
+    Domain, MemoryStringStore, Session, SessionAllocator, SessionService, UpsertSessionRequest,
+};
+use linkup_clients::WorkerClient;
 use linkup_local_server::{ServerState, dns::DnsCatalog, router};
 use reqwest::Url;
 use tokio::net::TcpListener;
@@ -11,19 +16,25 @@ pub enum ServerKind {
     Worker,
 }
 
-pub async fn setup_server(kind: ServerKind) -> String {
+pub async fn setup_server(
+    kind: ServerKind,
+) -> (String, Option<SessionAllocator<MemoryStringStore>>) {
     match kind {
         ServerKind::Local => {
+            let session_allocator = SessionAllocator::new(MemoryStringStore::default());
             let state = ServerState {
-                session_allocator: SessionAllocator::new(MemoryStringStore::default()),
+                session_allocator: session_allocator.clone(),
                 https_client: linkup_clients::https_client(),
                 dns_catalog: DnsCatalog::new(),
                 https_certs_dir: PathBuf::default(),
+                worker_client: WorkerClient::new(
+                    &Url::parse("http://localhost").unwrap(),
+                    "token123",
+                ),
             };
 
             let app = router(state);
 
-            // Bind to a random port assigned by the OS
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let addr = listener.local_addr().unwrap();
 
@@ -31,13 +42,13 @@ pub async fn setup_server(kind: ServerKind) -> String {
                 axum::serve(listener, app).await.unwrap();
             });
 
-            format!("http://{}", addr)
+            (format!("http://{}", addr), Some(session_allocator))
         }
         ServerKind::Worker => {
             if !check_worker_running() {
                 panic!("Worker not running! Run npx wrangler@latest dev in the worker dir");
             }
-            "http://localhost:8787".to_string()
+            ("http://localhost:8787".to_string(), None)
         }
     }
 }
@@ -77,6 +88,33 @@ pub fn create_session_request(name: String, fe_location: Option<String>) -> Stri
         cache_routes: None,
     };
     serde_json::to_string(&req).unwrap()
+}
+
+pub async fn seed_session(
+    allocator: &SessionAllocator<MemoryStringStore>,
+    name: &str,
+    fe_url: &str,
+) {
+    let req = UpsertSessionRequest::Named {
+        desired_name: name.to_string(),
+        session_token: "token".to_string(),
+        domains: vec![Domain {
+            domain: "example.com".to_string(),
+            default_service: "frontend".to_string(),
+            routes: None,
+        }],
+        services: vec![SessionService {
+            name: "frontend".to_string(),
+            location: Url::parse(fe_url).unwrap(),
+            rewrites: None,
+        }],
+        cache_routes: None,
+    };
+    let session = Session::try_from(req).unwrap();
+    allocator
+        .strict_store_session(name, &session)
+        .await
+        .unwrap();
 }
 
 pub fn check_worker_running() -> bool {

@@ -17,12 +17,14 @@ use hickory_server::{
     store::forwarder::ForwardConfig,
 };
 use linkup::{MemoryStringStore, SessionAllocator};
+use linkup_clients::WorkerClient;
 use rustls::ServerConfig;
 use std::{net::SocketAddr, path::PathBuf};
 use std::{path::Path, sync::Arc};
 use tokio::{net::UdpSocket, select, signal};
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
+use url::Url;
 
 use crate::dns::DnsCatalog;
 
@@ -32,17 +34,22 @@ type AxumHttpsClient = HttpsClient<axum::body::Body>;
 
 #[derive(Clone)]
 pub struct ServerState {
-    pub session_allocator: SessionAllocator<MemoryStringStore>,
-    pub https_client: AxumHttpsClient,
     pub dns_catalog: DnsCatalog,
     pub https_certs_dir: PathBuf,
+    pub https_client: AxumHttpsClient,
+    pub session_allocator: SessionAllocator<MemoryStringStore>,
+    pub worker_client: WorkerClient,
 }
 
 pub fn router(server_state: ServerState) -> Router {
     Router::new()
         .route(
-            "/linkup/local-session",
-            post(handlers::sessions::handle_upsert),
+            "/linkup/sessions/preview",
+            post(handlers::sessions::upsert_preview),
+        )
+        .route(
+            "/linkup/sessions/tunneled",
+            post(handlers::sessions::upsert_tunneled),
         )
         .route("/linkup/check", get(handlers::always_ok))
         .fallback(any(handlers::proxy::handle_all))
@@ -58,12 +65,20 @@ pub fn router(server_state: ServerState) -> Router {
         )
 }
 
-pub async fn start(string_store: MemoryStringStore, certs_dir: &Path) {
+pub async fn start(
+    string_store: MemoryStringStore,
+    certs_dir: &Path,
+    worker_url: &Url,
+    worker_token: &str,
+) {
+    let worker_client = WorkerClient::new(worker_url, worker_token);
+
     let server_state = ServerState {
         session_allocator: SessionAllocator::new(string_store),
         https_client: https_client(),
         dns_catalog: dns::DnsCatalog::new(),
         https_certs_dir: PathBuf::from(certs_dir),
+        worker_client,
     };
 
     select! {

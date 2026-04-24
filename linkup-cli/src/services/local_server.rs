@@ -7,17 +7,16 @@ use std::{
 };
 
 use anyhow::Context;
+use reqwest::StatusCode;
 use sysinfo::Pid;
 use tokio::time::sleep;
 use url::Url;
 
+use linkup::{NameKind, Session, TunnelData, TunneledSessionResponse, UpsertSessionRequest};
 use linkup_clients::LocalServerClient;
 
 use super::{PidError, ServiceId};
-use crate::{
-    Result, linkup_certs_dir_path, linkup_file_path,
-    state::{State, upload_state},
-};
+use crate::{Result, linkup_certs_dir_path, linkup_file_path, state::State};
 
 const ID: ServiceId = ServiceId("linkup-local-server");
 const NAME: &str = "Linkup local server";
@@ -36,7 +35,7 @@ pub fn url() -> Url {
     Url::parse("http://localhost:80").expect("linkup url invalid")
 }
 
-pub async fn start(state: &mut State) -> Result<()> {
+pub async fn start() -> Result<()> {
     if super::find_pid(ID).is_some() {
         log::info!("Already running.");
 
@@ -68,17 +67,6 @@ pub async fn start(state: &mut State) -> Result<()> {
     }
     log::info!("Ready!");
 
-    log::info!("Uploading state...");
-    match update_state(state).await {
-        Ok(_) => {
-            log::info!("Finished setting up!");
-        }
-        Err(e) => {
-            log::error!("Failed to upload state: {e}");
-            return Err(e);
-        }
-    }
-
     Ok(())
 }
 
@@ -97,15 +85,74 @@ async fn is_reachable() -> bool {
     )
 }
 
-async fn update_state(state: &mut State) -> Result<()> {
-    let session_name = upload_state(state).await?;
+pub async fn update_state(state: &mut State) -> Result<TunnelData> {
+    log::info!("Uploading state to server...");
+    let tunneled_session = upload_state(state).await?;
 
-    state.linkup.session_name = session_name;
+    log::info!("Updating local state file...");
+    state.linkup.session_name = tunneled_session.session_name;
     state
         .save()
         .expect("failed to update local state file with session name");
 
-    Ok(())
+    Ok(tunneled_session.tunnel_data)
+}
+
+async fn upload_state(state: &State) -> Result<TunneledSessionResponse> {
+    let local_server_client = LocalServerClient::new(&url());
+
+    let session: Session = state.into();
+
+    let desired_session_name =
+        (!state.linkup.session_name.is_empty()).then(|| state.linkup.session_name.clone());
+
+    let upsert_request = match desired_session_name {
+        Some(desired_session_name) => UpsertSessionRequest::Named {
+            desired_name: desired_session_name,
+            session_token: session.session_token,
+            services: session.services.clone(),
+            domains: session.domains.clone(),
+            cache_routes: session.cache_routes.clone(),
+        },
+        None => {
+            let session_token =
+                (!session.session_token.is_empty()).then_some(session.session_token);
+
+            UpsertSessionRequest::Unnamed {
+                name_kind: NameKind::Animal,
+                session_token,
+                services: session.services.clone(),
+                domains: session.domains.clone(),
+                cache_routes: session.cache_routes.clone(),
+            }
+        }
+    };
+
+    let session_response = local_server_client.tunneled_session(&upsert_request).await;
+
+    let session_response = match session_response {
+        Ok(session_response) => session_response,
+        Err(linkup_clients::LocalServerClientError::Response(StatusCode::CONFLICT, _)) => {
+            log::debug!(
+                "Requested name from state file already exists, attempting to create with a new name"
+            );
+
+            let unnamed_request = UpsertSessionRequest::Unnamed {
+                name_kind: NameKind::Animal,
+                session_token: None,
+                services: session.services,
+                domains: session.domains,
+                cache_routes: session.cache_routes,
+            };
+
+            local_server_client
+                .tunneled_session(&unnamed_request)
+                .await?
+        }
+        Err(error) => return Err(error.into()),
+    };
+
+    Ok(session_response)
 }
 
 fn spawn_process() -> Result<()> {
