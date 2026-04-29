@@ -6,7 +6,7 @@ use linkup::UpsertSessionRequest;
 use linkup_clients::WorkerClient;
 
 use crate::Result;
-use crate::commands::status::{SessionStatus, format_state_domains};
+use crate::session::{SessionStatus, format_state_domains};
 use crate::state::{config_path, get_config};
 
 #[derive(clap::Args)]

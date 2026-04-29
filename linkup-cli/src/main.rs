@@ -12,6 +12,7 @@ mod commands;
 mod env_files;
 mod release;
 mod services;
+mod session;
 mod state;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -220,6 +221,9 @@ enum Commands {
     #[clap(about = "Generate completions for your shell")]
     Completion(commands::CompletionArgs),
 
+    #[clap(about = "Create an isolated session based on the current session")]
+    Fork(commands::ForkArgs),
+
     #[clap(about = "Create a \"permanent\" Linkup preview")]
     Preview(commands::PreviewArgs),
 
@@ -262,9 +266,10 @@ async fn main() {
         Commands::Stop(args) => commands::stop(args, true),
         Commands::Local(args) => commands::local(args).await,
         Commands::Remote(args) => commands::remote(args).await,
-        Commands::Status(args) => commands::status(args),
+        Commands::Status(args) => commands::status(args).await,
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
+        Commands::Fork(args) => commands::fork(args).await,
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
         Commands::Server(args) => commands::server(args, &cli.config).await,
         Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,

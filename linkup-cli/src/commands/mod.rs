@@ -1,5 +1,6 @@
 pub mod completion;
 pub mod deploy;
+pub mod fork;
 pub mod health;
 pub mod local;
 pub mod local_dns;
@@ -15,6 +16,7 @@ pub mod update;
 pub use {completion::Args as CompletionArgs, completion::completion};
 pub use {deploy::DeployArgs, deploy::deploy};
 pub use {deploy::DestroyArgs, deploy::destroy};
+pub use {fork::Args as ForkArgs, fork::fork};
 pub use {health::Args as HealthArgs, health::health};
 pub use {local::Args as LocalArgs, local::local};
 pub use {local_dns::Args as LocalDnsArgs, local_dns::local_dns};

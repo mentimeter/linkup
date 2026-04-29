@@ -62,6 +62,18 @@ pub struct SessionResponse {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SessionsListResponse {
+    pub sessions: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SessionDetailResponse {
+    pub session_name: String,
+    pub services: Vec<SessionService>,
+    pub domains: Vec<Domain>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TunneledSessionResponse {
     pub session_name: String,
     pub tunnel_data: TunnelData,

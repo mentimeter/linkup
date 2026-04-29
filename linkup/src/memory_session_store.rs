@@ -36,4 +36,11 @@ impl StringStore for MemoryStringStore {
 
         Ok(())
     }
+
+    async fn list(&self) -> Result<Vec<String>, SessionError> {
+        match self.0.read() {
+            Ok(l) => Ok(l.keys().cloned().collect()),
+            Err(e) => Err(SessionError::GetError(e.to_string())),
+        }
+    }
 }

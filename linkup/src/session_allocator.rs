@@ -20,34 +20,34 @@ impl<S: StringStore> SessionAllocator<S> {
         headers: &HeaderMap,
     ) -> Result<(String, Session), SessionError> {
         let url_name = first_subdomain(url);
-        if let Some(config) = self.get_session_config(&url_name).await? {
+        if let Some(config) = self.find_session(&url_name).await? {
             return Ok((url_name, config));
         }
 
         if let Some(forwarded_host) = headers.get(HeaderName::ForwardedHost) {
             let forwarded_host_name = first_subdomain(forwarded_host);
-            if let Some(config) = self.get_session_config(&forwarded_host_name).await? {
+            if let Some(config) = self.find_session(&forwarded_host_name).await? {
                 return Ok((forwarded_host_name, config));
             }
         }
 
         if let Some(referer) = headers.get(HeaderName::Referer) {
             let referer_name = first_subdomain(referer);
-            if let Some(config) = self.get_session_config(&referer_name).await? {
+            if let Some(config) = self.find_session(&referer_name).await? {
                 return Ok((referer_name, config));
             }
         }
 
         if let Some(origin) = headers.get(HeaderName::Origin) {
             let origin_name = first_subdomain(origin);
-            if let Some(config) = self.get_session_config(&origin_name).await? {
+            if let Some(config) = self.find_session(&origin_name).await? {
                 return Ok((origin_name, config));
             }
         }
 
         if let Some(tracestate) = headers.get(HeaderName::TraceState) {
             let trace_name = extract_tracestate_session(tracestate);
-            if let Some(config) = self.get_session_config(&trace_name).await? {
+            if let Some(config) = self.find_session(&trace_name).await? {
                 return Ok((trace_name, config));
             }
         }
@@ -55,16 +55,20 @@ impl<S: StringStore> SessionAllocator<S> {
         Err(SessionError::NoSuchSession(url.to_string()))
     }
 
-    pub async fn strict_store_session(
+    pub async fn list_sessions(&self) -> Result<Vec<String>, SessionError> {
+        self.store.list().await
+    }
+
+    pub async fn strict_store_session<'name>(
         &self,
-        session_name: &str,
+        session_name: &'name str,
         session: &Session,
-    ) -> Result<(), SessionError> {
+    ) -> Result<&'name str, SessionError> {
         if session_name.is_empty() {
             return Err(SessionError::EmptySessionName);
         }
 
-        if let Some(existing_session) = self.get_session_config(session_name).await?
+        if let Some(existing_session) = self.find_session(session_name).await?
             && existing_session.session_token != session.session_token
         {
             return Err(SessionError::SessionNameConflict);
@@ -75,7 +79,7 @@ impl<S: StringStore> SessionAllocator<S> {
 
         self.store.put(session_name, &serialized_session).await?;
 
-        Ok(())
+        Ok(session_name)
     }
 
     // TODO(@augustoccesar)[2026-04-20]: Deprecate post 4.0 migration
@@ -106,7 +110,7 @@ impl<S: StringStore> SessionAllocator<S> {
         session: &Session,
     ) -> Result<String, SessionError> {
         if !desired_name.is_empty()
-            && let Some(session) = self.get_session_config(desired_name).await?
+            && let Some(session) = self.find_session(desired_name).await?
             && session.session_token == session_token
         {
             return Ok(desired_name.to_owned());
@@ -116,7 +120,7 @@ impl<S: StringStore> SessionAllocator<S> {
             .await
     }
 
-    async fn get_session_config(&self, name: &str) -> Result<Option<Session>, SessionError> {
+    pub async fn find_session(&self, name: &str) -> Result<Option<Session>, SessionError> {
         let value = match self.store.get(name).await {
             Ok(Some(v)) => v,
             Ok(None) => return Ok(None),

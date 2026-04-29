@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use linkup::{SessionResponse, TunneledSessionResponse, UpsertSessionRequest};
+use linkup::{
+    SessionDetailResponse, SessionResponse, SessionsListResponse, TunneledSessionResponse,
+    UpsertSessionRequest,
+};
 use reqwest::StatusCode;
 use serde::{Serialize, de::DeserializeOwned};
 use url::Url;
@@ -57,6 +60,21 @@ impl LocalServerClient {
         self.post("/linkup/sessions/tunneled", params).await
     }
 
+    pub async fn isolated_session(
+        &self,
+        params: &UpsertSessionRequest,
+    ) -> Result<SessionResponse, Error> {
+        self.post("/linkup/sessions/isolated", params).await
+    }
+
+    pub async fn list_sessions(&self) -> Result<SessionsListResponse, Error> {
+        self.get("/linkup/sessions").await
+    }
+
+    pub async fn get_session(&self, session_name: &str) -> Result<SessionDetailResponse, Error> {
+        self.get(&format!("/linkup/sessions/{}", session_name)).await
+    }
+
     // TODO(@augustoccesar)[2026-04-21]: This is the same on worker. Can probably be combined
     async fn post<T: Serialize, R: DeserializeOwned>(
         &self,
@@ -77,6 +95,20 @@ impl LocalServerClient {
             let content = response.json().await?;
 
             Ok(content)
+        } else {
+            Err(Error::Response(
+                response.status(),
+                response.text().await.unwrap_or_else(|_| "".to_string()),
+            ))
+        }
+    }
+
+    async fn get<R: DeserializeOwned>(&self, path: &str) -> Result<R, Error> {
+        let endpoint = self.url.join(path)?;
+        let response = self.inner.get(endpoint).send().await?;
+
+        if response.status().is_success() {
+            Ok(response.json().await?)
         } else {
             Err(Error::Response(
                 response.status(),

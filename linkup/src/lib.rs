@@ -31,6 +31,8 @@ use url::Url;
 pub enum SessionError {
     #[error("no session found for request {0}")]
     NoSuchSession(String),
+    #[error("Could not list configs: {0}")]
+    ListError(String),
     #[error("Could not get config: {0}")]
     GetError(String),
     #[error("Could not put config: {0}")]
@@ -50,6 +52,7 @@ pub trait StringStore {
     fn get(&self, key: &str) -> impl Future<Output = Result<Option<String>, SessionError>>;
     fn exists(&self, key: &str) -> impl Future<Output = Result<bool, SessionError>>;
     fn put(&self, key: &str, value: &str) -> impl Future<Output = Result<(), SessionError>>;
+    fn list(&self) -> impl Future<Output = Result<Vec<String>, SessionError>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
