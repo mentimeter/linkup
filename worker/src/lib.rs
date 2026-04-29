@@ -24,15 +24,16 @@ async fn fetch(
 ) -> Result<Response<Body>, worker::Error> {
     console_error_panic_hook::set_once();
 
-    let state = WorkerState::try_from(env)?;
+    let state = WorkerState::load(env).await?;
 
     Ok(router(state).call(req).await?)
 }
 
 #[event(scheduled)]
 async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
-    let state =
-        WorkerState::try_from(env).expect("WorkerState to be buildable from worker environment");
+    let state = WorkerState::load(env)
+        .await
+        .expect("WorkerState to be buildable from worker environment");
 
     cleanup_unused_sessions(&state).await;
 }

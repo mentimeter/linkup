@@ -6,7 +6,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::config::Config;
+use crate::{NameKind, TunnelData, config::Config};
 
 pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
 
@@ -43,6 +43,8 @@ pub enum UpsertSessionRequest {
         cache_routes: Option<Vec<Regex>>,
     },
     Unnamed {
+        name_kind: NameKind,
+        session_token: Option<String>,
         services: Vec<SessionService>,
         domains: Vec<Domain>,
         #[serde(
@@ -52,6 +54,17 @@ pub enum UpsertSessionRequest {
         )]
         cache_routes: Option<Vec<Regex>>,
     },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SessionResponse {
+    pub session_name: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TunneledSessionResponse {
+    pub session_name: String,
+    pub tunnel_data: TunnelData,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -213,8 +226,10 @@ impl TryFrom<UpsertSessionRequest> for Session {
                 services,
                 domains,
                 cache_routes,
+                session_token,
+                ..
             } => (
-                PREVIEW_SESSION_TOKEN.to_string(),
+                session_token.unwrap_or_else(|| PREVIEW_SESSION_TOKEN.to_string()),
                 services,
                 domains,
                 cache_routes,
@@ -263,6 +278,8 @@ pub fn create_preview_req_from_config(
     }
 
     UpsertSessionRequest::Unnamed {
+        name_kind: NameKind::SixChar,
+        session_token: None,
         services: session_services,
         domains: config.domains.clone(),
         cache_routes: config.linkup.cache_routes.clone(),
