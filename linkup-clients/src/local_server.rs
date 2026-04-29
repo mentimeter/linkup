@@ -72,7 +72,8 @@ impl LocalServerClient {
     }
 
     pub async fn get_session(&self, session_name: &str) -> Result<SessionDetailResponse, Error> {
-        self.get(&format!("/linkup/sessions/{}", session_name)).await
+        self.get(&format!("/linkup/sessions/{}", session_name))
+            .await
     }
 
     // TODO(@augustoccesar)[2026-04-21]: This is the same on worker. Can probably be combined

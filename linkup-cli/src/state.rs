@@ -432,6 +432,9 @@ domains: []
             "[] -> Some([])"
         );
 
-        assert!(state.services[2].config.rewrites.is_none(), "absent -> None");
+        assert!(
+            state.services[2].config.rewrites.is_none(),
+            "absent -> None"
+        );
     }
 }
