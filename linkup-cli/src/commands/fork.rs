@@ -2,9 +2,10 @@ use anyhow::Context;
 use linkup::{Session, UpsertSessionRequest};
 use linkup_clients::LocalServerClient;
 
+use crate::Result;
 use crate::services;
 use crate::session::{SessionStatus, format_state_domains};
-use crate::{Result, state};
+use crate::state;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -15,7 +16,7 @@ pub struct Args {
 pub async fn fork(args: &Args, config_path: &Option<String>) -> Result<()> {
     let config_path = state::config_path(config_path)?;
     let config = state::get_config(&config_path)?;
-    let state = state::config_to_state(config, config_path);
+    let mut state = state::config_to_state(config, config_path);
     let session: Session = (&state).into();
 
     let upsert_request = UpsertSessionRequest::Named {
@@ -32,6 +33,9 @@ pub async fn fork(args: &Args, config_path: &Option<String>) -> Result<()> {
         .isolated_session(&upsert_request)
         .await
         .context("Failed to create isolated session")?;
+
+    state.linkup.session_name = response.session_name.clone();
+    state.save_with_suffix(&response.session_name)?;
 
     let domains = format_state_domains(&response.session_name, &state.domains);
 

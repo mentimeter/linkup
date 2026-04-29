@@ -23,14 +23,29 @@ pub struct State {
 
 impl State {
     pub fn load() -> anyhow::Result<Self> {
-        let state_file_path = linkup_file_path(LINKUP_STATE_FILE);
-        let content = fs::read_to_string(&state_file_path)
-            .with_context(|| format!("Failed to read state file on {:?}", &state_file_path))?;
+        Self::load_from_path(&state_file_path(None))
+    }
+
+    pub fn load_with_suffix(suffix: &str) -> anyhow::Result<Self> {
+        Self::load_from_path(&state_file_path(Some(suffix)))
+    }
+
+    fn load_from_path(path: &std::path::Path) -> anyhow::Result<Self> {
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read state file on {:?}", path))?;
 
         serde_yaml::from_str(&content).context("Failed to parse state file")
     }
 
     pub fn save(&mut self) -> Result<()> {
+        self.save_to_path(&state_file_path(None))
+    }
+
+    pub fn save_with_suffix(&self, suffix: &str) -> Result<()> {
+        self.save_to_path(&state_file_path(Some(suffix)))
+    }
+
+    fn save_to_path(&self, path: &std::path::Path) -> Result<()> {
         if cfg!(test) {
             return Ok(());
         }
@@ -38,10 +53,8 @@ impl State {
         let yaml_string =
             serde_yaml::to_string(self).context("Failed to serialize the state into YAML")?;
 
-        let state_file_location = linkup_file_path(LINKUP_STATE_FILE);
-        fs::write(&state_file_location, yaml_string).with_context(|| {
-            format!("Failed to write the state file to {state_file_location:?}")
-        })?;
+        fs::write(path, yaml_string)
+            .with_context(|| format!("Failed to write the state file to {:?}", path))?;
 
         Ok(())
     }
@@ -69,7 +82,7 @@ impl State {
     }
 
     pub fn exists() -> bool {
-        linkup_file_path(LINKUP_STATE_FILE).exists()
+        state_file_path(None).exists()
     }
 }
 
@@ -246,6 +259,29 @@ pub fn top_level_domains(domains: &[String]) -> Vec<String> {
         })
         .cloned()
         .collect::<Vec<String>>()
+}
+
+pub fn find_isolated_suffixes() -> Vec<String> {
+    let prefix = format!("{}-", LINKUP_STATE_FILE);
+
+    fs::read_dir(crate::linkup_dir_path())
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .filter_map(|entry| {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    name.strip_prefix(&prefix).map(|suffix| suffix.to_string())
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn state_file_path(suffix: Option<&str>) -> std::path::PathBuf {
+    match suffix {
+        None => linkup_file_path(LINKUP_STATE_FILE),
+        Some(suffix) => linkup_file_path(&format!("{}-{}", LINKUP_STATE_FILE, suffix)),
+    }
 }
 
 #[cfg(test)]

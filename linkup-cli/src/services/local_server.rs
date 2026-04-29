@@ -87,7 +87,7 @@ async fn is_reachable() -> bool {
 
 pub async fn update_state(state: &mut State) -> Result<TunnelData> {
     log::info!("Uploading state to server...");
-    let tunneled_session = upload_state(state).await?;
+    let tunneled_session = upload_tunneled_state(state).await?;
 
     log::info!("Updating local state file...");
     state.linkup.session_name = tunneled_session.session_name;
@@ -98,7 +98,30 @@ pub async fn update_state(state: &mut State) -> Result<TunnelData> {
     Ok(tunneled_session.tunnel_data)
 }
 
-async fn upload_state(state: &State) -> Result<TunneledSessionResponse> {
+pub async fn update_isolated_state(state: &mut State) -> Result<()> {
+    let client = LocalServerClient::new(&url());
+    let upsert_request = build_named_upsert_request(&state.linkup.session_name, state);
+
+    client.isolated_session(&upsert_request).await?;
+
+    state.save_with_suffix(&state.linkup.session_name)?;
+
+    Ok(())
+}
+
+fn build_named_upsert_request(session_name: &str, state: &State) -> UpsertSessionRequest {
+    let session: Session = state.into();
+
+    UpsertSessionRequest::Named {
+        desired_name: session_name.to_string(),
+        session_token: session.session_token,
+        services: session.services,
+        domains: session.domains,
+        cache_routes: session.cache_routes,
+    }
+}
+
+async fn upload_tunneled_state(state: &State) -> Result<TunneledSessionResponse> {
     let local_server_client = LocalServerClient::new(&url());
 
     let session: Session = state.into();
@@ -107,13 +130,7 @@ async fn upload_state(state: &State) -> Result<TunneledSessionResponse> {
         (!state.linkup.session_name.is_empty()).then(|| state.linkup.session_name.clone());
 
     let upsert_request = match desired_session_name {
-        Some(desired_session_name) => UpsertSessionRequest::Named {
-            desired_name: desired_session_name,
-            session_token: session.session_token,
-            services: session.services.clone(),
-            domains: session.domains.clone(),
-            cache_routes: session.cache_routes.clone(),
-        },
+        Some(desired_name) => build_named_upsert_request(&desired_name, state),
         None => {
             let session_token =
                 (!session.session_token.is_empty()).then_some(session.session_token);

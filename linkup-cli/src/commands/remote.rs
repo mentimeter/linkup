@@ -1,10 +1,10 @@
+use anyhow::{Context, anyhow};
+use colored::Colorize;
+
 use crate::{
     Result, services,
     state::{ServiceTarget, State},
 };
-
-use anyhow::anyhow;
-use colored::Colorize;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -17,6 +17,13 @@ pub struct Args {
         conflicts_with = "service_names"
     )]
     all: bool,
+
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "Session to update (defaults to the tunneled session)"
+    )]
+    session: Option<String>,
 }
 
 pub async fn remote(args: &Args) -> Result<()> {
@@ -34,8 +41,6 @@ pub async fn remote(args: &Args) -> Result<()> {
         return Ok(());
     }
 
-    let mut state = State::load()?;
-
     if services::local_server::find_pid().is_none() {
         println!(
             "{}",
@@ -46,23 +51,30 @@ pub async fn remote(args: &Args) -> Result<()> {
         return Ok(());
     }
 
-    if args.all {
-        for service in state.services.iter_mut() {
-            service.current = ServiceTarget::Remote;
-        }
+    if let Some(session_name) = &args.session {
+        let mut state = State::load_with_suffix(session_name)
+            .with_context(|| format!("Failed to load state for session '{}'", session_name))?;
+
+        set_service_targets(
+            &mut state,
+            &args.service_names,
+            args.all,
+            ServiceTarget::Remote,
+        )?;
+
+        services::local_server::update_isolated_state(&mut state).await?;
     } else {
-        for service_name in &args.service_names {
-            let service = state
-                .services
-                .iter_mut()
-                .find(|s| s.config.name.as_str() == service_name)
-                .ok_or_else(|| anyhow!("Service with name '{}' does not exist", service_name))?;
+        let mut state = State::load()?;
 
-            service.current = ServiceTarget::Remote;
-        }
+        set_service_targets(
+            &mut state,
+            &args.service_names,
+            args.all,
+            ServiceTarget::Remote,
+        )?;
+
+        services::local_server::update_state(&mut state).await?;
     }
-
-    services::local_server::update_state(&mut state).await?;
 
     if args.all {
         println!("Linkup is routing all traffic to the remote servers");
@@ -71,6 +83,31 @@ pub async fn remote(args: &Args) -> Result<()> {
             "Linkup is routing {} traffic to the remote server",
             args.service_names.join(", ")
         );
+    }
+
+    Ok(())
+}
+
+fn set_service_targets(
+    state: &mut State,
+    service_names: &[String],
+    all: bool,
+    target: ServiceTarget,
+) -> Result<()> {
+    if all {
+        for service in state.services.iter_mut() {
+            service.current = target.clone();
+        }
+    } else {
+        for service_name in service_names {
+            let service = state
+                .services
+                .iter_mut()
+                .find(|s| s.config.name.as_str() == service_name)
+                .ok_or_else(|| anyhow!("Service '{}' does not exist", service_name))?;
+
+            service.current = target.clone();
+        }
     }
 
     Ok(())
