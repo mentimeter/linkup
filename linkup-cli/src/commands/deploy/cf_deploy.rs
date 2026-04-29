@@ -78,6 +78,7 @@ pub async fn deploy(args: &DeployArgs) -> Result<()> {
     let resources = cf_resources(
         args.account_id.clone(),
         args.zone_ids[0].clone(),
+        zone_names[0].clone(),
         &zone_names,
         &args.zone_ids,
     );

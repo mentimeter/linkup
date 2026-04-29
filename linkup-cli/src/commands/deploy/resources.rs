@@ -1082,6 +1082,7 @@ pub fn rules_equal(current: &[Rule], desired: &[Rule]) -> bool {
 pub fn cf_resources(
     account_id: String,
     tunnel_zone_id: String,
+    tunnel_zone_name: String,
     all_zone_names: &[String],
     all_zone_ids: &[String],
 ) -> TargetCfResources {
@@ -1119,6 +1120,10 @@ pub fn cf_resources(
             cloudflare::endpoints::workers::WorkersBinding::PlainText {
                 name: "CLOUDLFLARE_ALL_ZONE_IDS".to_string(),
                 text: all_zone_ids.join(","),
+            },
+            cloudflare::endpoints::workers::WorkersBinding::PlainText {
+                name: "TUNNEL_NAME_PREFIX".to_string(),
+                text: format!("linkup-tunnel-{}-", tunnel_zone_name.replace(".", "-")),
             },
         ],
         worker_script_schedules: vec![cloudflare::endpoints::workers::WorkersSchedule {

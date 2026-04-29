@@ -1,6 +1,6 @@
-use linkup::{GetTunnelRequest, TunnelData, UpsertSessionRequest};
+use linkup::{SessionResponse, TunneledSessionResponse, UpsertSessionRequest};
 use reqwest::{StatusCode, header};
-use serde::Serialize;
+use serde::{Serialize, de::DeserializeOwned};
 use url::Url;
 
 #[derive(thiserror::Error, Debug)]
@@ -15,6 +15,7 @@ pub enum Error {
     Response(StatusCode, String),
 }
 
+#[derive(Clone)]
 pub struct WorkerClient {
     url: Url,
     inner: reqwest::Client,
@@ -45,35 +46,26 @@ impl WorkerClient {
         }
     }
 
-    pub async fn local_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
-        self.post("/linkup/local-session", params).await
+    pub async fn tunneled_session(
+        &self,
+        params: &UpsertSessionRequest,
+    ) -> Result<TunneledSessionResponse, Error> {
+        self.post("/linkup/v2/sessions/tunneled", params).await
     }
 
-    pub async fn preview_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
-        self.post("/linkup/preview-session", params).await
+    pub async fn preview_session(
+        &self,
+        params: &UpsertSessionRequest,
+    ) -> Result<SessionResponse, Error> {
+        self.post("/linkup/v2/sessions/preview", params).await
     }
 
-    pub async fn get_tunnel(&self, session_name: &str) -> Result<TunnelData, Error> {
-        let query = GetTunnelRequest {
-            session_name: String::from(session_name),
-        };
-
-        let endpoint = self.url.join("/linkup/tunnel")?;
-        let response = self.inner.get(endpoint).query(&query).send().await?;
-
-        match response.status() {
-            StatusCode::OK => {
-                let content: TunnelData = response.json().await?;
-                Ok(content)
-            }
-            _ => Err(Error::Response(
-                response.status(),
-                response.text().await.unwrap_or_else(|_| "".to_string()),
-            )),
-        }
-    }
-
-    async fn post<T: Serialize>(&self, path: &str, params: &T) -> Result<String, Error> {
+    // TODO(@augustoccesar)[2026-04-21]: This is the same on local_server. Can probably be combined
+    async fn post<T: Serialize, R: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &T,
+    ) -> Result<R, Error> {
         let params = serde_json::to_string(params)?;
         let endpoint = self.url.join(path)?;
         let response = self
@@ -85,7 +77,8 @@ impl WorkerClient {
             .await?;
 
         if response.status().is_success() {
-            let content = response.text().await?;
+            let content = response.json().await?;
+
             Ok(content)
         } else {
             Err(Error::Response(

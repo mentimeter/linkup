@@ -15,5 +15,6 @@ reqwest = { workspace = true, features = ["blocking", "rustls"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tokio-tungstenite = { workspace = true }
+url = { workspace = true }
 
 rstest = "0.26.1"

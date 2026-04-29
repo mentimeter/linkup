@@ -1,6 +1,6 @@
 use crate::{
     Result, services,
-    state::{ServiceTarget, State, upload_state},
+    state::{ServiceTarget, State},
 };
 
 use anyhow::anyhow;
@@ -62,8 +62,7 @@ pub async fn remote(args: &Args) -> Result<()> {
         }
     }
 
-    state.save()?;
-    upload_state(&state).await?;
+    services::local_server::update_state(&mut state).await?;
 
     if args.all {
         println!("Linkup is routing all traffic to the remote servers");

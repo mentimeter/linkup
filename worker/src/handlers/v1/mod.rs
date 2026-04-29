@@ -36,7 +36,7 @@ pub async fn handle_session_upsert(
 
     let session_name = state
         .session_allocator
-        .store_session(session, name_kind, &desired_name)
+        .store_session(&session, name_kind, &desired_name)
         .await;
 
     let name = match session_name {
