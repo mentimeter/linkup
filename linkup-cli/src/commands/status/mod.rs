@@ -259,6 +259,26 @@ fn build_user_services(
             });
 
             let component_kind = match config_service {
+                Some(config_service) if config_service.local == config_service.remote => {
+                    // TODO(@augustoccesar)[2026-04-29]: Think if this is enough of a check for us.
+                    let host = config_service
+                        .local
+                        .host()
+                        .expect("Host should exist on service URL")
+                        .to_string();
+
+                    if host.contains("localhost")
+                        || host.contains("127.0.0.1")
+                        || host.contains("0.0.0.0")
+                    {
+                        "local"
+                    } else {
+                        "remote"
+                    }
+                }
+                Some(config_service) if session_service.location == config_service.remote => {
+                    "remote"
+                }
                 Some(config_service) if session_service.location == config_service.local => "local",
                 _ => "remote",
             }
