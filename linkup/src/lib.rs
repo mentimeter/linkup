@@ -13,6 +13,7 @@ use std::future::Future;
 
 use http::{HeaderMap as HttpHeaderMap, HeaderValue as HttpHeaderValue};
 use rand::RngExt;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use headers::normalize_cookie_header;
@@ -36,6 +37,10 @@ pub enum SessionError {
     PutError(String),
     #[error("Invalid stored config: {0}")]
     ConfigErr(String),
+    #[error("Session name is empty")]
+    EmptySessionName,
+    #[error("Session with name already exists")]
+    SessionNameConflict,
 }
 
 // Since this trait is theoretically public (even though, the idea is for it to be used by the other modules within
@@ -47,7 +52,8 @@ pub trait StringStore {
     fn put(&self, key: &str, value: &str) -> impl Future<Output = Result<(), SessionError>>;
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NameKind {
     Animal,
     SixChar,
@@ -380,7 +386,7 @@ mod tests {
         let config: Session = config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(config, NameKind::Animal, "")
+            .store_session(&config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -526,7 +532,7 @@ mod tests {
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "")
+            .store_session(&input_config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -616,7 +622,7 @@ mod tests {
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "")
+            .store_session(&input_config, NameKind::Animal, "")
             .await
             .unwrap();
 
@@ -667,7 +673,7 @@ mod tests {
         let input_config: Session = input_config_value.try_into().unwrap();
 
         let name = sessions
-            .store_session(input_config, NameKind::Animal, "")
+            .store_session(&input_config, NameKind::Animal, "")
             .await
             .unwrap();
 

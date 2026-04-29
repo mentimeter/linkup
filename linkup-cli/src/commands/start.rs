@@ -4,7 +4,6 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
-use linkup_clients::WorkerClient;
 
 use crate::{Result, state::State};
 use crate::{
@@ -21,12 +20,32 @@ pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
     let mut state = load_and_save_state(config_arg)?;
     set_linkup_env(state.clone())?;
 
-    services::local_server::start(&mut state).await?;
+    services::local_server::start().await?;
 
-    let worker_client = WorkerClient::new(&state.linkup.worker_url, &state.linkup.worker_token);
-    let tunnel_data = worker_client.get_tunnel(&state.linkup.session_name).await?;
+    let tunnel_data = match services::local_server::update_state(&mut state).await {
+        Ok(tunnel_data) => {
+            log::info!("Finished setting up!");
 
-    services::cloudflared::start(&mut state, &tunnel_data).await?;
+            tunnel_data
+        }
+        Err(e) => {
+            log::error!("Failed to upload state: {e}");
+
+            return Err(e);
+        }
+    };
+
+    if state.should_use_tunnel() {
+        let tunnel_url = services::cloudflared::start(&tunnel_data).await?;
+
+        if let Err(e) = services::cloudflared::update_state(&mut state, &tunnel_url) {
+            log::error!("Failed to update state with tunnel information.");
+
+            return Err(e);
+        }
+    } else {
+        log::info!("Skipping. State file requested no tunnel.");
+    }
 
     println!();
 

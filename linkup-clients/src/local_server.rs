@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use linkup::UpsertSessionRequest;
+use linkup::{SessionResponse, TunneledSessionResponse, UpsertSessionRequest};
 use reqwest::StatusCode;
-use serde::Serialize;
+use serde::{Serialize, de::DeserializeOwned};
 use url::Url;
 
 #[derive(thiserror::Error, Debug)]
@@ -43,11 +43,26 @@ impl LocalServerClient {
         Ok(matches!(response, res if res.status() == StatusCode::OK))
     }
 
-    pub async fn upsert_session(&self, params: &UpsertSessionRequest) -> Result<String, Error> {
-        self.post("/linkup/local-session", params).await
+    pub async fn preview_session(
+        &self,
+        params: &UpsertSessionRequest,
+    ) -> Result<SessionResponse, Error> {
+        self.post("/linkup/sessions/preview", params).await
     }
 
-    async fn post<T: Serialize>(&self, path: &str, params: &T) -> Result<String, Error> {
+    pub async fn tunneled_session(
+        &self,
+        params: &UpsertSessionRequest,
+    ) -> Result<TunneledSessionResponse, Error> {
+        self.post("/linkup/sessions/tunneled", params).await
+    }
+
+    // TODO(@augustoccesar)[2026-04-21]: This is the same on worker. Can probably be combined
+    async fn post<T: Serialize, R: DeserializeOwned>(
+        &self,
+        path: &str,
+        params: &T,
+    ) -> Result<R, Error> {
         let params = serde_json::to_string(params)?;
         let endpoint = self.url.join(path)?;
         let response = self
@@ -59,7 +74,8 @@ impl LocalServerClient {
             .await?;
 
         if response.status().is_success() {
-            let content = response.text().await?;
+            let content = response.json().await?;
+
             Ok(content)
         } else {
             Err(Error::Response(
