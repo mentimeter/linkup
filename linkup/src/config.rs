@@ -28,13 +28,26 @@ pub struct ServiceConfig {
     pub name: String,
     pub remote: Url,
     pub local: Url,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub directory: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_ext::deserialize_optional_vec",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub rewrites: Option<Vec<Rewrite>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub health: Option<HealthConfig>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct HealthConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_ext::deserialize_optional_vec",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub statuses: Option<Vec<u16>>,
 }

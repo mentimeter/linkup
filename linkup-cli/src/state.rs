@@ -344,4 +344,58 @@ domains:
         assert_eq!(local_state.domains[0].default_service, "frontend");
         assert!(local_state.domains[0].routes.is_some());
     }
+
+    #[test]
+    fn test_state_parses_null_optional_fields() {
+        let yaml = r#"
+linkup:
+  session_name: test-session
+  session_token: abc123
+  worker_url: https://worker.example.com
+  worker_token: token
+  config_path: /path/to/config
+services:
+- current: Remote
+  name: null-rewrites
+  remote: https://auth.example.com/
+  local: http://localhost:3030/
+  rewrites: null
+  health:
+    path: /health
+    statuses: null
+- current: Remote
+  name: empty-rewrites
+  remote: https://auth.example.com/
+  local: http://localhost:3030/
+  rewrites: []
+- current: Remote
+  name: absent-rewrites
+  remote: https://auth.example.com/
+  local: http://localhost:3030/
+domains: []
+"#;
+
+        let state: State =
+            serde_yaml::from_str(yaml).expect("state with null/empty/absent rewrites should parse");
+
+        assert!(state.services[0].config.rewrites.is_none(), "null -> None");
+        assert!(
+            state.services[0]
+                .config
+                .health
+                .as_ref()
+                .unwrap()
+                .statuses
+                .is_none(),
+            "null statuses -> None"
+        );
+
+        assert_eq!(
+            state.services[1].config.rewrites.as_ref().unwrap().len(),
+            0,
+            "[] -> Some([])"
+        );
+
+        assert!(state.services[2].config.rewrites.is_none(), "absent -> None");
+    }
 }
