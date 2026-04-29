@@ -369,10 +369,10 @@ fn check_service(service: &ServiceToCheck, session_name: &str) -> ServerStatus {
     let mut acceptable_statuses: Option<Vec<u16>> = None;
 
     if let Some(health) = &service.health {
-        if let Some(path) = &health.path {
-            if let Ok(url_with_path) = url.join(path) {
-                url = url_with_path;
-            }
+        if let Some(path) = &health.path
+            && let Ok(url_with_path) = url.join(path)
+        {
+            url = url_with_path;
         }
 
         if let Some(statuses) = &health.statuses {

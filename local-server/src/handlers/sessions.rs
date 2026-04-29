@@ -160,7 +160,7 @@ pub async fn upsert_isolated(
         UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
         UpsertSessionRequest::Unnamed { .. } => {
             return ApiError::new(
-                format!("Isolated sessions should always be named"),
+                "Isolated sessions should always be named".to_string(),
                 StatusCode::BAD_REQUEST,
             )
             .into_response();
