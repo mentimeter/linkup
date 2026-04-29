@@ -269,7 +269,7 @@ async fn main() {
         Commands::Status(args) => commands::status(args).await,
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
-        Commands::Fork(args) => commands::fork(args).await,
+        Commands::Fork(args) => commands::fork(args, &cli.config).await,
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
         Commands::Server(args) => commands::server(args, &cli.config).await,
         Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,

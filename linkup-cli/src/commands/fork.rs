@@ -2,10 +2,9 @@ use anyhow::Context;
 use linkup::{Session, UpsertSessionRequest};
 use linkup_clients::LocalServerClient;
 
-use crate::Result;
-use crate::session::{SessionStatus, format_state_domains};
 use crate::services;
-use crate::state::State;
+use crate::session::{SessionStatus, format_state_domains};
+use crate::{Result, state};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -13,9 +12,10 @@ pub struct Args {
     pub name: String,
 }
 
-pub async fn fork(args: &Args) -> Result<()> {
-    let state = State::load().context("Failed to load local state")?;
-
+pub async fn fork(args: &Args, config_path: &Option<String>) -> Result<()> {
+    let config_path = state::config_path(config_path)?;
+    let config = state::get_config(&config_path)?;
+    let state = state::config_to_state(config, config_path);
     let session: Session = (&state).into();
 
     let upsert_request = UpsertSessionRequest::Named {
