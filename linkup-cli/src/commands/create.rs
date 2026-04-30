@@ -1,4 +1,5 @@
 use anyhow::Context;
+use linkup::SessionKind;
 use linkup::{Session, UpsertSessionRequest};
 use linkup_clients::LocalServerClient;
 
@@ -38,7 +39,7 @@ pub async fn create(args: &Args, config_path: &Option<String>) -> Result<()> {
     state.save_with_suffix(&response.session_name)?;
 
     print_sessions_table(
-        &[SessionRow::from_state(&state, "isolated".to_string())],
+        &[SessionRow::from_state(&state, SessionKind::Isolated)],
         None,
     );
 

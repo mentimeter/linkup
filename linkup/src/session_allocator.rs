@@ -55,8 +55,22 @@ impl<S: StringStore> SessionAllocator<S> {
         Err(SessionError::NoSuchSession(url.to_string()))
     }
 
-    pub async fn list_sessions(&self) -> Result<Vec<String>, SessionError> {
-        self.store.list().await
+    pub async fn list_sessions(&self) -> Result<Vec<(String, Session)>, SessionError> {
+        let raw_sessions = self.store.list().await?;
+        let mut sessions = Vec::with_capacity(raw_sessions.len());
+
+        for (session_name, session_json) in raw_sessions {
+            let session_json_value: serde_json::Value = serde_json::from_str(&session_json)
+                .map_err(|e| SessionError::ConfigErr(e.to_string()))?;
+
+            let session: Session = session_json_value
+                .try_into()
+                .map_err(|e: ConfigError| SessionError::ConfigErr(e.to_string()))?;
+
+            sessions.push((session_name, session));
+        }
+
+        Ok(sessions)
     }
 
     pub async fn strict_store_session<'name>(
@@ -191,7 +205,7 @@ impl<S: StringStore> SessionAllocator<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MemoryStringStore, UpsertSessionRequest};
+    use crate::{MemoryStringStore, SessionKind, UpsertSessionRequest};
 
     #[tokio::test]
     async fn identical_preview_requests_reuse_same_name() {
@@ -225,9 +239,11 @@ mod tests {
         })
         .to_string();
 
-        let first_session =
-            Session::try_from(serde_json::from_str::<UpsertSessionRequest>(&request_json).unwrap())
-                .unwrap();
+        let first_session = Session::from_upsert_req(
+            SessionKind::Preview,
+            serde_json::from_str::<UpsertSessionRequest>(&request_json).unwrap(),
+        )
+        .unwrap();
 
         let mut second_session = first_session.clone();
         second_session.services.reverse();

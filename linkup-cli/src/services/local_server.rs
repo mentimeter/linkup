@@ -12,8 +12,10 @@ use sysinfo::Pid;
 use tokio::time::sleep;
 use url::Url;
 
-use linkup::{NameKind, Session, TunnelData, TunneledSessionResponse, UpsertSessionRequest};
-use linkup_clients::LocalServerClient;
+use linkup::{
+    NameKind, Session, TunnelData, TunneledSessionResponse, UpsertSessionRequest, random_six_char,
+};
+use linkup_clients::{LocalServerClient, LocalServerClientError};
 
 use super::{PidError, ServiceId};
 use crate::{Result, linkup_certs_dir_path, linkup_file_path, state::State};
@@ -99,12 +101,17 @@ pub async fn update_state(state: &mut State) -> Result<TunnelData> {
 }
 
 pub async fn update_isolated_state(state: &mut State) -> Result<()> {
-    let client = LocalServerClient::new(&url());
-    let upsert_request = build_named_upsert_request(&state.linkup.session_name, state);
+    let session_name = if !state.linkup.session_name.is_empty() {
+        state.linkup.session_name.clone()
+    } else {
+        random_six_char()
+    };
 
+    let client = LocalServerClient::new(&url());
+    let upsert_request = build_named_upsert_request(&session_name, state);
     client.isolated_session(&upsert_request).await?;
 
-    state.save_with_suffix(&state.linkup.session_name)?;
+    state.linkup.session_name = session_name;
 
     Ok(())
 }
@@ -149,7 +156,7 @@ async fn upload_tunneled_state(state: &State) -> Result<TunneledSessionResponse>
 
     let session_response = match session_response {
         Ok(session_response) => session_response,
-        Err(linkup_clients::LocalServerClientError::Response(StatusCode::CONFLICT, _)) => {
+        Err(LocalServerClientError::Response(StatusCode::CONFLICT, _)) => {
             log::debug!(
                 "Requested name from state file already exists, attempting to create with a new name"
             );

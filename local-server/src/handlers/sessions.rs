@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     Json,
     extract::{Path, State},
@@ -5,8 +7,8 @@ use axum::{
 };
 use http::StatusCode;
 use linkup::{
-    NameKind, Session, SessionDetailResponse, SessionError, SessionResponse, SessionsListResponse,
-    UpsertSessionRequest,
+    NameKind, Session, SessionDetailResponse, SessionError, SessionKind, SessionResponse,
+    SessionsListResponse, UpsertSessionRequest,
 };
 use linkup_clients::WorkerClientError;
 
@@ -14,7 +16,10 @@ use crate::{ServerState, dns, handlers::ApiError};
 
 pub async fn list_sessions(State(server_state): State<ServerState>) -> impl IntoResponse {
     match server_state.session_allocator.list_sessions().await {
-        Ok(sessions) => Json(SessionsListResponse { sessions }).into_response(),
+        Ok(sessions) => Json(SessionsListResponse {
+            sessions: HashMap::from_iter(sessions),
+        })
+        .into_response(),
         Err(error) => ApiError::new(
             format!("Failed to list sessions: {}", error),
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -33,6 +38,7 @@ pub async fn get_session(
         .await
     {
         Ok(Some(session)) => Json(SessionDetailResponse {
+            session_kind: session.kind,
             session_name,
             services: session.services,
             domains: session.domains,
@@ -98,7 +104,7 @@ pub async fn upsert_tunneled(
         },
     };
 
-    let session: Session = match upsert_req.try_into() {
+    let session: Session = match Session::from_upsert_req(SessionKind::Tunneled, upsert_req) {
         Ok(conf) => conf,
         Err(e) => {
             return ApiError::new(
@@ -140,12 +146,12 @@ pub async fn upsert_tunneled(
     (StatusCode::OK, Json(tunneled_session)).into_response()
 }
 
-// TODO(@augustoccesar)[2026-04-24]: Is this the name that we want for this "mode"?
 pub async fn upsert_isolated(
     State(server_state): State<ServerState>,
     Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    let session: Session = match upsert_req.clone().try_into() {
+    let session: Session = match Session::from_upsert_req(SessionKind::Isolated, upsert_req.clone())
+    {
         Ok(conf) => conf,
         Err(e) => {
             return ApiError::new(

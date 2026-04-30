@@ -48,7 +48,7 @@ impl StringStore for CfWorkerStringStore {
 
     // TODO(@augustoccesar)[2026-04-29]: Currently there is no reason to be able to list
     //  on the worker. So choosing to have it as not implemented for now.
-    async fn list(&self) -> Result<Vec<String>, SessionError> {
+    async fn list(&self) -> Result<Vec<(String, String)>, SessionError> {
         Err(SessionError::ListError("Not implemented".to_string()))
     }
 }

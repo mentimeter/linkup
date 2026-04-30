@@ -10,7 +10,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use linkup::{Domain, Session, SessionService};
+use linkup::{Domain, Session, SessionKind, SessionService};
 
 use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path};
 
@@ -94,6 +94,8 @@ pub struct LinkupState {
     pub worker_token: String,
     pub config_path: String,
     pub tunnel: Option<Url>,
+    #[serde(default)]
+    pub kind: SessionKind,
     #[serde(
         default,
         serialize_with = "linkup::serde_ext::serialize_opt_vec_regex",
@@ -144,6 +146,7 @@ pub fn config_to_state(config: linkup::config::Config, config_path: String) -> S
         config_path,
         worker_url: config.linkup.worker_url,
         tunnel: Some(Url::parse("http://tunnel-not-yet-set").expect("default url parses")),
+        kind: SessionKind::Tunneled,
         cache_routes: config.linkup.cache_routes,
     };
 
@@ -211,6 +214,7 @@ impl From<&State> for Session {
             .collect::<Vec<_>>();
 
         Session {
+            kind: state.linkup.kind.clone(),
             session_token: state.linkup.session_token.clone(),
             services: session_services,
             domains: state.domains.clone(),

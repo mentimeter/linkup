@@ -1,5 +1,5 @@
 use colored::Colorize;
-use linkup::Domain;
+use linkup::{Domain, SessionKind};
 use serde::{Deserialize, Serialize};
 
 use crate::state::State;
@@ -7,12 +7,12 @@ use crate::state::State;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SessionRow {
     pub name: String,
-    pub kind: String,
+    pub kind: SessionKind,
     pub domains: Vec<String>,
 }
 
 impl SessionRow {
-    pub fn from_state(state: &State, kind: String) -> Self {
+    pub fn from_state(state: &State, kind: SessionKind) -> Self {
         SessionRow {
             name: state.linkup.session_name.clone(),
             kind,
@@ -38,7 +38,7 @@ pub fn print_sessions_table(sessions: &[SessionRow], current: Option<&str>) {
 
     let kind_width = sessions
         .iter()
-        .map(|s| s.kind.len())
+        .map(|s| s.kind.as_str().len())
         .chain(std::iter::once("TYPE".len()))
         .max()
         .unwrap_or(0);

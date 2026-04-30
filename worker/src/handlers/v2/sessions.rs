@@ -2,7 +2,8 @@ use axum::{Json, extract::State, response::IntoResponse};
 
 use http::StatusCode;
 use linkup::{
-    Session, SessionError, SessionResponse, TunneledSessionResponse, UpsertSessionRequest,
+    Session, SessionError, SessionKind, SessionResponse, TunneledSessionResponse,
+    UpsertSessionRequest,
 };
 
 use crate::{http_error::HttpError, tunnel, worker_state::WorkerState};
@@ -12,7 +13,7 @@ pub async fn upsert_preview(
     State(state): State<WorkerState>,
     Json(req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    let session: Session = match req.clone().try_into() {
+    let session: Session = match Session::from_upsert_req(SessionKind::Preview, req.clone()) {
         Ok(conf) => conf,
         Err(e) => {
             return HttpError::new(
@@ -84,7 +85,7 @@ pub async fn upsert_tunneled(
     State(state): State<WorkerState>,
     Json(req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    let mut session: Session = match req.clone().try_into() {
+    let mut session: Session = match Session::from_upsert_req(SessionKind::Tunneled, req.clone()) {
         Ok(conf) => conf,
         Err(e) => {
             return HttpError::new(

@@ -2,7 +2,7 @@ use anyhow::Context;
 use clap::builder::ValueParser;
 use url::Url;
 
-use linkup::UpsertSessionRequest;
+use linkup::{SessionKind, UpsertSessionRequest};
 use linkup_clients::WorkerClient;
 
 use crate::Result;
@@ -53,7 +53,7 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
         &[SessionRow {
             domains: format_state_domains(&preview_name, &input_config.domains),
             name: preview_name,
-            kind: "preview".to_string(),
+            kind: SessionKind::Preview,
         }],
         None,
     );

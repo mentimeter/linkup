@@ -3,7 +3,8 @@
 use std::{path::PathBuf, process::Command};
 
 use linkup::{
-    Domain, MemoryStringStore, Session, SessionAllocator, SessionService, UpsertSessionRequest,
+    Domain, MemoryStringStore, Session, SessionAllocator, SessionKind, SessionService,
+    UpsertSessionRequest,
 };
 use linkup_clients::WorkerClient;
 use linkup_local_server::{ServerState, dns::DnsCatalog, router};
@@ -110,7 +111,9 @@ pub async fn seed_session(
         }],
         cache_routes: None,
     };
-    let session = Session::try_from(req).unwrap();
+
+    let session = Session::from_upsert_req(SessionKind::Preview, req).unwrap();
+
     allocator
         .strict_store_session(name, &session)
         .await

@@ -63,6 +63,7 @@ pub async fn remote(args: &Args) -> Result<()> {
         )?;
 
         services::local_server::update_isolated_state(&mut state).await?;
+        state.save_with_suffix(session_name)?;
     } else {
         let mut state = State::load()?;
 

@@ -52,7 +52,7 @@ pub trait StringStore {
     fn get(&self, key: &str) -> impl Future<Output = Result<Option<String>, SessionError>>;
     fn exists(&self, key: &str) -> impl Future<Output = Result<bool, SessionError>>;
     fn put(&self, key: &str, value: &str) -> impl Future<Output = Result<(), SessionError>>;
-    fn list(&self) -> impl Future<Output = Result<Vec<String>, SessionError>>;
+    fn list(&self) -> impl Future<Output = Result<Vec<(String, String)>, SessionError>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

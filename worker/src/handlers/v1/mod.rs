@@ -4,7 +4,7 @@ pub mod tunnel;
 
 use axum::response::IntoResponse;
 use http::StatusCode;
-use linkup::{NameKind, Session, UpsertSessionRequest};
+use linkup::{NameKind, Session, SessionKind, UpsertSessionRequest};
 
 use crate::{http_error::HttpError, worker_state::WorkerState};
 
@@ -17,13 +17,14 @@ pub async fn handle_session_upsert(
     state: WorkerState,
     req: UpsertSessionRequest,
     name_kind: NameKind,
+    session_kind: SessionKind,
 ) -> impl IntoResponse {
     let desired_name = match &req {
         UpsertSessionRequest::Named { desired_name, .. } => desired_name.clone(),
         UpsertSessionRequest::Unnamed { .. } => String::new(),
     };
 
-    let session: Session = match req.try_into() {
+    let session: Session = match Session::from_upsert_req(session_kind, req) {
         Ok(conf) => conf,
         Err(e) => {
             return HttpError::new(

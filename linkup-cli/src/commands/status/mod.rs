@@ -6,10 +6,11 @@ use anyhow::Context;
 use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use linkup::{
-    Domain, HeaderMap, SessionDetailResponse, TargetService,
+    HeaderMap, SessionDetailResponse, TargetService,
     config::{Config, HealthConfig},
     get_additional_headers,
 };
+use linkup_clients::LocalServerClient;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -53,7 +54,7 @@ pub async fn status(args: &Args) -> anyhow::Result<()> {
         .unwrap_or(&state.linkup.session_name)
         .to_string();
 
-    let all_sessions = fetch_sessions(&state.linkup.session_name, &state.domains).await;
+    let all_sessions = fetch_sessions().await;
 
     if args.session.is_some()
         && !all_sessions
@@ -197,26 +198,20 @@ struct Output {
     services: Vec<ServiceStatus>,
 }
 
-async fn fetch_sessions(tunneled_name: &str, state_domains: &[Domain]) -> Vec<SessionRow> {
-    let client = linkup_clients::LocalServerClient::new(&services::local_server::url());
+async fn fetch_sessions() -> Vec<SessionRow> {
+    let client = LocalServerClient::new(&services::local_server::url());
 
     match client.list_sessions().await {
         Ok(response) => {
             let mut entries: Vec<SessionRow> = response
                 .sessions
                 .into_iter()
-                .map(|name| {
-                    let kind = if name == tunneled_name {
-                        "tunneled".to_string()
-                    } else {
-                        "isolated".to_string()
-                    };
-
-                    let domains = format_state_domains(&name, state_domains);
+                .map(|(name, session)| {
+                    let domains = format_state_domains(&name, &session.domains);
 
                     SessionRow {
                         name,
-                        kind,
+                        kind: session.kind,
                         domains,
                     }
                 })
@@ -230,7 +225,7 @@ async fn fetch_sessions(tunneled_name: &str, state_domains: &[Domain]) -> Vec<Se
 }
 
 async fn fetch_session_detail(session_name: &str) -> Option<SessionDetailResponse> {
-    let client = linkup_clients::LocalServerClient::new(&services::local_server::url());
+    let client = LocalServerClient::new(&services::local_server::url());
     client.get_session(session_name).await.ok()
 }
 

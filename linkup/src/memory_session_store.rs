@@ -2,6 +2,7 @@ use crate::{SessionError, StringStore};
 
 use std::{
     collections::HashMap,
+    iter::zip,
     sync::{Arc, RwLock},
 };
 
@@ -37,9 +38,16 @@ impl StringStore for MemoryStringStore {
         Ok(())
     }
 
-    async fn list(&self) -> Result<Vec<String>, SessionError> {
+    async fn list(&self) -> Result<Vec<(String, String)>, SessionError> {
         match self.0.read() {
-            Ok(l) => Ok(l.keys().cloned().collect()),
+            Ok(l) => {
+                // TODO(augustoccesar)[2026-04-30]: Can we do this without needing to clone?
+                let entries = zip(l.keys(), l.values())
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect::<Vec<(String, String)>>();
+
+                Ok(entries)
+            }
             Err(e) => Err(SessionError::GetError(e.to_string())),
         }
     }
