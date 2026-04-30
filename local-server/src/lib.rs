@@ -58,7 +58,7 @@ pub fn router(server_state: ServerState) -> Router {
         )
         .route(
             "/linkup/sessions/{name}",
-            get(handlers::sessions::get_session),
+            get(handlers::sessions::get_session).delete(handlers::sessions::delete_session),
         )
         .route("/linkup/check", get(handlers::always_ok))
         .fallback(any(handlers::proxy::handle_all))

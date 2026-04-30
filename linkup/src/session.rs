@@ -300,6 +300,7 @@ impl TryFrom<serde_json::Value> for Session {
 
 pub fn create_preview_req_from_config(
     config: &Config,
+    desired_name: Option<String>,
     services_overwrite: &[(String, Url)],
 ) -> UpsertSessionRequest {
     let mut session_services: Vec<SessionService> = Vec::with_capacity(config.services.len());
@@ -321,12 +322,21 @@ pub fn create_preview_req_from_config(
         });
     }
 
-    UpsertSessionRequest::Unnamed {
-        name_kind: NameKind::SixChar,
-        session_token: None,
-        services: session_services,
-        domains: config.domains.clone(),
-        cache_routes: config.linkup.cache_routes.clone(),
+    match desired_name {
+        Some(name) => UpsertSessionRequest::Named {
+            desired_name: name,
+            session_token: PREVIEW_SESSION_TOKEN.to_string(),
+            services: session_services,
+            domains: config.domains.clone(),
+            cache_routes: config.linkup.cache_routes.clone(),
+        },
+        None => UpsertSessionRequest::Unnamed {
+            name_kind: NameKind::SixChar,
+            session_token: None,
+            services: session_services,
+            domains: config.domains.clone(),
+            cache_routes: config.linkup.cache_routes.clone(),
+        },
     }
 }
 

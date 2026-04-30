@@ -45,6 +45,17 @@ impl State {
         self.save_to_path(&state_file_path(Some(suffix)))
     }
 
+    pub fn delete_with_suffix(suffix: &str) -> Result<()> {
+        let path = state_file_path(Some(suffix));
+
+        if path.exists() {
+            fs::remove_file(&path)
+                .with_context(|| format!("Failed to delete state file {:?}", path))?;
+        }
+
+        Ok(())
+    }
+
     fn save_to_path(&self, path: &std::path::Path) -> Result<()> {
         if cfg!(test) {
             return Ok(());

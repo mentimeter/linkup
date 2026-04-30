@@ -76,6 +76,23 @@ impl LocalServerClient {
             .await
     }
 
+    pub async fn delete_session(&self, session_name: &str) -> Result<(), Error> {
+        let endpoint = self
+            .url
+            .join(&format!("/linkup/sessions/{}", session_name))?;
+
+        let response = self.inner.delete(endpoint).send().await?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(Error::Response(
+                response.status(),
+                response.text().await.unwrap_or_else(|_| "".to_string()),
+            ))
+        }
+    }
+
     // TODO(@augustoccesar)[2026-04-21]: This is the same on worker. Can probably be combined
     async fn post<T: Serialize, R: DeserializeOwned>(
         &self,

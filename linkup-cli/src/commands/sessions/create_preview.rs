@@ -2,32 +2,36 @@ use anyhow::Context;
 use clap::builder::ValueParser;
 use url::Url;
 
-use linkup::{SessionKind, UpsertSessionRequest};
+use linkup::SessionKind;
 use linkup_clients::WorkerClient;
 
-use crate::Result;
-use crate::session::{SessionRow, format_state_domains, print_sessions_table};
-use crate::state::{config_path, get_config};
+use crate::{
+    Result,
+    session::{SessionRow, format_state_domains, print_sessions_table},
+    state,
+};
 
 #[derive(clap::Args)]
 pub struct Args {
+    #[arg(help = "Optional name for the preview session")]
+    pub name: Option<String>,
+
     #[arg(
-        help = "<service>=<url> pairs to preview.",
+        help = "<service>=<url> pairs to override.",
         value_parser = ValueParser::new(parse_services_tuple),
-        required = true,
-        num_args = 1..,
+        num_args = 0..,
     )]
-    services: Vec<(String, Url)>,
+    pub services: Vec<(String, Url)>,
 
     #[arg(long, help = "Print the request body instead of sending it.")]
-    print_request: bool,
+    pub print_request: bool,
 }
 
-pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
-    let config_path = config_path(config)?;
-    let input_config = get_config(&config_path)?;
-    let upsert_session_request: UpsertSessionRequest =
-        linkup::create_preview_req_from_config(&input_config, &args.services);
+pub async fn run(args: &Args, config: &Option<String>) -> Result<()> {
+    let config_path = state::config_path(config)?;
+    let input_config = state::get_config(&config_path)?;
+    let upsert_session_request =
+        linkup::create_preview_req_from_config(&input_config, args.name.clone(), &args.services);
 
     if args.print_request {
         let create_req_json = serde_json::to_string(&upsert_session_request)
@@ -61,10 +65,12 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
     Ok(())
 }
 
-pub fn parse_services_tuple(arg: &str) -> std::result::Result<(String, String), String> {
+fn parse_services_tuple(arg: &str) -> std::result::Result<(String, Url), String> {
     let (k, v) = arg
         .split_once('=')
         .ok_or_else(|| "Service tuple must be of the form <service>=<url>".to_string())?;
 
-    Ok((k.to_string(), v.to_string()))
+    let url = Url::parse(v).map_err(|e| format!("Invalid URL '{v}': {e}"))?;
+
+    Ok((k.to_string(), url))
 }

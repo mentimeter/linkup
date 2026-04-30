@@ -38,6 +38,16 @@ impl StringStore for MemoryStringStore {
         Ok(())
     }
 
+    async fn delete(&self, key: &str) -> Result<(), SessionError> {
+        match self.0.write() {
+            Ok(mut l) => {
+                l.remove(key);
+                Ok(())
+            }
+            Err(e) => Err(SessionError::DeleteError(e.to_string())),
+        }
+    }
+
     async fn list(&self) -> Result<Vec<(String, String)>, SessionError> {
         match self.0.read() {
             Ok(l) => {

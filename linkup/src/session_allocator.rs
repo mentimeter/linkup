@@ -134,6 +134,10 @@ impl<S: StringStore> SessionAllocator<S> {
             .await
     }
 
+    pub async fn delete_session(&self, name: &str) -> Result<(), SessionError> {
+        self.store.delete(name).await
+    }
+
     pub async fn find_session(&self, name: &str) -> Result<Option<Session>, SessionError> {
         let value = match self.store.get(name).await {
             Ok(Some(v)) => v,

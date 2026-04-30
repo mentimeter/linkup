@@ -223,3 +223,44 @@ pub async fn upsert_isolated(
 
     (StatusCode::OK, Json(session_response)).into_response()
 }
+
+pub async fn delete_session(
+    State(server_state): State<ServerState>,
+    Path(session_name): Path<String>,
+) -> impl IntoResponse {
+    match server_state
+        .session_allocator
+        .find_session(&session_name)
+        .await
+    {
+        Ok(None) => {
+            return ApiError::new(
+                format!("Session '{}' not found", session_name),
+                StatusCode::NOT_FOUND,
+            )
+            .into_response();
+        }
+        Err(error) => {
+            return ApiError::new(
+                format!("Failed to find session: {}", error),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+            .into_response();
+        }
+        Ok(Some(_)) => {}
+    }
+
+    if let Err(error) = server_state
+        .session_allocator
+        .delete_session(&session_name)
+        .await
+    {
+        return ApiError::new(
+            format!("Failed to delete session: {}", error),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )
+        .into_response();
+    }
+
+    StatusCode::NO_CONTENT.into_response()
+}

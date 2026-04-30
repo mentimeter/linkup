@@ -24,6 +24,25 @@ pub struct Args {
 }
 
 pub async fn start(args: &Args, config_arg: &Option<String>) -> Result<()> {
+    if let Ok(existing) = State::load()
+        && services::local_server::find_pid().is_some()
+    {
+        let requested = if args.isolated {
+            SessionKind::Isolated
+        } else {
+            SessionKind::Tunneled
+        };
+
+        if existing.linkup.kind != requested {
+            println!(
+                "Linkup is already running as {}. Run 'linkup stop' first to switch modes.",
+                existing.linkup.kind
+            );
+
+            return Ok(());
+        }
+    }
+
     let mut state = load_and_save_state(config_arg)?;
     set_linkup_env(state.clone())?;
 
