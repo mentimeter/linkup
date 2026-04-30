@@ -6,7 +6,7 @@ use linkup::UpsertSessionRequest;
 use linkup_clients::WorkerClient;
 
 use crate::Result;
-use crate::session::{SessionStatus, format_state_domains};
+use crate::session::{SessionRow, format_state_domains, print_sessions_table};
 use crate::state::{config_path, get_config};
 
 #[derive(clap::Args)]
@@ -48,14 +48,15 @@ pub async fn preview(args: &Args, config: &Option<String>) -> Result<()> {
         .await?;
 
     let preview_name = preview_session.session_name;
-    let domains = format_state_domains(&preview_name, &input_config.domains);
 
-    let status = SessionStatus {
-        name: preview_name,
-        domains,
-    };
-
-    status.print();
+    print_sessions_table(
+        &[SessionRow {
+            domains: format_state_domains(&preview_name, &input_config.domains),
+            name: preview_name,
+            kind: "preview".to_string(),
+        }],
+        None,
+    );
 
     Ok(())
 }

@@ -4,7 +4,7 @@ use linkup_clients::LocalServerClient;
 
 use crate::Result;
 use crate::services;
-use crate::session::{SessionStatus, format_state_domains};
+use crate::session::{SessionRow, print_sessions_table};
 use crate::state;
 
 #[derive(clap::Args)]
@@ -37,13 +37,10 @@ pub async fn fork(args: &Args, config_path: &Option<String>) -> Result<()> {
     state.linkup.session_name = response.session_name.clone();
     state.save_with_suffix(&response.session_name)?;
 
-    let domains = format_state_domains(&response.session_name, &state.domains);
-
-    SessionStatus {
-        name: response.session_name,
-        domains,
-    }
-    .print();
+    print_sessions_table(
+        &[SessionRow::from_state(&state, "isolated".to_string())],
+        None,
+    );
 
     Ok(())
 }

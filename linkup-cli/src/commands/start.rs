@@ -9,7 +9,7 @@ use crate::{Result, state::State};
 use crate::{
     env_files::write_to_env_file,
     services,
-    session::{SessionStatus, format_state_domains},
+    session::{SessionRow, print_sessions_table},
     state::{config_path, config_to_state, find_isolated_suffixes, get_config},
 };
 
@@ -47,13 +47,19 @@ pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
         log::info!("Skipping. State file requested no tunnel.");
     }
 
+    let mut rows = vec![SessionRow::from_state(&state, "tunneled".to_string())];
+
     for suffix in find_isolated_suffixes() {
         match State::load_with_suffix(&suffix) {
             Ok(mut isolated_state) => {
-                if let Err(e) =
-                    services::local_server::update_isolated_state(&mut isolated_state).await
-                {
-                    log::warn!("Failed to restore isolated session '{}': {}", suffix, e);
+                match services::local_server::update_isolated_state(&mut isolated_state).await {
+                    Ok(_) => rows.push(SessionRow::from_state(
+                        &isolated_state,
+                        "isolated".to_string(),
+                    )),
+                    Err(e) => {
+                        log::warn!("Failed to restore isolated session '{}': {}", suffix, e)
+                    }
                 }
             }
             Err(e) => log::warn!("Failed to load isolated session state '{}': {}", suffix, e),
@@ -61,13 +67,7 @@ pub async fn start(_args: &Args, config_arg: &Option<String>) -> Result<()> {
     }
 
     println!();
-
-    let status = SessionStatus {
-        name: state.linkup.session_name.clone(),
-        domains: format_state_domains(&state.linkup.session_name, &state.domains),
-    };
-
-    status.print();
+    print_sessions_table(&rows, None);
 
     Ok(())
 }

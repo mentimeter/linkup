@@ -15,7 +15,7 @@ use url::Url;
 
 use crate::{
     commands, services,
-    session::format_state_domains,
+    session::{SessionRow, format_state_domains, print_sessions_table},
     state::{State, get_config},
 };
 
@@ -110,7 +110,7 @@ pub async fn status(args: &Args) -> anyhow::Result<()> {
             _ => println!("{}", "Linkup is not currently running.\n".yellow()),
         }
 
-        print_sessions_table(&all_sessions, &target_session);
+        print_sessions_table(&all_sessions, Some(&target_session));
         println!();
 
         let multi_progress = MultiProgress::new();
@@ -182,13 +182,6 @@ struct ServiceToCheck {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-struct SessionEntry {
-    name: String,
-    kind: String,
-    domains: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
 struct ServiceStatus {
     name: String,
     status: ServerStatus,
@@ -200,16 +193,16 @@ struct ServiceStatus {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct Output {
     session_name: String,
-    sessions: Vec<SessionEntry>,
+    sessions: Vec<SessionRow>,
     services: Vec<ServiceStatus>,
 }
 
-async fn fetch_sessions(tunneled_name: &str, state_domains: &[Domain]) -> Vec<SessionEntry> {
+async fn fetch_sessions(tunneled_name: &str, state_domains: &[Domain]) -> Vec<SessionRow> {
     let client = linkup_clients::LocalServerClient::new(&services::local_server::url());
 
     match client.list_sessions().await {
         Ok(response) => {
-            let mut entries: Vec<SessionEntry> = response
+            let mut entries: Vec<SessionRow> = response
                 .sessions
                 .into_iter()
                 .map(|name| {
@@ -218,8 +211,10 @@ async fn fetch_sessions(tunneled_name: &str, state_domains: &[Domain]) -> Vec<Se
                     } else {
                         "isolated".to_string()
                     };
+
                     let domains = format_state_domains(&name, state_domains);
-                    SessionEntry {
+
+                    SessionRow {
                         name,
                         kind,
                         domains,
@@ -391,40 +386,4 @@ fn check_service(service: &ServiceToCheck, session_name: &str) -> ServerStatus {
     );
 
     server_status(url.as_str(), acceptable_statuses.as_ref(), Some(headers))
-}
-
-fn print_sessions_table(sessions: &[SessionEntry], active: &str) {
-    const NAME_WIDTH: usize = 24;
-    const TYPE_WIDTH: usize = 10;
-
-    // active marker(2) + name(NAME_WIDTH) + space(1) + type(TYPE_WIDTH) + space(1)
-    const DOMAIN_INDENT: usize = 2 + NAME_WIDTH + 1 + TYPE_WIDTH + 1;
-
-    println!(
-        "  {:<NAME_WIDTH$} {:<TYPE_WIDTH$} {}",
-        "SESSION NAME".bold(),
-        "TYPE".bold(),
-        "DOMAINS".bold(),
-    );
-
-    for entry in sessions {
-        let marker = if entry.name == active { "> " } else { "  " };
-        let name_padded = format!("{:<NAME_WIDTH$}", entry.name);
-        let name_display = if entry.name == active {
-            name_padded.bold().to_string()
-        } else {
-            name_padded
-        };
-
-        let first_domain = entry.domains.first().map(String::as_str).unwrap_or("");
-
-        println!(
-            "{}{} {:<TYPE_WIDTH$} {}",
-            marker, name_display, entry.kind, first_domain
-        );
-
-        for domain in entry.domains.iter().skip(1) {
-            println!("{:DOMAIN_INDENT$}{}", "", domain);
-        }
-    }
 }
