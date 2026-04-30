@@ -13,7 +13,7 @@ pub struct Args {
     pub name: String,
 }
 
-pub async fn fork(args: &Args, config_path: &Option<String>) -> Result<()> {
+pub async fn create(args: &Args, config_path: &Option<String>) -> Result<()> {
     let config_path = state::config_path(config_path)?;
     let config = state::get_config(&config_path)?;
     let mut state = state::config_to_state(config, config_path);

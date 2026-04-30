@@ -221,8 +221,8 @@ enum Commands {
     #[clap(about = "Generate completions for your shell")]
     Completion(commands::CompletionArgs),
 
-    #[clap(about = "Create an isolated session based on the current session")]
-    Fork(commands::ForkArgs),
+    #[clap(about = "Create a new isolated session")]
+    Create(commands::CreateArgs),
 
     #[clap(about = "Create a \"permanent\" Linkup preview")]
     Preview(commands::PreviewArgs),
@@ -269,7 +269,7 @@ async fn main() {
         Commands::Status(args) => commands::status(args).await,
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
-        Commands::Fork(args) => commands::fork(args, &cli.config).await,
+        Commands::Create(args) => commands::create(args, &cli.config).await,
         Commands::Preview(args) => commands::preview(args, &cli.config).await,
         Commands::Server(args) => commands::server(args, &cli.config).await,
         Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,
