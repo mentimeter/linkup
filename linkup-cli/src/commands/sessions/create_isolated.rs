@@ -1,0 +1,72 @@
+use anyhow::Context;
+use colored::Colorize;
+
+use linkup::{NameKind, Session, SessionKind, UpsertSessionRequest};
+use linkup_clients::LocalServerClient;
+
+use crate::{
+    Result,
+    services::local_server,
+    session::{SessionRow, print_sessions_table},
+    state,
+};
+
+#[derive(clap::Args)]
+pub(super) struct Args {
+    #[arg(help = "Optional name for the isolated session")]
+    pub name: Option<String>,
+}
+
+pub(super) async fn run(args: &Args, config: &Option<String>) -> Result<()> {
+    if local_server::find_pid().is_none() {
+        println!(
+            "{}",
+            "Seems like your local Linkup server is not running. Please run 'linkup start' first."
+                .yellow()
+        );
+
+        return Ok(());
+    }
+
+    let config_path = state::config_path(config)?;
+    let config = state::get_config(&config_path)?;
+    let mut isolated_state = state::config_to_state(config, config_path);
+    let session: Session = (&isolated_state).into();
+
+    let upsert_request = match &args.name {
+        Some(name) => UpsertSessionRequest::Named {
+            desired_name: name.clone(),
+            session_token: session.session_token,
+            services: session.services,
+            domains: session.domains,
+            cache_routes: session.cache_routes,
+        },
+        None => UpsertSessionRequest::Unnamed {
+            name_kind: NameKind::SixChar,
+            session_token: Some(session.session_token),
+            services: session.services,
+            domains: session.domains,
+            cache_routes: session.cache_routes,
+        },
+    };
+
+    let local_server_client = LocalServerClient::new(&local_server::url());
+
+    let response = local_server_client
+        .isolated_session(&upsert_request)
+        .await
+        .context("Failed to create isolated session")?;
+
+    isolated_state.linkup.session_name = response.session_name.clone();
+    isolated_state.save_with_suffix(&response.session_name)?;
+
+    print_sessions_table(
+        &[SessionRow::from_state(
+            &isolated_state,
+            SessionKind::Isolated,
+        )],
+        None,
+    );
+
+    Ok(())
+}

@@ -23,6 +23,7 @@ impl IntoResponse for HttpError {
         Response::builder()
             .status(self.status_code)
             .header("Content-Type", "text/plain")
+            .header("Cache-Control", "no-store")
             .body(axum::body::Body::from(self.message))
             .unwrap()
     }
