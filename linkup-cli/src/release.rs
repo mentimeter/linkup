@@ -291,10 +291,10 @@ impl CachedReleases {
         }
     }
 
-    fn get_release(&self, channel: VersionChannel) -> Option<&Release> {
+    fn get_release(&self, channel: &VersionChannel) -> Option<&Release> {
         self.releases
             .iter()
-            .find(|update| update.channel == channel)
+            .find(|update| &update.channel == channel)
     }
 }
 
@@ -329,7 +329,7 @@ pub async fn check_for_update(
 
     let cached_releases = CachedReleases::load();
     let release = match cached_releases {
-        Some(cached_releases) => cached_releases.get_release(channel).cloned(),
+        Some(cached_releases) => cached_releases.get_release(&channel).cloned(),
         None => {
             let os = std::env::consts::OS;
             let arch = std::env::consts::ARCH;
@@ -360,11 +360,13 @@ pub async fn check_for_update(
                 }
             };
 
-            new_cache.get_release(channel).cloned()
+            new_cache.get_release(&channel).cloned()
         }
     };
 
-    release.filter(|release| &release.version > current_version)
+    release.filter(|release| {
+        channel != current_version.channel() || &release.version > current_version
+    })
 }
 
 fn now() -> u64 {
