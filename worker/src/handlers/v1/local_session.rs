@@ -1,5 +1,5 @@
 use axum::{Json, extract::State, response::IntoResponse};
-use linkup::{NameKind, UpsertSessionRequest};
+use linkup::{NameKind, SessionKind, UpsertSessionRequest};
 
 use crate::worker_state::WorkerState;
 
@@ -8,5 +8,5 @@ pub async fn handle_post(
     State(state): State<WorkerState>,
     Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
-    super::handle_session_upsert(state, upsert_req, NameKind::Animal).await
+    super::handle_session_upsert(state, upsert_req, NameKind::Animal, SessionKind::Tunneled).await
 }

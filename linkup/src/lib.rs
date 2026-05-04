@@ -31,10 +31,14 @@ use url::Url;
 pub enum SessionError {
     #[error("no session found for request {0}")]
     NoSuchSession(String),
+    #[error("Could not list configs: {0}")]
+    ListError(String),
     #[error("Could not get config: {0}")]
     GetError(String),
     #[error("Could not put config: {0}")]
     PutError(String),
+    #[error("Could not delete config: {0}")]
+    DeleteError(String),
     #[error("Invalid stored config: {0}")]
     ConfigErr(String),
     #[error("Session name is empty")]
@@ -50,6 +54,8 @@ pub trait StringStore {
     fn get(&self, key: &str) -> impl Future<Output = Result<Option<String>, SessionError>>;
     fn exists(&self, key: &str) -> impl Future<Output = Result<bool, SessionError>>;
     fn put(&self, key: &str, value: &str) -> impl Future<Output = Result<(), SessionError>>;
+    fn delete(&self, key: &str) -> impl Future<Output = Result<(), SessionError>>;
+    fn list(&self) -> impl Future<Output = Result<Vec<(String, String)>, SessionError>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
