@@ -117,9 +117,7 @@ mod github {
             .parse()
             .expect("GitHub URL to be correct");
 
-        let release = fetch(url).await?;
-
-        Ok(Some(release))
+        fetch(url).await
     }
 
     pub(super) async fn fetch_beta_release() -> Result<Option<Release>, Error> {
@@ -127,7 +125,7 @@ mod github {
             .parse()
             .expect("GitHub URL to be correct");
 
-        let releases: Vec<Release> = fetch(url).await?;
+        let releases: Vec<Release> = fetch(url).await?.unwrap_or_default();
 
         let beta_release = releases
             .into_iter()
@@ -136,7 +134,7 @@ mod github {
         Ok(beta_release)
     }
 
-    async fn fetch<T>(url: Url) -> Result<T, Error>
+    async fn fetch<T>(url: Url) -> Result<Option<T>, Error>
     where
         T: DeserializeOwned,
     {
@@ -159,6 +157,10 @@ mod github {
 
         let response = client.execute(req).await?;
 
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
         if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
             // https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#checking-the-status-of-your-rate-limit
             let retry_at = response
@@ -171,7 +173,7 @@ mod github {
             return Err(Error::RateLimit(retry_at));
         }
 
-        Ok(response.json::<T>().await?)
+        Ok(Some(response.json::<T>().await?))
     }
 }
 
