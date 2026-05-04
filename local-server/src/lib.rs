@@ -43,6 +43,7 @@ pub struct ServerState {
 
 pub fn router(server_state: ServerState) -> Router {
     Router::new()
+        .route("/linkup/sessions", get(handlers::sessions::list_sessions))
         .route(
             "/linkup/sessions/preview",
             post(handlers::sessions::upsert_preview),
@@ -50,6 +51,14 @@ pub fn router(server_state: ServerState) -> Router {
         .route(
             "/linkup/sessions/tunneled",
             post(handlers::sessions::upsert_tunneled),
+        )
+        .route(
+            "/linkup/sessions/isolated",
+            post(handlers::sessions::upsert_isolated),
+        )
+        .route(
+            "/linkup/sessions/{name}",
+            get(handlers::sessions::get_session).delete(handlers::sessions::delete_session),
         )
         .route("/linkup/check", get(handlers::always_ok))
         .fallback(any(handlers::proxy::handle_all))

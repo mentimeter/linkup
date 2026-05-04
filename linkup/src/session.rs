@@ -1,5 +1,5 @@
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 use regex::Regex;
@@ -9,6 +9,15 @@ use url::Url;
 use crate::{NameKind, TunnelData, config::Config};
 
 pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
+
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionKind {
+    #[default]
+    Tunneled,
+    Isolated,
+    Preview,
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Domain {
@@ -62,6 +71,19 @@ pub struct SessionResponse {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SessionsListResponse {
+    pub sessions: HashMap<String, Session>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SessionDetailResponse {
+    pub session_kind: SessionKind,
+    pub session_name: String,
+    pub services: Vec<SessionService>,
+    pub domains: Vec<Domain>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TunneledSessionResponse {
     pub session_name: String,
     pub tunnel_data: TunnelData,
@@ -69,6 +91,8 @@ pub struct TunneledSessionResponse {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Session {
+    #[serde(default)]
+    pub kind: SessionKind,
     pub session_token: String,
     pub services: Vec<SessionService>,
     pub domains: Vec<Domain>,
@@ -113,14 +137,36 @@ pub enum ConfigError {
     Empty,
 }
 
+impl SessionKind {
+    pub fn as_str(&self) -> &str {
+        match self {
+            SessionKind::Tunneled => "tunneled",
+            SessionKind::Isolated => "isolated",
+            SessionKind::Preview => "preview",
+        }
+    }
+}
+
+impl std::fmt::Display for SessionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionKind::Tunneled => write!(f, "tunneled"),
+            SessionKind::Isolated => write!(f, "isolated"),
+            SessionKind::Preview => write!(f, "preview"),
+        }
+    }
+}
+
 impl Session {
     pub fn new(
+        kind: SessionKind,
         session_token: String,
         services: Vec<SessionService>,
         domains: Vec<Domain>,
         cache_routes: Option<Vec<Regex>>,
     ) -> Result<Self, ConfigError> {
         let session = Self {
+            kind,
             session_token,
             services,
             domains,
@@ -128,6 +174,37 @@ impl Session {
         };
 
         session.validate()?;
+
+        Ok(session)
+    }
+
+    pub fn from_upsert_req(
+        kind: SessionKind,
+        req: UpsertSessionRequest,
+    ) -> Result<Self, ConfigError> {
+        let (session_token, services, domains, cache_routes) = match req {
+            UpsertSessionRequest::Named {
+                services,
+                domains,
+                cache_routes,
+                session_token,
+                ..
+            } => (session_token, services, domains, cache_routes),
+            UpsertSessionRequest::Unnamed {
+                services,
+                domains,
+                cache_routes,
+                session_token,
+                ..
+            } => (
+                session_token.unwrap_or_else(|| PREVIEW_SESSION_TOKEN.to_string()),
+                services,
+                domains,
+                cache_routes,
+            ),
+        };
+
+        let session = Self::new(kind, session_token, services, domains, cache_routes)?;
 
         Ok(session)
     }
@@ -210,38 +287,6 @@ impl Session {
     }
 }
 
-impl TryFrom<UpsertSessionRequest> for Session {
-    type Error = ConfigError;
-
-    fn try_from(req: UpsertSessionRequest) -> Result<Self, Self::Error> {
-        let (session_token, services, domains, cache_routes) = match req {
-            UpsertSessionRequest::Named {
-                services,
-                domains,
-                cache_routes,
-                session_token,
-                ..
-            } => (session_token, services, domains, cache_routes),
-            UpsertSessionRequest::Unnamed {
-                services,
-                domains,
-                cache_routes,
-                session_token,
-                ..
-            } => (
-                session_token.unwrap_or_else(|| PREVIEW_SESSION_TOKEN.to_string()),
-                services,
-                domains,
-                cache_routes,
-            ),
-        };
-
-        let session = Self::new(session_token, services, domains, cache_routes)?;
-
-        Ok(session)
-    }
-}
-
 impl TryFrom<serde_json::Value> for Session {
     type Error = ConfigError;
 
@@ -256,6 +301,7 @@ impl TryFrom<serde_json::Value> for Session {
 
 pub fn create_preview_req_from_config(
     config: &Config,
+    desired_name: Option<String>,
     services_overwrite: &[(String, Url)],
 ) -> UpsertSessionRequest {
     let mut session_services: Vec<SessionService> = Vec::with_capacity(config.services.len());
@@ -277,12 +323,21 @@ pub fn create_preview_req_from_config(
         });
     }
 
-    UpsertSessionRequest::Unnamed {
-        name_kind: NameKind::SixChar,
-        session_token: None,
-        services: session_services,
-        domains: config.domains.clone(),
-        cache_routes: config.linkup.cache_routes.clone(),
+    match desired_name {
+        Some(name) => UpsertSessionRequest::Named {
+            desired_name: name,
+            session_token: PREVIEW_SESSION_TOKEN.to_string(),
+            services: session_services,
+            domains: config.domains.clone(),
+            cache_routes: config.linkup.cache_routes.clone(),
+        },
+        None => UpsertSessionRequest::Unnamed {
+            name_kind: NameKind::SixChar,
+            session_token: None,
+            services: session_services,
+            domains: config.domains.clone(),
+            cache_routes: config.linkup.cache_routes.clone(),
+        },
     }
 }
 

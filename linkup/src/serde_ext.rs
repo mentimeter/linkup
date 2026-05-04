@@ -1,7 +1,53 @@
-use std::str::FromStr;
+use std::{fmt, marker::PhantomData, str::FromStr};
 
 use regex::Regex;
-use serde::{Deserialize, Deserializer, Serializer, ser::SerializeSeq};
+use serde::{Deserialize, Deserializer, Serializer, de, ser::SerializeSeq};
+
+/// This is to support flatten struct with optional Vec.
+/// With this, it now deserializes `Option<Vec<T>>` correctly even when YAML null is encountered via
+/// `#[serde(flatten)]`. In serde_yaml 0.9, flattened null values arrive as `visit_unit`
+/// instead of `visit_none`, which causes the default `Option` deserializer to forward the unit
+/// value to `Vec<T>`, this causes errors with "expected sequence". Using `deserialize_any`
+/// with an explicit `visit_unit -> None` arm fixes this.
+pub fn deserialize_optional_vec<'de, D, T>(d: D) -> Result<Option<Vec<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    struct V<T>(PhantomData<T>);
+
+    impl<'de, T: Deserialize<'de>> de::Visitor<'de> for V<T> {
+        type Value = Option<Vec<T>>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("null or a sequence")
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D2: Deserializer<'de>>(self, d: D2) -> Result<Self::Value, D2::Error> {
+            Vec::<T>::deserialize(d).map(Some)
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            let mut items = Vec::new();
+
+            while let Some(item) = seq.next_element::<T>()? {
+                items.push(item);
+            }
+
+            Ok(Some(items))
+        }
+    }
+
+    d.deserialize_any(V(PhantomData))
+}
 
 pub fn serialize_regex<S>(regex: &Regex, serializer: S) -> Result<S::Ok, S::Error>
 where
