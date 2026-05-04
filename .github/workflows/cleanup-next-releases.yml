@@ -1,0 +1,52 @@
+name: Cleanup Old Next Releases
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
+
+jobs:
+  cleanup:
+    name: Delete all next pre-releases except the latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old next pre-releases
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            const nextReleases = releases
+              .filter(r => r.prerelease && r.tag_name.startsWith('0.0.0-next-'))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            const [latest, ...old] = nextReleases;
+
+            if (latest) {
+              core.info(`Keeping latest release: ${latest.tag_name}`);
+            } else {
+              core.info('No next releases found.');
+
+              return;
+            }
+
+            for (const release of old) {
+              core.info(`Deleting release: ${release.tag_name}`);
+
+              await github.rest.repos.deleteRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.id,
+              });
+
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `tags/${release.tag_name}`,
+              });
+            }
+
+            core.info(`Cleaned up ${old.length} old next release(s).`);
