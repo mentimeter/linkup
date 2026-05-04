@@ -11,6 +11,7 @@ use crate::{NameKind, TunnelData, config::Config};
 pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
 pub enum SessionKind {
     #[default]
     Tunneled,
