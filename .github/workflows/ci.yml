@@ -15,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       # Create empty worker build artifacts
       - run: mkdir -p worker/build/worker
       - run: touch worker/build/worker/shim.mjs
@@ -41,6 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
 
       - uses: actions/setup-node@v6
         with:
@@ -66,6 +68,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: "false"
       # TODO(augustoccesar)[2026-02-25]: From 0.7.0, the worker-build version is aligned
       #   with the version of the worker crate. When bumping the worker, it needs to also
       #   bump the worker-build.
