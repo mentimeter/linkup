@@ -48,10 +48,20 @@ jobs:
         with:
           node-version: 22
 
+      # TODO(augustoccesar)[2026-05-04]: From 0.7.0, the worker-build version is aligned
+      #   with the version of the worker crate. When bumping the worker, it needs to also
+      #   bump the worker-build.
+      - name: Pre-build Worker
+        working-directory: worker
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo install -q worker-build@0.1.4
+          worker-build --release
+
       - name: Start Wrangler Worker
         working-directory: worker
         run: |
-          cp wrangler.toml.sample wrangler.toml
+          cp wrangler.ci.toml wrangler.toml
           npm install -g wrangler@latest
           nohup npx wrangler@latest dev > wrangler.log 2>&1 &
           tail -f wrangler.log | while read LOGLINE
