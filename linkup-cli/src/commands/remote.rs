@@ -31,17 +31,7 @@ pub async fn remote(args: &Args) -> Result<()> {
         return Err(anyhow!("No service names provided"));
     }
 
-    if !State::exists() {
-        println!(
-            "{}",
-            "Seems like you don't have any state yet to point to remote.".yellow()
-        );
-        println!("{}", "Have you run 'linkup start' at least once?".yellow());
-
-        return Ok(());
-    }
-
-    if services::local_server::find_pid().is_none() {
+    if !services::local_server::is_reachable().await {
         println!(
             "{}",
             "Seems like your local Linkup server is not running. Please run 'linkup start' first."
