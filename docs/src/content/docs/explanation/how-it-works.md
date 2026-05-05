@@ -13,7 +13,7 @@ In order to grasp how linkup works, it's important to understand three core conc
 
 Whenever you create a new linkup session, either for a local environment or for a preview environment, you will receive a unique linkup session name, which is a subdomain of your linkup domain.
 
-For example, `linkup start` might give you a `slim-gecko.example.com` (local environment) subdomain. Or `linkup preview` might give you `xyz123.example.com` (preview environment) subdomain.
+For example, `linkup start` might give you a `slim-gecko.example.com` (local environment) subdomain. Or `linkup sessions create-preview` might give you `xyz123.example.com` (preview environment) subdomain.
 
 This linkup session name will be used to identify all of the requests that belong to that session.
 

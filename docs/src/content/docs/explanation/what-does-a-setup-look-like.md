@@ -43,6 +43,6 @@ Linkup comes with a `linkup deploy` command that can deploy these resources to a
 
 Linkup allows you to connect either remotely deployed “preview-type” services to linkup sessions, or to connect services that you might have running locally on localhost, like a dev server.
 
-An example of a remotely deployed “preview” might be a deployed a copy of the `frontend-dev` service. For example, you might want to configure a GitHub action on pull requests when the frontend code has been changed to deploy a copy of the `frontend-dev` service to your infrastructure. Then, once the front-end component has been deployed, you can create a linkup session using the `linkup preview` command.
+An example of a remotely deployed “preview” might be a deployed a copy of the `frontend-dev` service. For example, you might want to configure a GitHub action on pull requests when the frontend code has been changed to deploy a copy of the `frontend-dev` service to your infrastructure. Then, once the front-end component has been deployed, you can create a linkup session using the `linkup sessions create-preview` command.
 
-On the other hand, if you have a locally running service on localhost, simply starting the service and telling linkup that you want it connected by running `linkup start` and `linkup local frontend` would be enough for you to get your linkup session running.
+On the other hand, if you have a locally running service on localhost, simply starting the service and telling linkup that you want it connected by running `linkup start` and `linkup route local frontend` would be enough for you to get your linkup session running.
