@@ -5,6 +5,7 @@ use std::process::Command;
 
 fn main() {
     println!("cargo::rerun-if-changed=../worker/src");
+    println!("cargo::rerun-if-changed=../linkup/src");
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR to be set");
 
