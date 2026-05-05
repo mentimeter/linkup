@@ -1,6 +1,7 @@
 mod create_isolated;
 mod create_preview;
 mod delete;
+mod list;
 
 use clap::Subcommand;
 
@@ -22,6 +23,9 @@ enum Command {
 
     #[clap(about = "Delete session")]
     Delete(delete::Args),
+
+    #[clap(about = "List sessions", aliases = ["ls"])]
+    List(list::Args),
 }
 
 pub async fn sessions(args: &Args, config: &Option<String>) -> Result<()> {
@@ -29,5 +33,6 @@ pub async fn sessions(args: &Args, config: &Option<String>) -> Result<()> {
         Command::CreatePreview(args) => create_preview::run(args, config).await,
         Command::CreateIsolated(args) => create_isolated::run(args, config).await,
         Command::Delete(args) => delete::run(args).await,
+        Command::List(args) => list::run(args).await,
     }
 }
