@@ -58,10 +58,11 @@ pub trait StringStore {
     fn list(&self) -> impl Future<Output = Result<Vec<(String, String)>, SessionError>>;
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NameKind {
     Animal,
+    #[default]
     SixChar,
 }
 
