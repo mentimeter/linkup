@@ -11,23 +11,21 @@ sidebar:
 
 ## Installing the CLI
 
-### With Homebrew
+### Using the `install.sh` script (Recommended)
 
-To use link up locally the easiest way to get started is to use the linkup cli:
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install.sh | bash
+
+# Or to install a pre-release version (beta)
+
+curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install.sh | bash -s -- --channel beta
+```
+
+### With Homebrew
 
 ```sh
 brew tap mentimeter/mentimeter
 brew install linkup
-```
-
-### Using the `install.py` script
-
-```sh
-curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install.py | python3
-
-# Or to install a pre-release version (beta)
-
-curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install.py | python3 - --channel beta
 ```
 
 Once you have the cli installed you can start a linkup session by running:
