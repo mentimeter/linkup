@@ -117,9 +117,7 @@ mod github {
             .parse()
             .expect("GitHub URL to be correct");
 
-        let release = fetch(url).await?;
-
-        Ok(Some(release))
+        fetch(url).await
     }
 
     pub(super) async fn fetch_beta_release() -> Result<Option<Release>, Error> {
@@ -127,7 +125,7 @@ mod github {
             .parse()
             .expect("GitHub URL to be correct");
 
-        let releases: Vec<Release> = fetch(url).await?;
+        let releases: Vec<Release> = fetch(url).await?.unwrap_or_default();
 
         let beta_release = releases
             .into_iter()
@@ -136,7 +134,7 @@ mod github {
         Ok(beta_release)
     }
 
-    async fn fetch<T>(url: Url) -> Result<T, Error>
+    async fn fetch<T>(url: Url) -> Result<Option<T>, Error>
     where
         T: DeserializeOwned,
     {
@@ -159,6 +157,10 @@ mod github {
 
         let response = client.execute(req).await?;
 
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
         if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
             // https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#checking-the-status-of-your-rate-limit
             let retry_at = response
@@ -171,7 +173,7 @@ mod github {
             return Err(Error::RateLimit(retry_at));
         }
 
-        Ok(response.json::<T>().await?)
+        Ok(Some(response.json::<T>().await?))
     }
 }
 
@@ -291,10 +293,10 @@ impl CachedReleases {
         }
     }
 
-    fn get_release(&self, channel: VersionChannel) -> Option<&Release> {
+    fn get_release(&self, channel: &VersionChannel) -> Option<&Release> {
         self.releases
             .iter()
-            .find(|update| update.channel == channel)
+            .find(|update| &update.channel == channel)
     }
 }
 
@@ -329,7 +331,7 @@ pub async fn check_for_update(
 
     let cached_releases = CachedReleases::load();
     let release = match cached_releases {
-        Some(cached_releases) => cached_releases.get_release(channel).cloned(),
+        Some(cached_releases) => cached_releases.get_release(&channel).cloned(),
         None => {
             let os = std::env::consts::OS;
             let arch = std::env::consts::ARCH;
@@ -360,11 +362,13 @@ pub async fn check_for_update(
                 }
             };
 
-            new_cache.get_release(channel).cloned()
+            new_cache.get_release(&channel).cloned()
         }
     };
 
-    release.filter(|release| &release.version > current_version)
+    release.filter(|release| {
+        channel != current_version.channel() || &release.version > current_version
+    })
 }
 
 fn now() -> u64 {
