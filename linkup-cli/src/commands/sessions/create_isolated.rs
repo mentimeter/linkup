@@ -18,7 +18,7 @@ pub(super) struct Args {
 }
 
 pub(super) async fn run(args: &Args, config: &Option<String>) -> Result<()> {
-    if local_server::find_pid().is_none() {
+    if !local_server::is_reachable().await {
         println!(
             "{}",
             "Seems like your local Linkup server is not running. Please run 'linkup start' first."
