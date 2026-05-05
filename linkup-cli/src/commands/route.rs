@@ -6,14 +6,23 @@ use crate::{
     state::{ServiceTarget, State},
 };
 
+#[derive(clap::ValueEnum, Clone)]
+pub enum Target {
+    Local,
+    Remote,
+}
+
 #[derive(clap::Args)]
 pub struct Args {
+    target: Target,
+
+    #[arg(required_unless_present = "all")]
     service_names: Vec<String>,
 
     #[arg(
         short,
         long,
-        help = "Route all the services to local. Cannot be used with SERVICE_NAMES.",
+        help = "Route all services. Cannot be used with SERVICE_NAMES.",
         conflicts_with = "service_names"
     )]
     all: bool,
@@ -26,11 +35,7 @@ pub struct Args {
     session: Option<String>,
 }
 
-pub async fn local(args: &Args) -> Result<()> {
-    if args.service_names.is_empty() && !args.all {
-        return Err(anyhow!("No service names provided"));
-    }
-
+pub async fn route(args: &Args) -> Result<()> {
     if !services::local_server::is_reachable().await {
         println!(
             "{}",
@@ -41,38 +46,42 @@ pub async fn local(args: &Args) -> Result<()> {
         return Ok(());
     }
 
+    let service_target = match args.target {
+        Target::Local => ServiceTarget::Local,
+        Target::Remote => ServiceTarget::Remote,
+    };
+
     if let Some(session_name) = &args.session {
         let mut state = State::load_with_suffix(session_name)
             .with_context(|| format!("Failed to load state for session '{}'", session_name))?;
 
-        set_service_targets(
-            &mut state,
-            &args.service_names,
-            args.all,
-            ServiceTarget::Local,
-        )?;
+        set_service_targets(&mut state, &args.service_names, args.all, service_target)?;
 
         services::local_server::update_isolated_state(&mut state).await?;
         state.save_with_suffix(session_name)?;
     } else {
         let mut state = State::load()?;
 
-        set_service_targets(
-            &mut state,
-            &args.service_names,
-            args.all,
-            ServiceTarget::Local,
-        )?;
+        set_service_targets(&mut state, &args.service_names, args.all, service_target)?;
 
         services::local_server::update_state(&mut state).await?;
     }
 
+    let target_label = match args.target {
+        Target::Local => "local",
+        Target::Remote => "remote",
+    };
+
     if args.all {
-        println!("Linkup is routing all traffic to the local servers");
+        println!(
+            "Linkup is routing all traffic to the {} servers",
+            target_label
+        );
     } else {
         println!(
-            "Linkup is routing {} traffic to the local server",
-            args.service_names.join(", ")
+            "Linkup is routing {} traffic to the {} server",
+            args.service_names.join(", "),
+            target_label
         );
     }
 

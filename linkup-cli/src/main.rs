@@ -206,11 +206,8 @@ enum Commands {
     #[clap(about = "Stop a running linkup session")]
     Stop(commands::StopArgs),
 
-    #[clap(about = "Route session traffic to a local service")]
-    Local(commands::LocalArgs),
-
-    #[clap(about = "Route session traffic to a remote service")]
-    Remote(commands::RemoteArgs),
+    #[clap(about = "Route session traffic to a local or remote service")]
+    Route(commands::RouteArgs),
 
     #[clap(about = "View linkup component and service status")]
     Status(commands::StatusArgs),
@@ -261,8 +258,7 @@ async fn main() {
         Commands::Health(args) => commands::health(args),
         Commands::Start(args) => commands::start(args, &cli.config).await,
         Commands::Stop(args) => commands::stop(args, true),
-        Commands::Local(args) => commands::local(args).await,
-        Commands::Remote(args) => commands::remote(args).await,
+        Commands::Route(args) => commands::route(args).await,
         Commands::Status(args) => commands::status(args).await,
         Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Completion(args) => commands::completion(args),
