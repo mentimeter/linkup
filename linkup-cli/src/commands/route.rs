@@ -1,5 +1,6 @@
 use anyhow::{Context, anyhow};
 use colored::Colorize;
+use url::Url;
 
 use crate::{
     Result, services,
@@ -7,14 +8,14 @@ use crate::{
 };
 
 #[derive(clap::ValueEnum, Clone)]
-pub enum Target {
+pub enum TargetArg {
     Local,
     Remote,
 }
 
 #[derive(clap::Args)]
 pub struct Args {
-    target: Target,
+    target: TargetArg,
 
     #[arg(required_unless_present = "all")]
     service_names: Vec<String>,
@@ -47,41 +48,45 @@ pub async fn route(args: &Args) -> Result<()> {
     }
 
     let service_target = match args.target {
-        Target::Local => ServiceTarget::Local,
-        Target::Remote => ServiceTarget::Remote,
+        TargetArg::Local => ServiceTarget::Local,
+        TargetArg::Remote => ServiceTarget::Remote,
     };
 
-    if let Some(session_name) = &args.session {
+    let (state, target_map) = if let Some(session_name) = &args.session {
         let mut state = State::load_with_suffix(session_name)
             .with_context(|| format!("Failed to load state for session '{}'", session_name))?;
 
-        set_service_targets(&mut state, &args.service_names, args.all, service_target)?;
+        let target_map =
+            set_service_targets(&mut state, &args.service_names, args.all, service_target)?;
 
         services::local_server::update_isolated_state(&mut state).await?;
         state.save_with_suffix(session_name)?;
+
+        (state, target_map)
     } else {
         let mut state = State::load()?;
 
-        set_service_targets(&mut state, &args.service_names, args.all, service_target)?;
+        let target_map =
+            set_service_targets(&mut state, &args.service_names, args.all, service_target)?;
 
         services::local_server::update_state(&mut state).await?;
-    }
 
-    let target_label = match args.target {
-        Target::Local => "local",
-        Target::Remote => "remote",
+        (state, target_map)
     };
 
-    if args.all {
+    let name_width = target_map
+        .iter()
+        .map(|(service_name, _)| service_name.len())
+        .max()
+        .unwrap_or(0);
+
+    println!("\nSession: {}", state.linkup.session_name.bold());
+    for (service_name, url) in &target_map {
         println!(
-            "Linkup is routing all traffic to the {} servers",
-            target_label
-        );
-    } else {
-        println!(
-            "Linkup is routing {} traffic to the {} server",
-            args.service_names.join(", "),
-            target_label
+            "  {:<width$}  ->  {}",
+            service_name,
+            url,
+            width = name_width,
         );
     }
 
@@ -93,10 +98,14 @@ fn set_service_targets(
     service_names: &[String],
     all: bool,
     target: ServiceTarget,
-) -> Result<()> {
+) -> Result<Vec<(String, Url)>> {
+    let mut new_targets = Vec::new();
+
     if all {
         for service in state.services.iter_mut() {
             service.current = target.clone();
+
+            new_targets.push((service.config.name.clone(), service.current_url()));
         }
     } else {
         for service_name in service_names {
@@ -107,8 +116,12 @@ fn set_service_targets(
                 .ok_or_else(|| anyhow!("Service '{}' does not exist", service_name))?;
 
             service.current = target.clone();
+
+            new_targets.push((service.config.name.clone(), service.current_url()));
         }
     }
 
-    Ok(())
+    new_targets.sort_by(|a, b| a.0.cmp(&b.0));
+
+    Ok(new_targets)
 }
