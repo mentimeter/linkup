@@ -52,6 +52,7 @@ pub enum UpsertSessionRequest {
         cache_routes: Option<Vec<Regex>>,
     },
     Unnamed {
+        #[serde(default)]
         name_kind: NameKind,
         session_token: Option<String>,
         services: Vec<SessionService>,
