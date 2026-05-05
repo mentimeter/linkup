@@ -1,0 +1,19 @@
+name = "linkup-worker"
+main = "build/worker/shim.mjs"
+compatibility_date = "2024-05-30"
+
+kv_namespaces = [
+  { binding = "LINKUP_SESSIONS", id = "xxx_sessions" },
+  { binding = "LINKUP_TUNNELS", id = "xxx_tunnels" },
+]
+
+[vars]
+CLOUDFLARE_ACCOUNT_ID = ""
+CLOUDFLARE_TUNNEL_ZONE_ID = ""
+CLOUDLFLARE_ALL_ZONE_IDS = ""
+CLOUDFLARE_API_TOKEN = ""
+TUNNEL_NAME_PREFIX = "linkup-tunnel-wrangler-"
+WORKER_TOKEN = "token123"
+
+[triggers]
+crons = [ "0 12 * * 2-6" ]
