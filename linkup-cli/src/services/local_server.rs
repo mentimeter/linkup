@@ -80,7 +80,7 @@ pub fn find_pid() -> Option<Pid> {
     super::find_pid(ID)
 }
 
-async fn is_reachable() -> bool {
+pub async fn is_reachable() -> bool {
     matches!(
         LocalServerClient::new(&url()).health_check().await,
         Ok(true)

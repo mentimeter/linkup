@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, anyhow};
 use linkup::SessionKind;
 
-use crate::{Result, state::State};
+use crate::{Result, services::local_server, state::State};
 use crate::{
     env_files::write_to_env_file,
     services,
@@ -25,7 +25,7 @@ pub struct Args {
 
 pub async fn start(args: &Args, config_arg: &Option<String>) -> Result<()> {
     if let Ok(existing) = State::load()
-        && services::local_server::find_pid().is_some()
+        && local_server::is_reachable().await
     {
         let requested = if args.isolated {
             SessionKind::Isolated
