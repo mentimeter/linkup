@@ -1,49 +1,37 @@
-use crate::Result;
-use crate::commands::deploy::{
-    api::AccountCloudflareApi, auth, console_notify::ConsoleNotifier, resources::cf_resources,
+use anyhow::Result;
+
+use super::cloudflare::{
+    api::{AccountCloudflareApi, CloudflareApi},
+    auth,
+    resources::{TargetCfResources, cf_resources},
+};
+use super::{
+    Args as InfraArgs,
+    notifier::{ConsoleNotifier, DeployNotifier},
 };
 
-use super::{api::CloudflareApi, cf_deploy::DeployNotifier, resources::TargetCfResources};
-
 #[derive(clap::Args)]
-pub struct DestroyArgs {
-    #[arg(short = 'e', long = "email", help = "Cloudflare user email")]
-    email: String,
+pub struct DestroyArgs {}
 
-    #[arg(short = 'k', long = "api-key", help = "Cloudflare user global API Key")]
-    api_key: String,
-
-    #[arg(short = 'a', long = "account-id", help = "Cloudflare account ID")]
-    account_id: String,
-
-    #[arg(
-        short = 'z',
-        long = "zone-ids",
-        help = "Cloudflare zone IDs",
-        num_args = 1..,
-        required = true
-    )]
-    zone_ids: Vec<String>,
-}
-
-pub async fn destroy(args: &DestroyArgs) -> Result<()> {
+pub async fn destroy(_args: &DestroyArgs, infra_args: &InfraArgs) -> Result<()> {
     println!("Destroying from Cloudflare...");
-    println!("Account ID: {}", args.account_id);
-    println!("Zone IDs: {:?}", args.zone_ids);
+    println!("Account ID: {}", infra_args.account_id);
+    println!("Zone IDs: {:?}", infra_args.zone_ids);
 
-    let auth = auth::CloudflareGlobalTokenAuth::new(args.api_key.clone(), args.email.clone());
-    let zone_ids_strings: Vec<String> = args.zone_ids.iter().map(|s| s.to_string()).collect();
+    let auth =
+        auth::CloudflareGlobalTokenAuth::new(infra_args.api_key.clone(), infra_args.email.clone());
+    let zone_ids_strings: Vec<String> = infra_args.zone_ids.iter().map(|s| s.to_string()).collect();
 
     let cloudflare_api = AccountCloudflareApi::new(
-        args.account_id.to_string(),
+        infra_args.account_id.to_string(),
         zone_ids_strings.clone(),
         Box::new(auth),
     );
 
     let cloudflare_client = cloudflare::framework::async_api::Client::new(
         cloudflare::framework::auth::Credentials::UserAuthKey {
-            email: args.email.clone(),
-            key: args.api_key.clone(),
+            email: infra_args.email.clone(),
+            key: infra_args.api_key.clone(),
         },
         cloudflare::framework::HttpApiClientConfig::default(),
         cloudflare::framework::Environment::Production,
@@ -59,11 +47,11 @@ pub async fn destroy(args: &DestroyArgs) -> Result<()> {
     }
 
     let resources = cf_resources(
-        args.account_id.clone(),
-        args.zone_ids[0].clone(),
+        infra_args.account_id.clone(),
+        infra_args.zone_ids[0].clone(),
         zone_names[0].clone(),
         &zone_names,
-        &args.zone_ids,
+        &infra_args.zone_ids,
     );
 
     destroy_from_cloudflare(&resources, &cloudflare_api, &cloudflare_client, &notifier).await?;

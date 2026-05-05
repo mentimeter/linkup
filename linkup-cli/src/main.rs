@@ -230,16 +230,13 @@ enum Commands {
     #[clap(about = "Uninstall linkup and cleanup configurations.")]
     Uninstall(commands::UninstallArgs),
 
-    #[clap(about = "Deploy services to Cloudflare")]
-    Deploy(commands::DeployArgs),
-
-    #[clap(about = "Destroy/remove linkup installation from Cloudflare")]
-    Destroy(commands::DestroyArgs),
-
     // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
     // It is called on `start` to start the local-server.
     #[clap(hide = true)]
     Server(commands::ServerArgs),
+
+    #[clap(hide = true, about = "Manage linkup infrastructure on Cloudflare")]
+    Infra(commands::InfraArgs),
 }
 
 #[tokio::main]
@@ -270,8 +267,7 @@ async fn main() {
         Commands::Server(args) => commands::server(args, &cli.config).await,
         Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,
         Commands::Update(args) => commands::update(args).await,
-        Commands::Deploy(args) => commands::deploy(args).await,
-        Commands::Destroy(args) => commands::destroy(args).await,
+        Commands::Infra(args) => commands::infra(args).await,
     };
 
     if let Err(error) = result {
