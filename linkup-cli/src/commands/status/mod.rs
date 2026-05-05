@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
-    commands, services,
+    commands,
+    services::{self, local_server},
     session::{SessionRow, format_state_domains, print_sessions_table},
     state::{State, get_config},
 };
@@ -36,12 +37,12 @@ pub struct Args {
 }
 
 pub async fn status(args: &Args) -> anyhow::Result<()> {
-    if !State::exists() {
+    if !local_server::is_reachable().await {
         println!(
             "{}",
-            "Seems like you don't have any state yet, so there is no status to report.".yellow()
+            "Seems like your local Linkup server is not running. Please run 'linkup start' first."
+                .yellow()
         );
-        println!("{}", "Have you run 'linkup start' at least once?".yellow());
 
         return Ok(());
     }

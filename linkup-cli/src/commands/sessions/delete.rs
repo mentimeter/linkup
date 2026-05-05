@@ -12,14 +12,7 @@ pub struct Args {
 }
 
 pub async fn run(args: &Args) -> Result<()> {
-    if !State::exists() {
-        println!("{}", "Seems like you don't have any state yet.".yellow());
-        println!("{}", "Have you run 'linkup start' at least once?".yellow());
-
-        return Ok(());
-    }
-
-    if local_server::find_pid().is_none() {
+    if !local_server::is_reachable().await {
         println!(
             "{}",
             "Seems like your local Linkup server is not running. Please run 'linkup start' first."
