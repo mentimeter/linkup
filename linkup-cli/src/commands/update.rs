@@ -105,6 +105,15 @@ pub async fn update(args: &Args) -> Result<()> {
                         &current_linkup_path.display().to_string(),
                     ])
                     .spawn()?;
+
+                std::process::Command::new("sudo")
+                    .args(["rm", "-f"])
+                    .arg(&bkp_linkup_path)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .expect("failed to remove backup exe");
             }
 
             #[cfg(not(target_os = "linux"))]
@@ -113,6 +122,7 @@ pub async fn update(args: &Args) -> Result<()> {
                     .expect("failed to move the current exe into a backup");
                 fs::rename(&new_linkup_path, &current_linkup_path)
                     .expect("failed to move the new exe as the current exe");
+                fs::remove_file(&bkp_linkup_path).expect("failed to remove backup exe");
             }
 
             println!("Finished update!");
