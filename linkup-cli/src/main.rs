@@ -230,13 +230,13 @@ enum Commands {
     #[clap(about = "Uninstall linkup and cleanup configurations.")]
     Uninstall(commands::UninstallArgs),
 
+    #[clap(about = "Manage linkup infrastructure on Cloudflare")]
+    Infra(commands::InfraArgs),
+
     // Server command is hidden beacuse it is supposed to be managed only by the CLI itself.
     // It is called on `start` to start the local-server.
     #[clap(hide = true)]
     Server(commands::ServerArgs),
-
-    #[clap(hide = true, about = "Manage linkup infrastructure on Cloudflare")]
-    Infra(commands::InfraArgs),
 }
 
 #[tokio::main]

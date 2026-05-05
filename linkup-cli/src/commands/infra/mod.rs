@@ -32,7 +32,10 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum InfraSubcommand {
+    #[clap(about = "Deploy services to Cloudflare")]
     Deploy(deploy::DeployArgs),
+
+    #[clap(about = "Destroy/remove linkup installation from Cloudflare")]
     Destroy(destroy::DestroyArgs),
 }
 
