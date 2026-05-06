@@ -1,29 +1,35 @@
 use std::io::stdout;
 
-use clap::{Command, CommandFactory};
-use clap_complete::{Generator, Shell, generate};
+use anyhow::anyhow;
+use clap::CommandFactory;
+use clap_complete::{Shell, generate};
 
 use crate::{Cli, Result};
 
 #[derive(clap::Args)]
 pub struct Args {
-    #[arg(long, value_enum)]
+    #[arg(
+        long,
+        value_enum,
+        help = "Shell to generate completions for. If omitted, $SHELL is used to auto-detect."
+    )]
     shell: Option<Shell>,
 }
 
 pub fn completion(args: &Args) -> Result<()> {
-    if let Some(shell) = &args.shell {
-        let mut cmd = Cli::command();
-        print_completions(shell, &mut cmd);
-    }
+    let shell = match args.shell {
+        Some(shell) => shell,
+        None => Shell::from_env().ok_or_else(|| {
+            anyhow!(
+                "Could not detect your shell from $SHELL. \
+                 Pass --shell explicitly (supported: bash, zsh, fish, elvish, powershell)."
+            )
+        })?,
+    };
+
+    let mut cmd = Cli::command();
+    let name = cmd.get_name().to_string();
+    generate(shell, &mut cmd, name, &mut stdout());
 
     Ok(())
-}
-fn print_completions<G: Generator + Clone>(generator: &G, cmd: &mut Command) {
-    generate(
-        generator.clone(),
-        cmd,
-        cmd.get_name().to_string(),
-        &mut stdout(),
-    );
 }
