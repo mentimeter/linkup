@@ -5,44 +5,74 @@ sidebar:
   order: 2
 ---
 
-We established in the last chapter that Linkup helps you to connect _shared unchanged services_ with services that _have changes_.
+We established in the last chapter that Linkup helps you to connect _shared
+unchanged services_ with services that _have changes_.
 
-We will now explain what a setup might look like that deploys both of these kinds of services and uses a linkup deployment to connect them together.
+We will now explain what a setup might look like that deploys both of these
+kinds of services and uses a linkup deployment to connect them together.
 
 ### Configure your code base
 
 Three things may need to be configured in your codebase for linkup to work well:
 
-1. Linkup needs a configuration file that describes the layout of your services and their routing requirements.
-2. The services in your linkup environment need to be configured with a set of environment variables that match your linkup configuration. Always use the "general" domain names of your linkup environment, like `api.example.com`, never `smart-snake.api.example.com` and your setup will work well.
-3. You may need to instrument your backend services to [propogate opentelemetry state](https://opentelemetry.io/docs/concepts/context-propagation/).
+1. Linkup needs a configuration file that describes the layout of your services
+   and their routing requirements.
+2. The services in your linkup environment need to be configured with a set of
+   environment variables that match your linkup configuration. Always use the
+   "general" domain names of your linkup environment, like `api.example.com`,
+   never `smart-snake.api.example.com` and your setup will work well.
+3. You may need to instrument your backend services to
+   [propogate opentelemetry state](https://opentelemetry.io/docs/concepts/context-propagation/).
 
 More information on configuration [here](/linkup/guides/configure).
 
 ### Deploying the unchanged services
 
-The best way to keep a set of “unchanged” services available for linkup sessions to use is to build in the deployment of these dev environment copies to your existing CI/CD pipeline.
+The best way to keep a set of “unchanged” services available for linkup sessions
+to use is to build in the deployment of these dev environment copies to your
+existing CI/CD pipeline.
 
-For example, on deployment to main, you might have a GitHub Actions workflow that redeploys your `frontend-dev` service, so that the `frontend-dev` service used by all other linkup sessions is the latest, most up-to-date version.
+For example, on deployment to main, you might have a GitHub Actions workflow
+that redeploys your `frontend-dev` service, so that the `frontend-dev` service
+used by all other linkup sessions is the latest, most up-to-date version.
 
-Importantly, if your `frontend-dev` service lives on a fixed domain, then all other linkup sessions using that unchanged service won't need to recreate their linkup sessions for the new `frontend-dev` changes from latest main to become live in their sessions.
+Importantly, if your `frontend-dev` service lives on a fixed domain, then all
+other linkup sessions using that unchanged service won't need to recreate their
+linkup sessions for the new `frontend-dev` changes from latest main to become
+live in their sessions.
 
 ### Deploying the linkup infrastructure
 
-To run complete linkup environments, you need to deploy a few pieces of linkup infrastructure to a dedicated Cloudflare zone. A Cloudflare zone is approximately equivalent to a domain.
+To run complete linkup environments, you need to deploy a few pieces of linkup
+infrastructure to a dedicated Cloudflare zone. A Cloudflare zone is
+approximately equivalent to a domain.
 
 Linkup needs to deploy:
 
-- a Cloudflare worker (a single account-level script) plus the routes and DNS records that bind it to each zone you deploy to
+- a Cloudflare worker (a single account-level script) plus the routes and DNS
+  records that bind it to each zone you deploy to
 - two Cloudflare key-value stores for session state and tunnel records
-- a set of other smaller Cloudflare resources, such as a caching rule for tunnel traffic and an account-level API token used by the worker to provision tunnels
+- a set of other smaller Cloudflare resources, such as a caching rule for tunnel
+  traffic and an account-level API token used by the worker to provision tunnels
 
-Linkup comes with a `linkup infra deploy` command that can deploy these resources to a zone of your choice on your behalf, and a `linkup infra destroy` command to clean up those resources if needed.
+Linkup comes with a `linkup infra deploy` command that can deploy these
+resources to a zone of your choice on your behalf, and a `linkup infra destroy`
+command to clean up those resources if needed.
 
 ### Connecting the changed services
 
-Linkup allows you to connect either remotely deployed “preview-type” services to linkup sessions, or to connect services that you might have running locally on localhost, like a dev server.
+Linkup allows you to connect either remotely deployed “preview-type” services to
+linkup sessions, or to connect services that you might have running locally on
+localhost, like a dev server.
 
-An example of a remotely deployed “preview” might be a deployed a copy of the `frontend-dev` service. For example, you might want to configure a GitHub action on pull requests when the frontend code has been changed to deploy a copy of the `frontend-dev` service to your infrastructure. Then, once the front-end component has been deployed, you can create a linkup session using the `linkup sessions create-preview` command.
+An example of a remotely deployed “preview” might be a deployed a copy of the
+`frontend-dev` service. For example, you might want to configure a GitHub action
+on pull requests when the frontend code has been changed to deploy a copy of the
+`frontend-dev` service to your infrastructure. Then, once the front-end
+component has been deployed, you can create a linkup session using the
+`linkup sessions create-preview` command.
 
-On the other hand, if you have a locally running service on localhost, simply starting the service and telling linkup that you want it connected by running `linkup start` and `linkup route local frontend` would be enough for you to get your linkup session running.
+On the other hand, if you have a locally running service on localhost, simply
+starting the service and telling linkup that you want it connected by running
+`linkup start` and `linkup route local frontend` would be enough for you to get
+your linkup session running.

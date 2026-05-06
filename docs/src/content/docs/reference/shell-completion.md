@@ -3,9 +3,12 @@ title: Shell Completion
 description: Generate shell autocompletions for the linkup CLI
 ---
 
-`linkup completion` prints a shell-completion script to standard output, auto-detecting your shell from `$SHELL`. Pipe it to the right place for your shell and tab-completion will work for Linkup invocations.
+`linkup completion` prints a shell-completion script to standard output,
+auto-detecting your shell from `$SHELL`. Pipe it to the right place for your
+shell and tab-completion will work for Linkup invocations.
 
-To generate completions for a different shell (for example when packaging), pass `--shell <bash|zsh|fish|elvish|powershell>` explicitly.
+To generate completions for a different shell (for example when packaging), pass
+`--shell <bash|zsh|fish|elvish|powershell>` explicitly.
 
 ## Supported shells
 

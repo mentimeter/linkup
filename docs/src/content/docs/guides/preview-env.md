@@ -17,7 +17,8 @@ description: Connect remote services to a persistent linkup preview environment
 
 A preview environment, on the other hand:
 
-- consists only of services deployed to the internet (e.g. `my-pr-deploy-123.previewinfra.com`)
+- consists only of services deployed to the internet (e.g.
+  `my-pr-deploy-123.previewinfra.com`)
 - has no tunnels or tunneling infrastructure to `localhost`
 - is always online, as long as the underlying services are up
 
@@ -57,13 +58,23 @@ linkup sessions create-preview my-pr \
 
 ## How the preview session is composed
 
-`linkup sessions create-preview` reads your local Linkup config (the YAML file pointed at by `LINKUP_CONFIG` or `--config`) and sends an assembled session to the worker.
+`linkup sessions create-preview` reads your local Linkup config (the YAML file
+pointed at by `LINKUP_CONFIG` or `--config`) and sends an assembled session to
+the worker.
 
-For each service defined in the config, the preview session uses the service's `remote` URL by default. Pass `<service-name>=<url>` to override the default for one or more services. Service names that don't exist in the config are ignored. The session's `domains`, per-service `rewrites`, and `linkup.cache_routes` are copied from the config unchanged.
+For each service defined in the config, the preview session uses the service's
+`remote` URL by default. Pass `<service-name>=<url>` to override the default for
+one or more services. Service names that don't exist in the config are ignored.
+The session's `domains`, per-service `rewrites`, and `linkup.cache_routes` are
+copied from the config unchanged.
 
-The CLI doesn't talk to your local server, but it does need to reach the deployed Linkup worker, so a valid `worker_url` and `worker_token` in your config are required. See the [Config Reference](/linkup/reference/config) for those fields.
+The CLI doesn't talk to your local server, but it does need to reach the
+deployed Linkup worker, so a valid `worker_url` and `worker_token` in your
+config are required. See the [Config Reference](/linkup/reference/config) for
+those fields.
 
-Pass `--print-request` to write the assembled JSON to stdout instead of sending it.
+Pass `--print-request` to write the assembled JSON to stdout instead of sending
+it.
 
 ## Listing sessions
 
@@ -73,9 +84,9 @@ linkup sessions list
 
 ## How it differs from local sessions
 
-| Feature | `linkup start` (tunneled) | `linkup sessions create-preview` |
-|---------|--------------------------|----------------------------------|
-| Services | Local + remote | Remote only |
-| Tunnel required | Yes | No |
-| Available when laptop is off | No | Yes |
-| Use case | Local development | CI/CD, sharing with teammates |
+| Feature                      | `linkup start` (tunneled) | `linkup sessions create-preview` |
+| ---------------------------- | ------------------------- | -------------------------------- |
+| Services                     | Local + remote            | Remote only                      |
+| Tunnel required              | Yes                       | No                               |
+| Available when laptop is off | No                        | Yes                              |
+| Use case                     | Local development         | CI/CD, sharing with teammates    |
