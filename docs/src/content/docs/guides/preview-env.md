@@ -55,6 +55,16 @@ linkup sessions create-preview my-pr \
   backend=https://my-pr-api-123.example.com
 ```
 
+## How the preview session is composed
+
+`linkup sessions create-preview` reads your local Linkup config (the YAML file pointed at by `LINKUP_CONFIG` or `--config`) and sends an assembled session to the worker.
+
+For each service defined in the config, the preview session uses the service's `remote` URL by default. Pass `<service-name>=<url>` to override the default for one or more services. Service names that don't exist in the config are ignored. The session's `domains`, per-service `rewrites`, and `linkup.cache_routes` are copied from the config unchanged.
+
+The CLI doesn't talk to your local server, but it does need to reach the deployed Linkup worker, so a valid `worker_url` and `worker_token` in your config are required. See the [Config Reference](/linkup/reference/config) for those fields.
+
+Pass `--print-request` to write the assembled JSON to stdout instead of sending it.
+
 ## Listing sessions
 
 ```sh
