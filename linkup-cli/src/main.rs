@@ -197,9 +197,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    #[clap(about = "Output the health of the CLI service")]
-    Health(commands::HealthArgs),
-
     #[clap(about = "Start a new linkup session")]
     Start(commands::StartArgs),
 
@@ -209,23 +206,26 @@ enum Commands {
     #[clap(about = "Route session traffic to a local or remote service")]
     Route(commands::RouteArgs),
 
+    #[clap(about = "Manage sessions")]
+    Sessions(commands::SessionsArgs),
+
     #[clap(about = "View linkup component and service status")]
     Status(commands::StatusArgs),
 
+    #[clap(about = "Output the health of the CLI service")]
+    Health(commands::HealthArgs),
+
     #[clap(about = "Speed up your local environment by routing traffic locally when possible")]
     LocalDNS(commands::LocalDnsArgs),
-
-    #[clap(about = "Generate completions for your shell")]
-    Completion(commands::CompletionArgs),
-
-    #[clap(about = "Manage sessions")]
-    Sessions(commands::SessionsArgs),
 
     #[clap(about = "Update linkup to the latest released version.")]
     Update(commands::UpdateArgs),
 
     #[clap(about = "Uninstall linkup and cleanup configurations.")]
     Uninstall(commands::UninstallArgs),
+
+    #[clap(about = "Generate completions for your shell")]
+    Completion(commands::CompletionArgs),
 
     #[clap(about = "Manage linkup infrastructure on Cloudflare")]
     Infra(commands::InfraArgs),
@@ -252,18 +252,18 @@ async fn main() {
     display_update_message(&cli.command).await;
 
     let result = match &cli.command {
-        Commands::Health(args) => commands::health(args),
         Commands::Start(args) => commands::start(args, &cli.config).await,
         Commands::Stop(args) => commands::stop(args, true),
         Commands::Route(args) => commands::route(args).await,
-        Commands::Status(args) => commands::status(args).await,
-        Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
-        Commands::Completion(args) => commands::completion(args),
         Commands::Sessions(args) => commands::sessions(args, &cli.config).await,
-        Commands::Server(args) => commands::server(args, &cli.config).await,
-        Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,
+        Commands::Status(args) => commands::status(args).await,
+        Commands::Health(args) => commands::health(args),
+        Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
         Commands::Update(args) => commands::update(args).await,
+        Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,
+        Commands::Completion(args) => commands::completion(args),
         Commands::Infra(args) => commands::infra(args).await,
+        Commands::Server(args) => commands::server(args, &cli.config).await,
     };
 
     if let Err(error) = result {
