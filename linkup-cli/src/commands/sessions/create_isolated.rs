@@ -5,7 +5,7 @@ use linkup::{NameKind, Session, SessionKind, UpsertSessionRequest};
 use linkup_clients::LocalServerClient;
 
 use crate::{
-    Result,
+    Result, commands,
     services::local_server,
     session::{SessionRow, print_sessions_table},
     state,
@@ -22,6 +22,16 @@ pub(super) async fn run(args: &Args, config: &Option<String>) -> Result<()> {
         println!(
             "{}",
             "Seems like your local Linkup server is not running. Please run 'linkup start' first."
+                .yellow()
+        );
+
+        return Ok(());
+    }
+
+    if !commands::local_dns::is_installed(None, config) {
+        println!(
+            "{}",
+            "Isolated sessions requires Local DNS to be configured.\nPlease run 'linkup local-dns install' first."
                 .yellow()
         );
 
