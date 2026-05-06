@@ -9,9 +9,9 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Linkup",
-      social: {
-        github: "https://github.com/mentimeter/linkup",
-      },
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/mentimeter/linkup' },
+      ],
       sidebar: [
         {
           label: "Getting Started",
