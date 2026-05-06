@@ -2,6 +2,7 @@ use std::{
     env,
     fmt::{self, Display, Formatter},
     fs,
+    path::Path,
 };
 
 use anyhow::Context;
@@ -179,7 +180,7 @@ pub fn config_to_state(config: linkup::config::Config, config_path: String) -> S
     }
 }
 
-pub fn config_path(config_arg: &Option<String>) -> Result<String> {
+pub fn config_path(config_arg: Option<&Path>) -> Result<String> {
     match config_arg {
         Some(path) => {
             let absolute_path = fs::canonicalize(path)
@@ -234,7 +235,7 @@ impl From<&State> for Session {
     }
 }
 
-pub fn managed_domains(state: Option<&State>, cfg_path: &Option<String>) -> Vec<String> {
+pub fn managed_domains(state: Option<&State>, cfg_path: Option<&Path>) -> Vec<String> {
     let config_domains = match config_path(cfg_path).ok() {
         Some(cfg_path) => match get_config(&cfg_path) {
             Ok(config) => Some(

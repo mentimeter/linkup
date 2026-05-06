@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use anyhow::Context;
 use clap::builder::ValueParser;
 use url::Url;
@@ -27,7 +29,7 @@ pub struct Args {
     pub print_request: bool,
 }
 
-pub async fn run(args: &Args, config: &Option<String>) -> Result<()> {
+pub async fn run(args: &Args, config: Option<&Path>) -> Result<()> {
     let config_path = state::config_path(config)?;
     let input_config = state::get_config(&config_path)?;
     let upsert_session_request =

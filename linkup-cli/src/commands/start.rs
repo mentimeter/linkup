@@ -26,7 +26,7 @@ pub struct Args {
     pub isolated: bool,
 }
 
-pub async fn start(args: &Args, config_arg: &Option<String>) -> Result<()> {
+pub async fn start(args: &Args, config_arg: Option<&Path>) -> Result<()> {
     if let Ok(existing_state) = State::load()
         && local_server::is_reachable().await
     {
@@ -146,7 +146,7 @@ fn set_linkup_env(state: State) -> Result<()> {
     Ok(())
 }
 
-fn load_and_save_state(config_arg: &Option<String>) -> Result<State> {
+fn load_and_save_state(config_arg: Option<&Path>) -> Result<State> {
     let config_path = config_path(config_arg)?;
     let input_config = get_config(&config_path)?;
 

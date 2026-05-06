@@ -257,7 +257,7 @@ impl LocalDNS {
         // the domains listed on it.
         let is_installed = state
             .as_ref()
-            .map(|state| local_dns::is_installed(Some(state), &None));
+            .map(|state| local_dns::is_installed(Some(state), None));
 
         Ok(Self {
             is_installed,

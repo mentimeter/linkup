@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use anyhow::Context;
 use colored::Colorize;
 
@@ -17,7 +19,7 @@ pub(super) struct Args {
     pub name: Option<String>,
 }
 
-pub(super) async fn run(args: &Args, config: &Option<String>) -> Result<()> {
+pub(super) async fn run(args: &Args, config: Option<&Path>) -> Result<()> {
     if !local_server::is_reachable().await {
         println!(
             "{}",

@@ -1,4 +1,4 @@
-use std::{fs, process};
+use std::{fs, path::Path, process};
 
 use crate::{
     InstallationMethod, Result, commands, commands::local_dns, linkup_dir_path, linkup_exe_path,
@@ -11,7 +11,7 @@ use crate::{is_sudo, sudo_su};
 #[derive(clap::Args)]
 pub struct Args {}
 
-pub async fn uninstall(_args: &Args, config_arg: &Option<String>) -> Result<()> {
+pub async fn uninstall(_args: &Args, config_arg: Option<&Path>) -> Result<()> {
     let response = prompt("Are you sure you want to uninstall linkup? [y/N]: ")
         .trim()
         .to_lowercase();

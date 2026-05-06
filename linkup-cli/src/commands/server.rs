@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{
     Result,
@@ -12,7 +12,7 @@ pub struct Args {
     certs_dir: String,
 }
 
-pub async fn server(args: &Args, config_arg: &Option<String>) -> Result<()> {
+pub async fn server(args: &Args, config_arg: Option<&Path>) -> Result<()> {
     let config = get_config(&config_path(config_arg)?)?;
 
     let config_store = MemoryStringStore::default();
