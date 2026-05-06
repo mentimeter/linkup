@@ -255,9 +255,9 @@ impl LocalDNS {
     fn load(state: Option<&State>) -> Result<Self> {
         // If there is no state, we cannot know if local-dns is installed since we depend on
         // the domains listed on it.
-        let is_installed = state.as_ref().map(|state| {
-            local_dns::is_installed(&crate::state::managed_domains(Some(state), &None))
-        });
+        let is_installed = state
+            .as_ref()
+            .map(|state| local_dns::is_installed(Some(state), &None));
 
         Ok(Self {
             is_installed,
