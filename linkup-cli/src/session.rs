@@ -1,8 +1,9 @@
 use colored::Colorize;
 use linkup::{Domain, SessionKind};
+use linkup_clients::LocalServerClient;
 use serde::{Deserialize, Serialize};
 
-use crate::state::State;
+use crate::{services::local_server, state::State};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SessionRow {
@@ -18,6 +19,32 @@ impl SessionRow {
             kind,
             domains: format_state_domains(&state.linkup.session_name, &state.domains),
         }
+    }
+}
+
+pub async fn list_session_rows() -> Vec<SessionRow> {
+    let client = LocalServerClient::new(&local_server::url());
+
+    match client.list_sessions().await {
+        Ok(response) => {
+            let mut entries: Vec<SessionRow> = response
+                .sessions
+                .into_iter()
+                .map(|(name, session)| {
+                    let domains = format_state_domains(&name, &session.domains);
+
+                    SessionRow {
+                        name,
+                        kind: session.kind,
+                        domains,
+                    }
+                })
+                .collect();
+
+            entries.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.name.cmp(&b.name)));
+            entries
+        }
+        Err(_) => vec![],
     }
 }
 

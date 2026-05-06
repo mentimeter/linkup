@@ -17,7 +17,7 @@ use url::Url;
 use crate::{
     commands,
     services::{self, local_server},
-    session::{SessionRow, format_state_domains, print_sessions_table},
+    session::{SessionRow, list_session_rows, print_sessions_table},
     state::{State, get_config},
 };
 
@@ -55,7 +55,7 @@ pub async fn status(args: &Args) -> anyhow::Result<()> {
         .unwrap_or(&state.linkup.session_name)
         .to_string();
 
-    let all_sessions = fetch_sessions().await;
+    let all_sessions = list_session_rows().await;
 
     if args.session.is_some()
         && !all_sessions
@@ -197,32 +197,6 @@ struct Output {
     session_name: String,
     sessions: Vec<SessionRow>,
     services: Vec<ServiceStatus>,
-}
-
-async fn fetch_sessions() -> Vec<SessionRow> {
-    let client = LocalServerClient::new(&services::local_server::url());
-
-    match client.list_sessions().await {
-        Ok(response) => {
-            let mut entries: Vec<SessionRow> = response
-                .sessions
-                .into_iter()
-                .map(|(name, session)| {
-                    let domains = format_state_domains(&name, &session.domains);
-
-                    SessionRow {
-                        name,
-                        kind: session.kind,
-                        domains,
-                    }
-                })
-                .collect();
-
-            entries.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.name.cmp(&b.name)));
-            entries
-        }
-        Err(_) => vec![],
-    }
 }
 
 async fn fetch_session_detail(session_name: &str) -> Option<SessionDetailResponse> {
