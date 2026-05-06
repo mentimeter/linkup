@@ -4,13 +4,16 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
+use colored::Colorize;
 use linkup::SessionKind;
 
-use crate::{Result, services::local_server, state::State};
 use crate::{
+    Result, commands,
     env_files::write_to_env_file,
     services,
+    services::local_server,
     session::{SessionRow, print_sessions_table},
+    state::State,
     state::{config_path, config_to_state, find_isolated_suffixes, get_config},
 };
 
@@ -24,7 +27,7 @@ pub struct Args {
 }
 
 pub async fn start(args: &Args, config_arg: &Option<String>) -> Result<()> {
-    if let Ok(existing) = State::load()
+    if let Ok(existing_state) = State::load()
         && local_server::is_reachable().await
     {
         let requested = if args.isolated {
@@ -33,10 +36,10 @@ pub async fn start(args: &Args, config_arg: &Option<String>) -> Result<()> {
             SessionKind::Tunneled
         };
 
-        if existing.linkup.kind != requested {
+        if existing_state.linkup.kind != requested {
             println!(
                 "Linkup is already running as {}. Run 'linkup stop' first to switch modes.",
-                existing.linkup.kind
+                existing_state.linkup.kind
             );
 
             return Ok(());
@@ -45,6 +48,16 @@ pub async fn start(args: &Args, config_arg: &Option<String>) -> Result<()> {
 
     let mut state = load_and_save_state(config_arg)?;
     set_linkup_env(state.clone())?;
+
+    if args.isolated && !commands::local_dns::is_installed(Some(&state), config_arg) {
+        println!(
+            "{}",
+            "Isolated sessions requires Local DNS to be configured.\nPlease run 'linkup local-dns install' first."
+                .yellow()
+        );
+
+        return Ok(());
+    }
 
     services::local_server::start().await?;
 

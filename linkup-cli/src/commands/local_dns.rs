@@ -101,7 +101,11 @@ fn ensure_resolver_dir() -> Result<()> {
     Ok(())
 }
 
-pub fn is_installed(managed_domains: &[String]) -> bool {
+// TODO(@augustoccesar)[2026-05-06]: Create a better check for this. Even more relevant now that
+//  there are multiple state files.
+pub fn is_installed(state: Option<&State>, cfg_path: &Option<String>) -> bool {
+    let managed_domains = state::managed_domains(state, cfg_path);
+
     match list_resolvers() {
         Ok(resolvers) => managed_domains
             .iter()
