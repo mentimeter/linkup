@@ -1,67 +1,37 @@
-use crate::Result;
-use crate::commands::deploy::auth;
-use crate::commands::deploy::resources::cf_resources;
+use anyhow::Result;
 
-use super::api::{AccountCloudflareApi, CloudflareApi};
-use super::console_notify::ConsoleNotifier;
-use super::resources::TargetCfResources;
-
-#[derive(thiserror::Error, Debug)]
-pub enum DeployError {
-    #[error("Cloudflare API error: {0}")]
-    CloudflareApiError(#[from] reqwest::Error),
-    #[error("Cloudflare Client error: {0}")]
-    CloudflareClientError(#[from] cloudflare::framework::response::ApiFailure),
-    #[error("Unexpected Cloudflare API response: {0}")]
-    UnexpectedResponse(String),
-    #[error("Other failure")]
-    OtherError,
-}
-
-pub trait DeployNotifier {
-    fn ask_confirmation(&self) -> bool;
-    fn notify(&self, message: &str);
-}
+use super::cloudflare::{
+    api::{AccountCloudflareApi, CloudflareApi},
+    auth,
+    resources::{TargetCfResources, cf_resources},
+};
+use super::{
+    Args as InfraArgs,
+    notifier::{ConsoleNotifier, DeployNotifier},
+};
 
 #[derive(clap::Args)]
-pub struct DeployArgs {
-    #[arg(short = 'e', long = "email", help = "Cloudflare user email")]
-    email: String,
+pub struct DeployArgs {}
 
-    #[arg(short = 'k', long = "api-key", help = "Cloudflare user global API Key")]
-    api_key: String,
-
-    #[arg(short = 'a', long = "account-id", help = "Cloudflare account ID")]
-    account_id: String,
-
-    #[arg(
-        short = 'z',
-        long = "zone-ids",
-        help = "Cloudflare zone IDs",
-        num_args = 1..,
-        required = true
-    )]
-    zone_ids: Vec<String>,
-}
-
-pub async fn deploy(args: &DeployArgs) -> Result<()> {
+pub async fn deploy(_args: &DeployArgs, infra_args: &InfraArgs) -> Result<()> {
     println!("Deploying to Cloudflare...");
-    println!("Account ID: {}", args.account_id);
-    println!("Zone IDs: {:?}", args.zone_ids);
+    println!("Account ID: {}", infra_args.account_id);
+    println!("Zone IDs: {:?}", infra_args.zone_ids);
 
-    let auth = auth::CloudflareGlobalTokenAuth::new(args.api_key.clone(), args.email.clone());
-    let zone_ids_strings: Vec<String> = args.zone_ids.iter().map(|s| s.to_string()).collect();
+    let auth =
+        auth::CloudflareGlobalTokenAuth::new(infra_args.api_key.clone(), infra_args.email.clone());
+    let zone_ids_strings: Vec<String> = infra_args.zone_ids.iter().map(|s| s.to_string()).collect();
 
     // TODO(augustoccesar)[2025-02-19]: Move functionality to use Cloudflare module client instead of AccountCloudflareApi.
     let cloudflare_api = AccountCloudflareApi::new(
-        args.account_id.to_string(),
+        infra_args.account_id.to_string(),
         zone_ids_strings.clone(),
         Box::new(auth),
     );
     let cloudflare_client = cloudflare::framework::async_api::Client::new(
         cloudflare::framework::auth::Credentials::UserAuthKey {
-            email: args.email.clone(),
-            key: args.api_key.clone(),
+            email: infra_args.email.clone(),
+            key: infra_args.api_key.clone(),
         },
         cloudflare::framework::HttpApiClientConfig::default(),
         cloudflare::framework::Environment::Production,
@@ -76,11 +46,11 @@ pub async fn deploy(args: &DeployArgs) -> Result<()> {
     }
 
     let resources = cf_resources(
-        args.account_id.clone(),
-        args.zone_ids[0].clone(),
+        infra_args.account_id.clone(),
+        infra_args.zone_ids[0].clone(),
         zone_names[0].clone(),
         &zone_names,
-        &args.zone_ids,
+        &infra_args.zone_ids,
     );
 
     deploy_to_cloudflare(&resources, &cloudflare_api, &cloudflare_client, &notifier).await?;
@@ -131,18 +101,19 @@ mod tests {
     use mockito::ServerGuard;
     use std::cell::RefCell;
 
-    use crate::commands::deploy::{
-        self,
-        api::Token,
-        cf_destroy::destroy_from_cloudflare,
+    use super::super::cloudflare::{
+        DeployError,
+        api::{AccountCloudflareApi, CloudflareApi, Token, WorkerSubdomain},
+        auth::CloudflareGlobalTokenAuth,
         resources::{
             DNSRecord, KvNamespace, Rule, TargectCfZoneResources, TargetCacheRules,
-            TargetDNSRecord, TargetWorkerRoute, WorkerMetadata, WorkerScriptInfo, WorkerScriptPart,
-            rules_equal,
+            TargetCfResources, TargetDNSRecord, TargetWorkerRoute, WorkerMetadata,
+            WorkerScriptInfo, WorkerScriptPart, rules_equal,
         },
     };
-
-    use super::*;
+    use super::super::destroy::destroy_from_cloudflare;
+    use super::super::notifier::{ConsoleNotifier, DeployNotifier};
+    use super::deploy_to_cloudflare;
 
     fn test_client(mock_server_url: String) -> Client {
         let mock_server_url = url::Url::parse(&mock_server_url).unwrap();
@@ -428,7 +399,7 @@ export default {
             Ok(token_name)
         }
 
-        async fn list_account_tokens(&self) -> Result<Vec<deploy::api::Token>, DeployError> {
+        async fn list_account_tokens(&self) -> Result<Vec<Token>, DeployError> {
             let tokens = self
                 .account_tokens
                 .clone()
@@ -451,8 +422,8 @@ export default {
         async fn get_worker_subdomain(
             &self,
             _script_name: String,
-        ) -> Result<deploy::api::WorkerSubdomain, DeployError> {
-            Ok(deploy::api::WorkerSubdomain { enabled: true })
+        ) -> Result<WorkerSubdomain, DeployError> {
+            Ok(WorkerSubdomain { enabled: true })
         }
 
         async fn post_worker_subdomain(
@@ -756,8 +727,7 @@ export default {
         let api_key = std::env::var("CLOUDFLARE_API_KEY").expect("CLOUDFLARE_API_KEY is not set");
         let email = std::env::var("CLOUDFLARE_EMAIL").expect("CLOUDFLARE_EMAIL is not set");
 
-        let global_api_auth =
-            deploy::auth::CloudflareGlobalTokenAuth::new(api_key.clone(), email.clone());
+        let global_api_auth = CloudflareGlobalTokenAuth::new(api_key.clone(), email.clone());
         let cloudflare_api = AccountCloudflareApi::new(
             account_id.clone(),
             vec![zone_id.to_string()],

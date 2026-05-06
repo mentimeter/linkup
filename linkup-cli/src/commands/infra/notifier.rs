@@ -1,6 +1,9 @@
 use crate::prompt;
 
-use super::cf_deploy::DeployNotifier;
+pub trait DeployNotifier {
+    fn ask_confirmation(&self) -> bool;
+    fn notify(&self, message: &str);
+}
 
 pub struct ConsoleNotifier;
 
