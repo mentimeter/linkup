@@ -86,3 +86,9 @@ linkup route remote --all --session my-feature
 ```sh
 linkup status --session my-feature
 ```
+
+## Inactive session cleanup
+
+The Linkup worker runs a scheduled job that deletes any tunnel that has not been started for 7 days. If you don't run `linkup start` for a week, the next run may give you a freshly-provisioned tunnel for the same session name. Sessions you actively use are not affected.
+
+This only applies to tunneled sessions; preview sessions live in the worker independently and are not subject to this cleanup.

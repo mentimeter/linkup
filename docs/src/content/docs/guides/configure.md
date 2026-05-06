@@ -3,7 +3,7 @@ title: Configuring Linkup
 description: Using a linkup configuration file to describe the layout of your services
 ---
 
-Linkup is configured using a YAML file. This file describes the services that make up your system and how requests should be routed between them.
+Linkup is configured using a YAML file. This file describes the services that make up your system and how requests should be routed between them. For a field-by-field schema, see the [Config Reference](/linkup/reference/config).
 
 ## Example
 

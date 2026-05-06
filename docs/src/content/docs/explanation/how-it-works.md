@@ -19,16 +19,17 @@ This linkup session name will be used to identify all of the requests that belon
 
 ## Identifying and Routing Requests to Sessions
 
-All requests that reach linkup go through an identification process to determine which session they belong to. Requests that can't be identified are rejected as a precaution.
+All requests that reach linkup go through an identification process to determine which session they belong to. Requests that can't be identified are rejected with a `422` status as a precaution.
 
-Request to session identification uses two methods:
+Linkup tries the following sources, in order, and uses the first one that yields a known session name:
 
-- Common browser headers, primarily `Referer`.
-- Opentelemetry tracing headers `traceparent` and `tracestate`.
+1. The first subdomain of the request URL itself (e.g. `slim-ant` from `slim-ant.domain.com`).
+2. The first subdomain of the `x-forwarded-host` header. This is what carries session identity over the Cloudflare tunnel back to the local server.
+3. The first subdomain of the `Referer` header. This is how requests from a browser tab get attributed when they go to a non-session host (like `api.domain.com`).
+4. The first subdomain of the `Origin` header. Used as a fallback for redirects, where the `Referer` may be missing.
+5. The session name embedded in the W3C `tracestate` header (`linkup-session=<name>`). This is how requests originating inside one backend get attributed when they call another backend.
 
-For all requests you make within a linkup session, they will either come straight from the browser (identified by your linkup subdomain `slim-ant.domain.com`), or they will come from an underlying service.
-
-Linkup will add opentelemetry tracing headers to all requests it receives, but you will likely need to _propogate_ these headers through your services. Please refer to the [OpenTelemetry documentation on how to do this for your specific language and framework](https://opentelemetry.io/docs/languages/).
+Linkup adds OpenTelemetry tracing headers to every request it forwards, but for the chain to work end-to-end your backend services need to _propagate_ those headers through their outbound HTTP calls. Refer to the [OpenTelemetry documentation for your language or framework](https://opentelemetry.io/docs/languages/).
 
 
 ### Routing Requests Example

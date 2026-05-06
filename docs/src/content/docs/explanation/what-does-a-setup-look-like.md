@@ -37,7 +37,7 @@ Linkup needs to deploy:
 - three Cloudflare key-value stores to handle storing sessions, certificates, and tunnels
 - a set of other smaller Cloudflare resources, such as caching rules for tunnels, an API token with access to modify tunnels, and a few routing rules
 
-Linkup comes with a `linkup deploy` command that can deploy these resources to a zone of your choice on your behalf, and a `linkup destroy` command to clean up those resources if needed.
+Linkup comes with a `linkup infra deploy` command that can deploy these resources to a zone of your choice on your behalf, and a `linkup infra destroy` command to clean up those resources if needed.
 
 ### Connecting the changed services
 
