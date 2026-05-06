@@ -25,7 +25,7 @@ The default mode. `linkup start` does three things:
 2. Establishes a Cloudflare tunnel from the worker back to that local server
 3. Uploads session state to the Cloudflare worker
 
-When a request hits `slim-gecko.example.com`, the worker intercepts it and looks up the session. Services routed to `local` are forwarded through the tunnel to your machine; services routed to `remote` are forwarded to their deployed URL. Because routing happens in the public worker, anyone on the internet who knows your session URL can reach your services. That is what allows a deployed backend to call back into your local frontend, but it also means your laptop sits on the public path.
+When a request hits `slim-gecko.example.com`, the worker intercepts it and looks up the session. Services routed to `local` are forwarded through the tunnel to your machine. Services routed to `remote` are forwarded to their deployed URL. Because routing happens in the public worker, anyone on the internet who knows your session URL can reach your services. A deployed backend can therefore call back into your local frontend, but it also means your laptop sits on the public path.
 
 ```sh
 linkup start
@@ -37,7 +37,7 @@ linkup status           # Check which services are where
 
 ## Isolated Sessions
 
-An isolated session has no tunnel and no involvement from the Cloudflare worker; the session lives entirely on your machine. The URL is still `{session}.{linkup-domain}`, but there is no public infrastructure routing requests to you, so your browser has to resolve those hostnames locally. That is why [Local DNS](/linkup/guides/local-dns) is required for isolated sessions.
+An isolated session has no tunnel and no involvement from the Cloudflare worker. The session lives entirely on your machine. The URL is still `{session}.{linkup-domain}`, but there is no public infrastructure routing requests to you, so your browser has to resolve those hostnames locally. That is why [Local DNS](/linkup/guides/local-dns) is required for isolated sessions.
 
 Use isolated sessions when:
 
@@ -91,4 +91,4 @@ linkup status --session my-feature
 
 The Linkup worker runs a scheduled job that deletes any tunnel that has not been started for 7 days. If you don't run `linkup start` for a week, the next run may give you a freshly-provisioned tunnel for the same session name. Sessions you actively use are not affected.
 
-This only applies to tunneled sessions; preview sessions live in the worker independently and are not subject to this cleanup.
+This only applies to tunneled sessions. Preview sessions live in the worker independently and are not subject to this cleanup.

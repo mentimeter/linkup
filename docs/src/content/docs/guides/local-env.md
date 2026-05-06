@@ -45,11 +45,11 @@ linkup stop               # Stop your session and clean up
 4. Prints a table of your session name and domain URLs
 5. Re-registers any isolated sessions that existed before the previous stop, so they are restored automatically
 
-Linkup re-uses your session name across restarts, so your URLs stay stable; a new name is only generated on the very first run.
+Linkup re-uses your session name across restarts, so your URLs stay stable. A new name is only generated on the very first run.
 
 ### Environment files
 
-For each service that has a `directory` field in your config, Linkup looks for `.env.*.linkup` files in that directory and appends their contents into the corresponding `.env.*` file (e.g. `.env.development.linkup` → `.env.development`). This is how your services get configured to point at your Linkup domain. The added block is clearly delimited and is reverted by `linkup stop`.
+For each service that has a `directory` field in your config, Linkup looks for `.env.*.linkup` files in that directory and appends their contents into the corresponding `.env.*` file (e.g. `.env.development.linkup` → `.env.development`). Your services use these files to point at your Linkup domain. The added block is clearly delimited and is reverted by `linkup stop`.
 
 ### Start modes
 

@@ -3,7 +3,7 @@ title: Config Reference
 description: Every field accepted by the linkup configuration file
 ---
 
-A Linkup configuration file is YAML with three top-level keys: `linkup`, `services`, and `domains`. This page documents every field; for a worked example and conceptual overview see [Configure Linkup](/linkup/guides/configure).
+A Linkup configuration file is YAML with three top-level keys: `linkup`, `services`, and `domains`. This page documents every field. For a worked example and conceptual overview, see [Configure Linkup](/linkup/guides/configure).
 
 ## Top-level shape
 
@@ -50,7 +50,7 @@ linkup:
     - .*/_next/data/.*
 ```
 
-Patterns match if found anywhere in the path; you don't need to anchor with `.*`.
+Patterns match if found anywhere in the path. You don't need to anchor with `.*`.
 
 ## `services[]`
 
@@ -62,7 +62,7 @@ Identifier referenced by `domains[].default_service`, `domains[].routes[].servic
 
 ### `services[].remote`
 
-URL of the deployed copy of the service. This is what gets used when the service is routed to `remote`.
+URL of the deployed copy of the service. Used when the service is routed to `remote`.
 
 ### `services[].local`
 
@@ -127,7 +127,7 @@ Optional array of path-based routing rules. Each entry has:
 - `path`: regex matched against the request path
 - `service`: name of the service to route to when `path` matches
 
-Routes are evaluated in order; the first match wins. If none match, `default_service` is used.
+Routes are evaluated in order, and the first match wins. If none match, `default_service` is used.
 
 ```yaml
 domains:

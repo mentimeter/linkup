@@ -21,7 +21,7 @@ Let’s start with an example setup that linkup aims to help with:
 
 ![environment-copies-example](../../../assets/environment-copies-example.png)
 
-In order to run Peter, Mary, and Paul's environment, they would need deployed copies of all necessary services: frontend, backend, and auth. Traditionally, we would need 9 running services for these environments to work.
+To run Peter, Mary, and Paul's environment, they would each need deployed copies of all necessary services: frontend, backend, and auth. Traditionally, that would mean 9 running services.
 
 ## Linkup's Solution
 

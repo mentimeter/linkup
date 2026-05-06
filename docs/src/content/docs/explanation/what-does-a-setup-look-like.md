@@ -29,13 +29,13 @@ Importantly, if your `frontend-dev` service lives on a fixed domain, then all ot
 
 ### Deploying the linkup infrastructure
 
-In order to run complete linkup environments, you will need to deploy a few pieces of linkup infrastructure to a dedicated Cloudflare zone. A Cloudflare zone is approximately equivalent to a domain.
+To run complete linkup environments, you need to deploy a few pieces of linkup infrastructure to a dedicated Cloudflare zone. A Cloudflare zone is approximately equivalent to a domain.
 
 Linkup needs to deploy:
 
-- a Cloudflare worker that absorbs all traffic on your Cloudflare zone
-- three Cloudflare key-value stores to handle storing sessions, certificates, and tunnels
-- a set of other smaller Cloudflare resources, such as caching rules for tunnels, an API token with access to modify tunnels, and a few routing rules
+- a Cloudflare worker (a single account-level script) plus the routes and DNS records that bind it to each zone you deploy to
+- two Cloudflare key-value stores for session state and tunnel records
+- a set of other smaller Cloudflare resources, such as a caching rule for tunnel traffic and an account-level API token used by the worker to provision tunnels
 
 Linkup comes with a `linkup infra deploy` command that can deploy these resources to a zone of your choice on your behalf, and a `linkup infra destroy` command to clean up those resources if needed.
 

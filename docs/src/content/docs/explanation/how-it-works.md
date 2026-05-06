@@ -3,7 +3,7 @@ title: How does Linkup work?
 description: How to configure services to work with Linkup
 ---
 
-In order to grasp how linkup works, it's important to understand three core concepts in linkup:
+To grasp how linkup works, three core concepts matter:
 
 1. Linkup manages "sessions" which are unique views of connected services
 2. Linkup can route individual requests to very specific components
@@ -24,10 +24,10 @@ All requests that reach linkup go through an identification process to determine
 Linkup tries the following sources, in order, and uses the first one that yields a known session name:
 
 1. The first subdomain of the request URL itself (e.g. `slim-ant` from `slim-ant.domain.com`).
-2. The first subdomain of the `x-forwarded-host` header. This is what carries session identity over the Cloudflare tunnel back to the local server.
-3. The first subdomain of the `Referer` header. This is how requests from a browser tab get attributed when they go to a non-session host (like `api.domain.com`).
-4. The first subdomain of the `Origin` header. Used as a fallback for redirects, where the `Referer` may be missing.
-5. The session name embedded in the W3C `tracestate` header (`linkup-session=<name>`). This is how requests originating inside one backend get attributed when they call another backend.
+2. The first subdomain of the `x-forwarded-host` header. The Cloudflare tunnel uses this header to carry session identity back to the local server.
+3. The first subdomain of the `Referer` header. Browser-tab requests rely on this to stay attributed when they go to a non-session host (like `api.domain.com`).
+4. The first subdomain of the `Origin` header. Acts as a fallback for redirects, where the `Referer` may be missing.
+5. The session name embedded in the W3C `tracestate` header (`linkup-session=<name>`). Backend-to-backend calls rely on this to stay attributed.
 
 Linkup adds OpenTelemetry tracing headers to every request it forwards, but for the chain to work end-to-end your backend services need to _propagate_ those headers through their outbound HTTP calls. Refer to the [OpenTelemetry documentation for your language or framework](https://opentelemetry.io/docs/languages/).
 
@@ -107,7 +107,7 @@ Generally then, the best way to think about the question "will linkup be able to
 
 ## Linkup Components
 
-In order to be in a position where LinkUp can actually route these requests based on the identifying information, Linkup needs to run a few components in different places.
+To route these requests based on the identifying information, Linkup needs to run a few components in different places.
 
 ### Linkup Cloudflare Worker
 
@@ -115,10 +115,10 @@ The Linkup Cloudflare worker is configured to intercept all requests that reach 
 
 ### Cloudflare Tunnel & The Local Server
 
-In order to be able to direct traffic to servers that might be running on `localhost` on your machine, the linkup CLI can run a Cloudflare tunnel paired with a local proxying server in order to receive requests that were made from a remote component and deliver them to a server that is running on your local machine.
+To direct traffic to servers running on `localhost`, the linkup CLI runs a Cloudflare tunnel paired with a local proxying server. Together they receive requests made from a remote component and deliver them to a server running on your local machine.
 
 ### Local DNS
 
 In its default mode, Linkup has a fairly strong dependency on the network. For frontend engineers who are running development servers, they may have pages that require 50-100 mb of JavaScript to load.
 
-In order to speed up cases where the network might be a bottleneck, Linkup provides a local DNS mode that is optionally installable on developers' machines. Local DNS will resolve your application's domains directly to servers running on your local machine. This means that all requests that could have been handled directly by your local machine will not go over the public internet. Linkup also has the ability to manage certificates associated with these local domains to make the experience as seamless as possible.
+To speed up cases where the network is a bottleneck, Linkup offers an optional local DNS mode. Local DNS resolves your application's domains directly to servers running on your local machine, so requests that could have been handled locally don't go over the public internet. Linkup also manages the TLS certificates for those local domains so HTTPS works without browser warnings.
