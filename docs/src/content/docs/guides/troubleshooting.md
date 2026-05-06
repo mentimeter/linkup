@@ -28,33 +28,31 @@ This is the first thing to share when asking for help with a Linkup issue.
 
 ### Tunnel problems
 
-In order to reach servers started on your local machine, Linkup uses a cloudflared tunnel.
+For tunneled sessions, Linkup uses `cloudflared` to bring up a Cloudflare named tunnel against the credentials provisioned by your Linkup deployment.
 
 #### Symptoms
 
+The tunnel either fails to start, or it comes up but DNS for its hostname hasn't propagated:
+
 ```
-Waiting for tunnel to be ready at https://xxx.trycloudflare.com/...
-Error: StartLinkupTimeout("https://xxx.trycloudflare.com/linkup-check took too long to load")
+Failed to start: ...
+Failed to verify that DNS got propagated
 ```
 
 #### Diagnosis
 
-`cat ~/.linkup/cloudflared-stderr` will give you more logs from the cloudflared process.
-
-Linkup runs `cloudflared tunnel --url http://localhost:9066` internally. You can run this command manually to see if it gives you more information.
+`cat ~/.linkup/cloudflared-stderr` gives you the cloudflared process logs. `linkup health` also reports whether cloudflared is running and on which PID.
 
 #### Solution
 
 - Check your network connection, then run `linkup stop` followed by `linkup start` to try again.
 - If the problem persists, Cloudflare may be having issues. Check their [status page](https://www.cloudflarestatus.com/).
-- If you don't need remote services to call back into your machine, avoid the tunnel entirely:
+- If you don't need remote services to call back into your machine, switch to an isolated session, which skips the tunnel entirely. Isolated sessions require [Local DNS](/linkup/guides/local-dns) to be installed.
 
   ```sh
   linkup stop
   linkup start --isolated
   ```
-
-- If you do need the tunnel but want to speed up assets in the meantime, install [Local DNS](/linkup/guides/local-dns). It bypasses the tunnel for traffic that can be served locally.
 
 ---
 
