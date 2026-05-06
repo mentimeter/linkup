@@ -5,7 +5,9 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::{DeployError, api::CloudflareApi, cf_deploy::DeployNotifier};
+use crate::commands::infra::notifier::DeployNotifier;
+
+use super::{DeployError, api::CloudflareApi};
 
 const LINKUP_WORKER_SHIM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/shim.mjs"));
 const LINKUP_WORKER_INDEX_WASM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.wasm"));

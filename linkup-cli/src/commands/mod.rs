@@ -1,6 +1,6 @@
 pub mod completion;
-pub mod deploy;
 pub mod health;
+pub mod infra;
 pub mod local_dns;
 pub mod route;
 pub mod server;
@@ -12,9 +12,8 @@ pub mod uninstall;
 pub mod update;
 
 pub use {completion::Args as CompletionArgs, completion::completion};
-pub use {deploy::DeployArgs, deploy::deploy};
-pub use {deploy::DestroyArgs, deploy::destroy};
 pub use {health::Args as HealthArgs, health::health};
+pub use {infra::Args as InfraArgs, infra::infra};
 pub use {local_dns::Args as LocalDnsArgs, local_dns::local_dns};
 pub use {route::Args as RouteArgs, route::route};
 pub use {server::Args as ServerArgs, server::server};
