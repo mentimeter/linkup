@@ -14,7 +14,8 @@ description: Get started with linkup by running a local linkup session
 ```sh
 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install.sh | bash
 
-# To install a pre-release version:
+# Or to install a pre-release version (beta)
+
 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mentimeter/linkup/refs/heads/main/linkup-cli/install.sh | bash -s -- --channel beta
 ```
 
