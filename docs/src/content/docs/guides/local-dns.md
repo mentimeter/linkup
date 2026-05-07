@@ -1,19 +1,59 @@
 ---
 title: Using Local DNS
-description: Use local DNS to speed up local linkup environments
+description: How Linkup's local DNS works and when it's needed
 ---
 
-## Speeding up your linkup session with `local-dns`
+`linkup local-dns` makes your Linkup hostnames (e.g. `slim-gecko.example.com`)
+resolve directly to the local server on your machine, bypassing public DNS and
+Cloudflare. It's a one-time setup per machine. Whether it's optional or required
+depends on the session type. See [When you need it](#when-you-need-it).
 
-Your linkup domains live on the public internet. If you're running heavy frontend servers that load 50mb of js assests, you might find that your linkup session feels slow.
+## How it works
 
-Linkup comes with a public-internet-bypass mechanism called `local-dns`. This feature allows you to resolve your linkup domains to your local machine, bypassing the public internet. This will make your frontends serve assets from your local machine, and make your linkup session feel much faster.
+`linkup local-dns install` does three things, all requiring `sudo`:
 
-To use `local-dns`, run `linkup local-dns install` in your terminal. This will install a local DNS server on your machine that will resolve your linkup domains to your local machine.
+1. Writes `/etc/resolver/<domain>` files for each of your Linkup domains,
+   pointing at `127.0.0.1:8053`. macOS (and Linux with a compatible resolver)
+   consult these files before public DNS, so any subdomain of your Linkup
+   domains resolves to your machine.
+2. Generates a self-signed certificate authority and adds it to your system
+   keychain. The local server then signs TLS certificates for your Linkup
+   domains on the fly, so HTTPS works without browser warnings.
+3. Flushes the DNS cache so the new resolver config takes effect immediately.
 
-### Limitations of `local-dns`
+At runtime, the local server listens on `127.0.0.1:8053` for DNS queries and
+answers any `*.{linkup-domain}` query with `127.0.0.1`. It then accepts the
+HTTPS connection that follows, terminates TLS using a certificate signed by the
+installed CA, and forwards the request to whichever URL each service is
+currently routed to.
 
-Although much of your traffic will be served from your local machine, some requests will still go through the internet, and therefore still need a functioning tunnel, including:
+`linkup stop` is invoked automatically during install and uninstall, so Linkup
+restarts cleanly with the new configuration.
 
-- When accessing a linkup session from a different device or from a colleague's machine.
-- When a remote service needs to access a server on your local machine (a remote frontend making a network request to your local backend).
+## When you need it
+
+| Session type                                   | Local DNS                                                                                                                                                                                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Tunneled** (`linkup start`)                  | Optional. Without it, requests still work. They just go out to Cloudflare and back through the tunnel. With it, requests originating on your machine resolve to the local server directly, which is much faster for asset-heavy frontends. |
+| **Isolated** (`linkup start --isolated`)       | **Required.** Isolated sessions have no Cloudflare tunnel and no worker involvement, so without local-dns there is no path for your browser to reach `{session}.{linkup-domain}`.                                                          |
+| **Preview** (`linkup sessions create-preview`) | Not applicable. Preview sessions consist of remote services only, so there's no local component for local-dns to point at.                                                                                                                 |
+
+Local-dns only affects requests originating on your own machine. Requests from
+another device (a colleague's browser, or a deployed service calling back to
+you) don't see your `/etc/resolver/` files, so for those you still need a
+Cloudflare tunnel.
+
+## Installing
+
+```sh
+linkup local-dns install
+```
+
+## Uninstalling
+
+```sh
+linkup local-dns uninstall
+```
+
+This removes the resolver files, removes the CA certificate from your keychain,
+and flushes DNS cache.
