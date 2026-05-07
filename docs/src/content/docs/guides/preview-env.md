@@ -3,11 +3,11 @@ title: Create a Preview Environment
 description: Connect remote services to a persistent linkup preview environment
 ---
 
-### Prerequisites
+## Prerequisites
 
 - Linkup deployed to a Cloudflare Domain
 
-### What is a Preview Environment?
+## What is a Preview Environment?
 
 `linkup start` is designed to:
 
@@ -15,27 +15,78 @@ description: Connect remote services to a persistent linkup preview environment
 - run with a tunnel that makes your local service available on the internet
 - only be used by one engineer (not available when dev laptop is off)
 
-A preview environment on the other hand:
+A preview environment, on the other hand:
 
-- consists only of services deployed to the internet (eg. `my-deploy-pr-123.previewinfra.com`)
+- consists only of services deployed to the internet (e.g.
+  `my-pr-deploy-123.previewinfra.com`)
 - has no tunnels or tunneling infrastructure to `localhost`
-- always online / works as long as the underlying services do
+- is always online, as long as the underlying services are up
 
-### Creating a preview environment
+## Creating a preview environment
+
+Use `linkup sessions create-preview` with `<service>=<url>` pairs:
 
 ```
-linkup preview
+linkup sessions create-preview
 
-Create a "permanent" Linkup preview
+Create a preview session
 
-Usage: linkup preview [OPTIONS] <SERVICES>...
+Usage: linkup sessions create-preview [OPTIONS] [NAME] [SERVICES]...
 
 Arguments:
-  <SERVICES>...  <service>=<url> pairs to preview.
+  [NAME]         Optional name for the preview session
+  [SERVICES]...  <service>=<url> pairs to override
+
+Options:
+      --print-request  Print the request body instead of sending it
+  -h, --help           Print help
 ```
 
 For example:
 
+```sh
+linkup sessions create-preview web=https://my-pr-deploy-123.example.com
 ```
-linkup preview web=https://my-preview-deploy-123.example.com
+
+You can also give the session a memorable name and override multiple services:
+
+```sh
+linkup sessions create-preview my-pr \
+  web=https://my-pr-frontend-123.example.com \
+  backend=https://my-pr-api-123.example.com
 ```
+
+## How the preview session is composed
+
+`linkup sessions create-preview` reads your local Linkup config (the YAML file
+pointed at by `LINKUP_CONFIG` or `--config`) and sends an assembled session to
+the worker.
+
+For each service defined in the config, the preview session uses the service's
+`remote` URL by default. Pass `<service-name>=<url>` to override the default for
+one or more services. Service names that don't exist in the config are ignored.
+The session's `domains`, per-service `rewrites`, and `linkup.cache_routes` are
+copied from the config unchanged.
+
+The CLI doesn't talk to your local server, but it does need to reach the
+deployed Linkup worker, so a valid `worker_url` and `worker_token` in your
+config are required. See the [Config Reference](/linkup/reference/config) for
+those fields.
+
+Pass `--print-request` to write the assembled JSON to stdout instead of sending
+it.
+
+## Listing sessions
+
+```sh
+linkup sessions list
+```
+
+## How it differs from local sessions
+
+| Feature                      | `linkup start` (tunneled) | `linkup sessions create-preview` |
+| ---------------------------- | ------------------------- | -------------------------------- |
+| Services                     | Local + remote            | Remote only                      |
+| Tunnel required              | Yes                       | No                               |
+| Available when laptop is off | No                        | Yes                              |
+| Use case                     | Local development         | CI/CD, sharing with teammates    |
