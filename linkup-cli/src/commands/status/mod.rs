@@ -1,6 +1,6 @@
 mod health;
 
-use std::{collections::HashMap, sync::mpsc::Receiver, thread, time::Duration};
+use std::{collections::HashMap, path::PathBuf, sync::mpsc::Receiver, thread, time::Duration};
 
 use anyhow::Context;
 use colored::Colorize;
@@ -16,9 +16,10 @@ use url::Url;
 
 use crate::{
     commands,
+    config::load_config,
     services::{self, local_server},
     session::{SessionRow, list_session_rows, print_sessions_table},
-    state::{State, get_config},
+    state::State,
 };
 
 pub use health::{ServerStatus, server_status};
@@ -70,7 +71,13 @@ pub async fn status(args: &Args) -> anyhow::Result<()> {
 
     let session_detail = fetch_session_detail(&target_session).await;
 
-    let config = get_config(&state.linkup.config_path).ok();
+    let config_path: PathBuf = state
+        .linkup
+        .config_path
+        .parse()
+        .expect("Config path stored on state should be valid Path");
+
+    let config = load_config(&config_path).ok();
 
     let user_services = build_user_services(session_detail.as_ref(), config.as_ref());
     let internal_services = build_internal_services(&state);

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use anyhow::Context;
 use colored::Colorize;
 
@@ -8,7 +10,7 @@ use crate::{
     Result, commands,
     services::local_server,
     session::{SessionRow, print_sessions_table},
-    state,
+    state::State,
 };
 
 #[derive(clap::Args)]
@@ -17,7 +19,7 @@ pub(super) struct Args {
     pub name: Option<String>,
 }
 
-pub(super) async fn run(args: &Args, config: &Option<String>) -> Result<()> {
+pub(super) async fn run(args: &Args, config_arg: Option<&Path>) -> Result<()> {
     if !local_server::is_reachable().await {
         println!(
             "{}",
@@ -28,7 +30,7 @@ pub(super) async fn run(args: &Args, config: &Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    if !commands::local_dns::is_installed(None, config) {
+    if !commands::local_dns::is_installed(None, config_arg) {
         println!(
             "{}",
             "Isolated sessions requires Local DNS to be configured.\nPlease run 'linkup local-dns install' first."
@@ -38,9 +40,7 @@ pub(super) async fn run(args: &Args, config: &Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let config_path = state::config_path(config)?;
-    let config = state::get_config(&config_path)?;
-    let mut isolated_state = state::config_to_state(config, config_path);
+    let mut isolated_state = State::from_config(config_arg)?;
     let session: Session = (&isolated_state).into();
 
     let upsert_request = match &args.name {

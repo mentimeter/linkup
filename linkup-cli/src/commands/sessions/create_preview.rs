@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use anyhow::Context;
 use clap::builder::ValueParser;
 use url::Url;
@@ -7,8 +9,8 @@ use linkup_clients::WorkerClient;
 
 use crate::{
     Result,
+    config::load_config_with_override,
     session::{SessionRow, format_state_domains, print_sessions_table},
-    state,
 };
 
 #[derive(clap::Args)]
@@ -27,11 +29,11 @@ pub struct Args {
     pub print_request: bool,
 }
 
-pub async fn run(args: &Args, config: &Option<String>) -> Result<()> {
-    let config_path = state::config_path(config)?;
-    let input_config = state::get_config(&config_path)?;
+pub async fn run(args: &Args, config_arg: Option<&Path>) -> Result<()> {
+    let (config, _) = load_config_with_override(config_arg)?;
+
     let upsert_session_request =
-        linkup::create_preview_req_from_config(&input_config, args.name.clone(), &args.services);
+        linkup::create_preview_req_from_config(&config, args.name.clone(), &args.services);
 
     if args.print_request {
         let create_req_json = serde_json::to_string(&upsert_session_request)
@@ -42,10 +44,7 @@ pub async fn run(args: &Args, config: &Option<String>) -> Result<()> {
         return Ok(());
     }
 
-    let worker_client = WorkerClient::new(
-        &input_config.linkup.worker_url,
-        &input_config.linkup.worker_token,
-    );
+    let worker_client = WorkerClient::new(&config.linkup.worker_url, &config.linkup.worker_token);
 
     let preview_session = worker_client
         .preview_session(&upsert_session_request)
@@ -55,7 +54,7 @@ pub async fn run(args: &Args, config: &Option<String>) -> Result<()> {
 
     print_sessions_table(
         &[SessionRow {
-            domains: format_state_domains(&preview_name, &input_config.domains),
+            domains: format_state_domains(&preview_name, &config.domains),
             name: preview_name,
             kind: SessionKind::Preview,
         }],
