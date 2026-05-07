@@ -1,5 +1,6 @@
 use clap::crate_version;
 use colored::Colorize;
+use linkup_clients::LocalServerClient;
 use regex::Regex;
 use serde::Serialize;
 use std::{
@@ -8,7 +9,11 @@ use std::{
     fs::{self},
 };
 
-use crate::{Result, linkup_dir_path, services, state::State};
+use crate::{
+    Result, linkup_dir_path,
+    services::{self, local_server},
+    state::State,
+};
 
 use super::local_dns;
 
@@ -19,8 +24,8 @@ pub struct Args {
     pub json: bool,
 }
 
-pub fn health(args: &Args) -> Result<()> {
-    let health = Health::load()?;
+pub async fn health(args: &Args) -> Result<()> {
+    let health = Health::load().await?;
 
     let health = if args.json {
         serde_json::to_string_pretty(&health).unwrap()
@@ -248,12 +253,20 @@ impl Linkup {
 #[derive(Debug, Serialize)]
 struct LocalDNS {
     resolvers: Vec<String>,
+    records: Vec<String>,
 }
 
 impl LocalDNS {
-    fn load() -> Result<Self> {
+    async fn load() -> Result<Self> {
+        let domains = LocalServerClient::new(&local_server::url())
+            .list_dns_domains()
+            .await
+            .map(|res| res.domains)
+            .unwrap_or_default();
+
         Ok(Self {
             resolvers: local_dns::list_resolvers()?,
+            records: domains,
         })
     }
 }
@@ -269,7 +282,7 @@ struct Health {
 }
 
 impl Health {
-    pub fn load() -> Result<Self> {
+    pub async fn load() -> Result<Self> {
         let state = State::load().ok();
         let session = Session::load(state.as_ref());
 
@@ -279,7 +292,7 @@ impl Health {
             session,
             background_services: BackgroundServices::load(state.as_ref()),
             linkup: Linkup::load()?,
-            local_dns: LocalDNS::load()?,
+            local_dns: LocalDNS::load().await?,
         })
     }
 }
@@ -360,11 +373,22 @@ impl Display for Health {
         write!(f, "{}", "Local DNS: ".bold().italic())?;
         write!(f, "\n  Resolvers:")?;
         if self.local_dns.resolvers.is_empty() {
-            writeln!(f, " {}", "EMPTY".yellow())?;
+            writeln!(f, "      {}", "EMPTY".yellow())?;
         } else {
             writeln!(f)?;
             for file in &self.local_dns.resolvers {
                 writeln!(f, "      - {}", file)?;
+            }
+        }
+        write!(f, "  Server Records:")?;
+        match self.background_services.linkup_server {
+            BackgroundServiceHealth::NotInstalled => todo!(),
+            BackgroundServiceHealth::Stopped => writeln!(f, " {}", "NOT RUNNING".yellow())?,
+            BackgroundServiceHealth::Running(_) => {
+                writeln!(f)?;
+                for record in &self.local_dns.records {
+                    writeln!(f, "    - {record}")?;
+                }
             }
         }
 
