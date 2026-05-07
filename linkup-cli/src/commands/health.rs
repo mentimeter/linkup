@@ -377,7 +377,7 @@ impl Display for Health {
         } else {
             writeln!(f)?;
             for file in &self.local_dns.resolvers {
-                writeln!(f, "      - {}", file)?;
+                writeln!(f, "    - {}", file)?;
             }
         }
         write!(f, "  Server Records:")?;
