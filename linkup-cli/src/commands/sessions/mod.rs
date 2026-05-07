@@ -3,6 +3,8 @@ mod create_preview;
 mod delete;
 mod list;
 
+use std::path::Path;
+
 use clap::Subcommand;
 
 use crate::Result;
@@ -28,7 +30,7 @@ enum Command {
     List(list::Args),
 }
 
-pub async fn sessions(args: &Args, config: &Option<String>) -> Result<()> {
+pub async fn sessions(args: &Args, config: Option<&Path>) -> Result<()> {
     match &args.command {
         Command::CreatePreview(args) => create_preview::run(args, config).await,
         Command::CreateIsolated(args) => create_isolated::run(args, config).await,

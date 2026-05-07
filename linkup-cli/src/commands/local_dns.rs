@@ -1,5 +1,6 @@
 use std::{
     fs,
+    path::Path,
     process::{Command, Stdio},
 };
 
@@ -26,14 +27,14 @@ pub enum LocalDNSSubcommand {
     Uninstall,
 }
 
-pub async fn local_dns(args: &Args, config: &Option<String>) -> Result<()> {
+pub async fn local_dns(args: &Args, config: Option<&Path>) -> Result<()> {
     match args.subcommand {
         LocalDNSSubcommand::Install => install(config).await,
         LocalDNSSubcommand::Uninstall => uninstall(config).await,
     }
 }
 
-pub async fn install(config_arg: &Option<String>) -> Result<()> {
+pub async fn install(config_arg: Option<&Path>) -> Result<()> {
     // NOTE(augustoccesar)[2025-03-24] We decided to print this anyways, even if the current session already have sudo.
     // This should help with visibility of what is happening.
     println!("Linkup needs sudo access to:");
@@ -62,7 +63,7 @@ pub async fn install(config_arg: &Option<String>) -> Result<()> {
     Ok(())
 }
 
-pub async fn uninstall(config_arg: &Option<String>) -> Result<()> {
+pub async fn uninstall(config_arg: Option<&Path>) -> Result<()> {
     // NOTE(augustoccesar)[2025-03-24] We decided to print this anyways, even if the current session already have sudo.
     // This should help with visibility of what is happening.
     println!("Linkup needs sudo access to:");
@@ -103,7 +104,7 @@ fn ensure_resolver_dir() -> Result<()> {
 
 // TODO(@augustoccesar)[2026-05-06]: Create a better check for this. Even more relevant now that
 //  there are multiple state files.
-pub fn is_installed(state: Option<&State>, cfg_path: &Option<String>) -> bool {
+pub fn is_installed(state: Option<&State>, cfg_path: Option<&Path>) -> bool {
     let managed_domains = state::managed_domains(state, cfg_path);
 
     match list_resolvers() {

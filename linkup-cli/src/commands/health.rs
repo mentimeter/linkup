@@ -247,20 +247,12 @@ impl Linkup {
 
 #[derive(Debug, Serialize)]
 struct LocalDNS {
-    is_installed: Option<bool>,
     resolvers: Vec<String>,
 }
 
 impl LocalDNS {
-    fn load(state: Option<&State>) -> Result<Self> {
-        // If there is no state, we cannot know if local-dns is installed since we depend on
-        // the domains listed on it.
-        let is_installed = state
-            .as_ref()
-            .map(|state| local_dns::is_installed(Some(state), &None));
-
+    fn load() -> Result<Self> {
         Ok(Self {
-            is_installed,
             resolvers: local_dns::list_resolvers()?,
         })
     }
@@ -287,7 +279,7 @@ impl Health {
             session,
             background_services: BackgroundServices::load(state.as_ref()),
             linkup: Linkup::load()?,
-            local_dns: LocalDNS::load(state.as_ref())?,
+            local_dns: LocalDNS::load()?,
         })
     }
 }
@@ -366,26 +358,14 @@ impl Display for Health {
         }
 
         write!(f, "{}", "Local DNS: ".bold().italic())?;
-        match self.local_dns.is_installed {
-            Some(installed) => {
-                write!(f, "\n  Installed: ",)?;
-                if installed {
-                    writeln!(f, "{}", "YES".green())?;
-                } else {
-                    writeln!(f, "{}", "NO".yellow())?
-                }
-
-                write!(f, "  Resolvers:")?;
-                if self.local_dns.resolvers.is_empty() {
-                    writeln!(f, " {}", "EMPTY".yellow())?;
-                } else {
-                    writeln!(f)?;
-                    for file in &self.local_dns.resolvers {
-                        writeln!(f, "      - {}", file)?;
-                    }
-                }
+        write!(f, "\n  Resolvers:")?;
+        if self.local_dns.resolvers.is_empty() {
+            writeln!(f, " {}", "EMPTY".yellow())?;
+        } else {
+            writeln!(f)?;
+            for file in &self.local_dns.resolvers {
+                writeln!(f, "      - {}", file)?;
             }
-            None => writeln!(f, "{}", "UNKNOWN".yellow())?,
         }
 
         write!(f, "{}", "Possible orphan processes:".bold().italic())?;

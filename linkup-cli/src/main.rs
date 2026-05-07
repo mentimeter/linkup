@@ -9,6 +9,7 @@ pub use anyhow::Result;
 pub use linkup::Version;
 
 mod commands;
+mod config;
 mod env_files;
 mod release;
 mod services;
@@ -189,7 +190,7 @@ struct Cli {
         value_name = "CONFIG",
         help = "Path to config file, overriding environment variable."
     )]
-    config: Option<String>,
+    config: Option<PathBuf>,
 
     #[command(subcommand)]
     command: Commands,
@@ -252,18 +253,18 @@ async fn main() {
     display_update_message(&cli.command).await;
 
     let result = match &cli.command {
-        Commands::Start(args) => commands::start(args, &cli.config).await,
+        Commands::Start(args) => commands::start(args, cli.config.as_deref()).await,
         Commands::Stop(args) => commands::stop(args, true),
         Commands::Route(args) => commands::route(args).await,
-        Commands::Sessions(args) => commands::sessions(args, &cli.config).await,
+        Commands::Sessions(args) => commands::sessions(args, cli.config.as_deref()).await,
         Commands::Status(args) => commands::status(args).await,
         Commands::Health(args) => commands::health(args),
-        Commands::LocalDNS(args) => commands::local_dns(args, &cli.config).await,
+        Commands::LocalDNS(args) => commands::local_dns(args, cli.config.as_deref()).await,
         Commands::Update(args) => commands::update(args).await,
-        Commands::Uninstall(args) => commands::uninstall(args, &cli.config).await,
+        Commands::Uninstall(args) => commands::uninstall(args, cli.config.as_deref()).await,
         Commands::Completion(args) => commands::completion(args),
         Commands::Infra(args) => commands::infra(args).await,
-        Commands::Server(args) => commands::server(args, &cli.config).await,
+        Commands::Server(args) => commands::server(args, cli.config.as_deref()).await,
     };
 
     if let Err(error) = result {
