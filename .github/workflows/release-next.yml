@@ -109,7 +109,7 @@ jobs:
 
             fs.copyFileSync(binaryPath, path.join(tmpDir, 'linkup'));
 
-            const assetName = `linkup-${releaseVersion}-${target}.tar.gz`;
+            const assetName = `linkup-${target}.tar.gz`;
             execSync(`tar czf ${assetName} -C ${tmpDir} linkup`);
 
             let checksum;

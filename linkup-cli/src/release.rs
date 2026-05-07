@@ -31,10 +31,10 @@ mod github {
 
     impl Release {
         /// Examples of Linkup asset files:
-        /// - linkup-1.7.1-x86_64-apple-darwin.tar.gz
-        /// - linkup-1.7.1-aarch64-apple-darwin.tar.gz
-        /// - linkup-1.7.1-x86_64-unknown-linux-gnu.tar.gz
-        /// - linkup-1.7.1-aarch64-unknown-linux-gnu.tar.gz
+        /// - linkup-x86_64-apple-darwin.tar.gz
+        /// - linkup-aarch64-apple-darwin.tar.gz
+        /// - linkup-x86_64-unknown-linux-gnu.tar.gz
+        /// - linkup-aarch64-unknown-linux-gnu.tar.gz
         pub fn linkup_asset(&self, os: &str, arch: &str) -> Option<Asset> {
             let lookup_os = match os {
                 "macos" => "apple-darwin",
