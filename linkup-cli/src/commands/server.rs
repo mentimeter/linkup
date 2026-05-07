@@ -1,10 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use crate::{
-    Result,
-    state::{config_path, get_config},
-};
 use linkup::MemoryStringStore;
+
+use crate::{Result, config::load_config_with_override};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -13,7 +11,7 @@ pub struct Args {
 }
 
 pub async fn server(args: &Args, config_arg: Option<&Path>) -> Result<()> {
-    let config = get_config(&config_path(config_arg)?)?;
+    let (config, _) = load_config_with_override(config_arg)?;
 
     let config_store = MemoryStringStore::default();
     let https_certs_dir = PathBuf::from(&args.certs_dir);

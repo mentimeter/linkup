@@ -10,11 +10,9 @@ use linkup::SessionKind;
 use crate::{
     Result, commands,
     env_files::write_to_env_file,
-    services,
-    services::local_server,
+    services::{self, local_server},
     session::{SessionRow, print_sessions_table},
-    state::State,
-    state::{config_path, config_to_state, find_isolated_suffixes, get_config},
+    state::{State, find_isolated_suffixes},
 };
 
 #[derive(clap::Args)]
@@ -147,10 +145,7 @@ fn set_linkup_env(state: State) -> Result<()> {
 }
 
 fn load_and_save_state(config_arg: Option<&Path>) -> Result<State> {
-    let config_path = config_path(config_arg)?;
-    let input_config = get_config(&config_path)?;
-
-    let mut state = config_to_state(input_config.clone(), config_path);
+    let mut state = State::from_config(config_arg)?;
 
     if let Ok(previous_state) = State::load() {
         state.linkup.session_name = previous_state.linkup.session_name;

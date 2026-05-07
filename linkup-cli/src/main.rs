@@ -9,6 +9,7 @@ pub use anyhow::Result;
 pub use linkup::Version;
 
 mod commands;
+mod config;
 mod env_files;
 mod release;
 mod services;
@@ -272,7 +273,3 @@ async fn main() {
         process::exit(1);
     }
 }
-
-// pub(crate) fn load_config(config_arg: Option<&Path>) -> Result<Config> {
-//     todo!()
-// }
