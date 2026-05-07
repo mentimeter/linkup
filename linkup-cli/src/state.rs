@@ -1,7 +1,7 @@
 use std::{
-    env,
     fmt::{self, Display, Formatter},
     fs,
+    path::Path,
 };
 
 use anyhow::Context;
@@ -12,7 +12,7 @@ use url::Url;
 
 use linkup::{Domain, Session, SessionKind, SessionService};
 
-use crate::{LINKUP_CONFIG_ENV, LINKUP_STATE_FILE, Result, linkup_file_path};
+use crate::{LINKUP_STATE_FILE, Result, config::load_config_with_override, linkup_file_path};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
@@ -30,11 +30,12 @@ impl State {
         Self::load_from_path(&state_file_path(Some(suffix)))
     }
 
-    fn load_from_path(path: &std::path::Path) -> anyhow::Result<Self> {
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("Failed to read state file on {:?}", path))?;
+    /// Attempts to load a State from a config. If config_override is None, it will
+    /// load the config from the environment variable.
+    pub fn from_config(config_path: Option<&Path>) -> anyhow::Result<Self> {
+        let (config, config_path) = load_config_with_override(config_path)?;
 
-        serde_yaml::from_str(&content).context("Failed to parse state file")
+        Ok(config_to_state(config, &config_path))
     }
 
     pub fn save(&mut self) -> Result<()> {
@@ -52,20 +53,6 @@ impl State {
             fs::remove_file(&path)
                 .with_context(|| format!("Failed to delete state file {:?}", path))?;
         }
-
-        Ok(())
-    }
-
-    fn save_to_path(&self, path: &std::path::Path) -> Result<()> {
-        if cfg!(test) {
-            return Ok(());
-        }
-
-        let yaml_string =
-            serde_yaml::to_string(self).context("Failed to serialize the state into YAML")?;
-
-        fs::write(path, yaml_string)
-            .with_context(|| format!("Failed to write the state file to {:?}", path))?;
 
         Ok(())
     }
@@ -94,6 +81,27 @@ impl State {
 
     pub fn exists() -> bool {
         state_file_path(None).exists()
+    }
+
+    fn load_from_path(path: &std::path::Path) -> anyhow::Result<Self> {
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read state file on {:?}", path))?;
+
+        serde_yaml::from_str(&content).context("Failed to parse state file")
+    }
+
+    fn save_to_path(&self, path: &std::path::Path) -> Result<()> {
+        if cfg!(test) {
+            return Ok(());
+        }
+
+        let yaml_string =
+            serde_yaml::to_string(self).context("Failed to serialize the state into YAML")?;
+
+        fs::write(path, yaml_string)
+            .with_context(|| format!("Failed to write the state file to {:?}", path))?;
+
+        Ok(())
     }
 }
 
@@ -147,67 +155,6 @@ impl Display for ServiceTarget {
     }
 }
 
-pub fn config_to_state(config: linkup::config::Config, config_path: String) -> State {
-    let random_token = Alphanumeric.sample_string(&mut rand::rng(), 16);
-
-    let linkup = LinkupState {
-        session_name: String::new(),
-        session_token: random_token,
-        worker_token: config.linkup.worker_token,
-        config_path,
-        worker_url: config.linkup.worker_url,
-        tunnel: Some(Url::parse("http://tunnel-not-yet-set").expect("default url parses")),
-        kind: SessionKind::Tunneled,
-        cache_routes: config.linkup.cache_routes,
-    };
-
-    let services = config
-        .services
-        .into_iter()
-        .map(|service_config| LocalService {
-            config: service_config.clone(),
-            current: ServiceTarget::Remote,
-        })
-        .collect::<Vec<LocalService>>();
-
-    let domains = config.domains;
-
-    State {
-        linkup,
-        domains,
-        services,
-    }
-}
-
-pub fn config_path(config_arg: &Option<String>) -> Result<String> {
-    match config_arg {
-        Some(path) => {
-            let absolute_path = fs::canonicalize(path)
-                .with_context(|| format!("Unable to resolve absolute path for {path:?}"))?;
-
-            Ok(absolute_path.to_string_lossy().into_owned())
-        }
-        None => {
-            let path = env::var(LINKUP_CONFIG_ENV).context(
-                "No config argument provided and LINKUP_CONFIG environment variable not set",
-            )?;
-
-            let absolute_path = fs::canonicalize(&path)
-                .with_context(|| format!("Unalbe to resolve absolute path for {path:?}"))?;
-
-            Ok(absolute_path.to_string_lossy().into_owned())
-        }
-    }
-}
-
-pub fn get_config(config_path: &str) -> Result<linkup::config::Config> {
-    let content = fs::read_to_string(config_path)
-        .with_context(|| format!("Failed to read config file {config_path:?}"))?;
-
-    serde_yaml::from_str(&content)
-        .with_context(|| "Failed to deserialize config file {config_path:?}")
-}
-
 impl From<&State> for Session {
     fn from(state: &State) -> Self {
         let session_services = state
@@ -234,20 +181,16 @@ impl From<&State> for Session {
     }
 }
 
-pub fn managed_domains(state: Option<&State>, cfg_path: &Option<String>) -> Vec<String> {
-    let config_domains = match config_path(cfg_path).ok() {
-        Some(cfg_path) => match get_config(&cfg_path) {
-            Ok(config) => Some(
-                config
-                    .domains
-                    .iter()
-                    .map(|domain| domain.domain.clone())
-                    .collect::<Vec<String>>(),
-            ),
-            Err(_) => None,
-        },
-        None => None,
-    };
+pub fn managed_domains(state: Option<&State>, cfg_path: Option<&Path>) -> Vec<String> {
+    let config_domains = load_config_with_override(cfg_path)
+        .map(|(config, _)| {
+            config
+                .domains
+                .iter()
+                .map(|domain| domain.domain.clone())
+                .collect::<Vec<String>>()
+        })
+        .ok();
 
     let state_domains = state.map(|state| state.domain_strings());
 
@@ -299,8 +242,42 @@ fn state_file_path(suffix: Option<&str>) -> std::path::PathBuf {
     }
 }
 
+fn config_to_state(config: linkup::config::Config, config_path: &Path) -> State {
+    let random_token = Alphanumeric.sample_string(&mut rand::rng(), 16);
+
+    let linkup = LinkupState {
+        session_name: String::new(),
+        session_token: random_token,
+        worker_token: config.linkup.worker_token,
+        config_path: config_path.to_string_lossy().to_string(),
+        worker_url: config.linkup.worker_url,
+        tunnel: Some(Url::parse("http://tunnel-not-yet-set").expect("default url parses")),
+        kind: SessionKind::Tunneled,
+        cache_routes: config.linkup.cache_routes,
+    };
+
+    let services = config
+        .services
+        .into_iter()
+        .map(|service_config| LocalService {
+            config: service_config.clone(),
+            current: ServiceTarget::Remote,
+        })
+        .collect::<Vec<LocalService>>();
+
+    let domains = config.domains;
+
+    State {
+        linkup,
+        domains,
+        services,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::{path::PathBuf, str::FromStr};
+
     use super::*;
     use url::Url;
 
@@ -336,7 +313,8 @@ domains:
     fn test_config_to_state() {
         let input_str = String::from(CONF_STR);
         let config = serde_yaml::from_str(&input_str).unwrap();
-        let local_state = config_to_state(config, "./path/to/config.yaml".to_string());
+        let local_state =
+            config_to_state(config, &PathBuf::from_str("./path/to/config.yaml").unwrap());
 
         assert_eq!(local_state.linkup.config_path, "./path/to/config.yaml");
 
