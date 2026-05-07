@@ -9,25 +9,55 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "Linkup",
-      social: {
-        github: "https://github.com/mentimeter/linkup",
-      },
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/mentimeter/linkup' },
+      ],
       sidebar: [
         {
-          label: "Explanations",
-          autogenerate: { directory: "explanation" },
+          label: "Getting Started",
+          items: [
+            { label: "What is Linkup?", slug: "explanation/what-is-linkup" },
+            { label: "Deploy to Cloudflare", slug: "guides/deploy-linkup" },
+            { label: "Run a Local Session", slug: "guides/local-env" },
+          ],
         },
         {
-          label: "How To Guides",
-          autogenerate: { directory: "guides" },
+          label: "Sessions",
+          items: [
+            { label: "Managing Sessions", slug: "guides/sessions" },
+            { label: "Isolated Sessions", slug: "guides/isolated-sessions" },
+            { label: "Preview Environments", slug: "guides/preview-env" },
+          ],
         },
         {
-          label: "Tutorials",
-          autogenerate: { directory: "tutorials" },
+          label: "Guides",
+          items: [
+            { label: "Configure Linkup", slug: "guides/configure" },
+            { label: "Local DNS", slug: "guides/local-dns" },
+            { label: "Updating and Uninstalling", slug: "guides/maintaining" },
+            { label: "Troubleshooting", slug: "guides/troubleshooting" },
+          ],
+        },
+        {
+          label: "Concepts",
+          items: [
+            {
+              label: "What does a setup look like?",
+              slug: "explanation/what-does-a-setup-look-like",
+            },
+            { label: "How Linkup works", slug: "explanation/how-it-works" },
+          ],
         },
         {
           label: "Reference",
-          autogenerate: { directory: "reference" },
+          items: [
+            { label: "Config Reference", slug: "reference/config" },
+            { label: "Shell Completion", slug: "reference/shell-completion" },
+            {
+              label: "Cloudflare Resources",
+              slug: "reference/cloudflare-resources",
+            },
+          ],
         },
       ],
       customCss: ["./src/styles/custom.css"],
