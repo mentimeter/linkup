@@ -114,11 +114,6 @@ pub async fn status(args: &Args) -> anyhow::Result<()> {
             serde_json::to_string_pretty(&output).expect("Failed to serialize status")
         );
     } else {
-        match commands::health::BackgroundServices::load(Some(&state)).linkup_server {
-            commands::health::BackgroundServiceHealth::Running(_) => (),
-            _ => println!("{}", "Linkup is not currently running.\n".yellow()),
-        }
-
         print_sessions_table(&all_sessions, Some(&target_session));
         println!();
 
