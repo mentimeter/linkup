@@ -12,9 +12,7 @@ use url::Url;
 
 use linkup::{Domain, Session, SessionKind, SessionService};
 
-use crate::{
-    LINKUP_STATE_FILE, Result, config::load_config_with_override, linkup_file_path, state,
-};
+use crate::{LINKUP_STATE_FILE, Result, config::load_config_with_override, linkup_file_path};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct State {
@@ -224,7 +222,7 @@ pub fn top_level_domains(domains: &[String]) -> Vec<String> {
 pub fn find_isolated_suffixes() -> Vec<String> {
     let prefix = format!("{}-", LINKUP_STATE_FILE);
 
-    let state_files = list_state_files()
+    list_state_files()
         .iter()
         .filter_map(|file_path| {
             file_path
@@ -234,9 +232,7 @@ pub fn find_isolated_suffixes() -> Vec<String> {
         .filter(|file_name| *file_name != LINKUP_STATE_FILE)
         .filter_map(|file_name| file_name.strip_prefix(&prefix))
         .map(|stripped_file_name| stripped_file_name.to_string())
-        .collect();
-
-    state_files
+        .collect()
 }
 
 pub fn list_state_files() -> Vec<PathBuf> {
@@ -246,9 +242,7 @@ pub fn list_state_files() -> Vec<PathBuf> {
                 .filter_map(|entry| entry.ok())
                 .filter_map(|entry| {
                     let file_name = entry.file_name();
-                    let Some(file_name) = file_name.to_str() else {
-                        return None;
-                    };
+                    let file_name = file_name.to_str()?;
 
                     if !file_name.starts_with(LINKUP_STATE_FILE) {
                         return None;

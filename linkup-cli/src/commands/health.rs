@@ -29,7 +29,7 @@ pub async fn health(args: &Args) -> Result<()> {
     let mut stdout = stdout();
 
     if args.json {
-        stdout.write(serde_json::to_string_pretty(&health).unwrap().as_bytes())?;
+        stdout.write_all(serde_json::to_string_pretty(&health).unwrap().as_bytes())?;
     } else {
         health.write(&mut stdout)?;
     };

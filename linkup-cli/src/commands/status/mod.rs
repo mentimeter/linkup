@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
-    commands,
     config::load_config,
     services::{self, local_server},
     session::{SessionRow, list_session_rows, print_sessions_table},
