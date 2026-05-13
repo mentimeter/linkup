@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Context;
 use colored::Colorize;
 
-use linkup::{NameKind, Session, SessionKind, UpsertSessionRequest};
+use linkup::{Session, SessionKind, UpsertSessionRequest};
 use linkup_clients::LocalServerClient;
 
 use crate::{
@@ -15,8 +15,8 @@ use crate::{
 
 #[derive(clap::Args)]
 pub(super) struct Args {
-    #[arg(help = "Optional name for the isolated session")]
-    pub name: Option<String>,
+    #[arg(help = "Name for the isolated session")]
+    pub name: String,
 }
 
 pub(super) async fn run(args: &Args, config_arg: Option<&Path>) -> Result<()> {
@@ -45,21 +45,12 @@ pub(super) async fn run(args: &Args, config_arg: Option<&Path>) -> Result<()> {
 
     let session: Session = (&isolated_state).into();
 
-    let upsert_request = match &args.name {
-        Some(name) => UpsertSessionRequest::Named {
-            desired_name: name.clone(),
-            session_token: session.session_token,
-            services: session.services,
-            domains: session.domains,
-            cache_routes: session.cache_routes,
-        },
-        None => UpsertSessionRequest::Unnamed {
-            name_kind: NameKind::SixChar,
-            session_token: Some(session.session_token),
-            services: session.services,
-            domains: session.domains,
-            cache_routes: session.cache_routes,
-        },
+    let upsert_request = UpsertSessionRequest::Named {
+        desired_name: args.name.clone(),
+        session_token: session.session_token,
+        services: session.services,
+        domains: session.domains,
+        cache_routes: session.cache_routes,
     };
 
     let local_server_client = LocalServerClient::new(&local_server::url());
