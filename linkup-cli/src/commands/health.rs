@@ -4,7 +4,7 @@ use std::{
     io::{Write, stdout},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::crate_version;
 use colored::Colorize;
 use linkup::Session;
@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use crate::{
     services::{cloudflared, local_server},
-    state::State,
+    state::{self, State},
 };
 
 #[derive(clap::Args)]
@@ -112,9 +112,37 @@ impl System {
 
 impl States {
     fn load() -> Result<Self> {
-        Ok(Self {
-            items: HashMap::new(),
-        })
+        let mut items = HashMap::new();
+        for state_path in state::list_state_files() {
+            let file_name = state_path
+                .file_name()
+                .context("Failed to resolve state file name")?
+                .to_string_lossy()
+                .to_string();
+
+            let state = State::load_from_path(&state_path)?;
+
+            items.insert(file_name, state);
+        }
+
+        Ok(Self { items })
+    }
+
+    fn write(&self, writer: &mut impl Write, offset: usize) -> Result<()> {
+        if self.items.is_empty() {
+            writeln!(writer, " {}", "NONE".yellow())?;
+        }
+
+        writeln!(writer)?;
+        for (state_file_name, state) in &self.items {
+            writeln!(
+                writer,
+                "{:>offset$}- [{}] {} ({})",
+                "", state_file_name, state.linkup.session_name, state.linkup.kind,
+            )?;
+        }
+
+        Ok(())
     }
 }
 
@@ -252,6 +280,9 @@ impl Health {
 
         writeln!(writer, "{}", "CLI:".bold())?;
         self.cli.write(writer, 2)?;
+
+        write!(writer, "{}", "States:".bold())?;
+        self.states.write(writer, 2)?;
 
         write!(writer, "{}", "Local Server:".bold())?;
         self.local_server.write(writer, 2)?;
