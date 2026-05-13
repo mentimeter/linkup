@@ -98,7 +98,7 @@ pub async fn handle_all(
                 upstream_request.headers_mut().insert(key, value.clone());
             }
 
-            // Overriding host header neccesary for tokio_tungstenite
+            // Overriding host header necessary for tokio_tungstenite
             upstream_request
                 .headers_mut()
                 .insert(http::header::HOST, HeaderValue::from_str(&host).unwrap());

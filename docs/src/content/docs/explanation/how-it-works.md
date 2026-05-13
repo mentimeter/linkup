@@ -124,7 +124,7 @@ of the following questions:
 
 - Does the request come straight from the browser? Then it will have a `Referer`
   header that includes the linkup session name.
-- Have I instrumented the underlying service to propogate the opentelemetry
+- Have I instrumented the underlying service to propagate the opentelemetry
   tracing headers? If so, `tracestate` will include the linkup session name.
 
 ## Linkup Components
