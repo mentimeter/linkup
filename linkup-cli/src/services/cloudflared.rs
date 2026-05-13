@@ -179,7 +179,7 @@ async fn has_dns_propagated(tunnel_url: &Url) -> bool {
         let addresses = lookup.answers().iter().collect::<Vec<_>>();
 
         if !addresses.is_empty() {
-            log::debug!("DNS has propogated for {}.", domain);
+            log::debug!("DNS has propagated for {}.", domain);
 
             return true;
         }

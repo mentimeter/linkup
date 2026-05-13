@@ -22,7 +22,7 @@ Three things may need to be configured in your codebase for linkup to work well:
    "general" domain names of your linkup environment, like `api.example.com`,
    never `smart-snake.api.example.com` and your setup will work well.
 3. You may need to instrument your backend services to
-   [propogate opentelemetry state](https://opentelemetry.io/docs/concepts/context-propagation/).
+   [propagate opentelemetry state](https://opentelemetry.io/docs/concepts/context-propagation/).
 
 More information on configuration [here](/linkup/guides/configure).
 
