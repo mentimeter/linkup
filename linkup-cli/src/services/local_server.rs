@@ -13,7 +13,8 @@ use tokio::time::sleep;
 use url::Url;
 
 use linkup::{
-    NameKind, Session, TunnelData, TunneledSessionResponse, UpsertSessionRequest, random_six_char,
+    NameKind, Session, SessionKind, TunnelData, TunneledSessionResponse, UpsertSessionRequest,
+    random_six_char,
 };
 use linkup_clients::{LocalServerClient, LocalServerClientError};
 
@@ -93,6 +94,7 @@ pub async fn update_state(state: &mut State) -> Result<TunnelData> {
 
     log::info!("Updating local state file...");
     state.linkup.session_name = tunneled_session.session_name;
+    state.linkup.kind = SessionKind::Tunneled;
     state
         .save()
         .expect("failed to update local state file with session name");
@@ -112,6 +114,7 @@ pub async fn update_isolated_state(state: &mut State) -> Result<()> {
     client.isolated_session(&upsert_request).await?;
 
     state.linkup.session_name = session_name;
+    state.linkup.kind = SessionKind::Isolated;
 
     Ok(())
 }

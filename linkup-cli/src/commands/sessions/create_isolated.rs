@@ -41,6 +41,8 @@ pub(super) async fn run(args: &Args, config_arg: Option<&Path>) -> Result<()> {
     }
 
     let mut isolated_state = State::from_config(config_arg)?;
+    isolated_state.linkup.kind = SessionKind::Isolated;
+
     let session: Session = (&isolated_state).into();
 
     let upsert_request = match &args.name {
