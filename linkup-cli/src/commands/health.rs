@@ -315,7 +315,7 @@ impl Display for Health {
             None => writeln!(f, "{}", "NOT SET".yellow())?,
         }
 
-        writeln!(f, "{}", "Background sevices:".bold().italic())?;
+        writeln!(f, "{}", "Background services:".bold().italic())?;
         write!(f, "  - Linkup Server  ")?;
         match &self.background_services.linkup_server {
             BackgroundServiceHealth::NotInstalled => writeln!(f, "{}", "NOT INSTALLED".yellow())?,

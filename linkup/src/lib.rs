@@ -666,7 +666,7 @@ mod tests {
                 .unwrap();
 
         // Second request should have the same outcome
-        // The secret sauce should be in the extra headers that have been propogated
+        // The secret sauce should be in the extra headers that have been propagated
         assert_eq!(target.name, "backend");
         assert_eq!(target.url, "http://localhost:8001/user");
     }
