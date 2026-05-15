@@ -2,10 +2,14 @@ use std::{collections::BTreeSet, net::Ipv4Addr, str::FromStr, sync::Arc};
 
 use hickory_server::{
     net::runtime::{Time, TokioRuntimeProvider},
-    proto::rr::{LowerName, Name, RData, Record},
+    proto::rr::{Name, RData, Record},
+    resolver::config::{NameServerConfig, ResolverOpts},
     server::{Request, RequestHandler, ResponseHandler, ResponseInfo},
-    store::in_memory::InMemoryZoneHandler,
-    zone_handler::{AxfrPolicy, Catalog, ZoneHandler, ZoneType},
+    store::{
+        forwarder::{ForwardConfig, ForwardZoneHandler},
+        in_memory::InMemoryZoneHandler,
+    },
+    zone_handler::{AxfrPolicy, Catalog, ZoneType},
 };
 use tokio::sync::RwLock;
 
@@ -17,8 +21,29 @@ pub struct DnsCatalog {
 
 impl DnsCatalog {
     pub fn new() -> Self {
+        let mut catalog = Catalog::new();
+
+        let forward_config = ForwardConfig {
+            name_servers: vec![NameServerConfig::udp(
+                "1.1.1.1"
+                    .parse()
+                    .expect("1.1.1.1 should be a valid IP address"),
+            )],
+            options: Some(ResolverOpts::default()),
+        };
+
+        let forwarder = ForwardZoneHandler::builder_with_config(
+            forward_config,
+            TokioRuntimeProvider::default(),
+        )
+        .with_origin(Name::root())
+        .build()
+        .expect("ZoneHandler should be buildable with the current settings");
+
+        catalog.upsert(Name::root().into(), vec![Arc::new(forwarder)]);
+
         Self {
-            catalog: Arc::new(RwLock::new(Catalog::new())),
+            catalog: Arc::new(RwLock::new(catalog)),
             domains: Arc::new(RwLock::new(BTreeSet::new())),
         }
     }
@@ -55,10 +80,6 @@ impl DnsCatalog {
 
         self.catalog.write().await.remove(&record_name.into());
         self.domains.write().await.remove(domain);
-    }
-
-    pub(crate) async fn upsert_zone(&self, name: LowerName, handlers: Vec<Arc<dyn ZoneHandler>>) {
-        self.catalog.write().await.upsert(name, handlers);
     }
 }
 
