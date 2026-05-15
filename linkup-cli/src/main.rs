@@ -258,7 +258,7 @@ async fn main() {
         Commands::Route(args) => commands::route(args).await,
         Commands::Sessions(args) => commands::sessions(args, cli.config.as_deref()).await,
         Commands::Status(args) => commands::status(args).await,
-        Commands::Health(args) => commands::health(args),
+        Commands::Health(args) => commands::health(args).await,
         Commands::LocalDNS(args) => commands::local_dns(args, cli.config.as_deref()).await,
         Commands::Update(args) => commands::update(args).await,
         Commands::Uninstall(args) => commands::uninstall(args, cli.config.as_deref()).await,
