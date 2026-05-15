@@ -1,7 +1,7 @@
 use std::{
     fmt::{self, Display, Formatter},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use anyhow::Context;
@@ -28,6 +28,13 @@ impl State {
 
     pub fn load_with_suffix(suffix: &str) -> anyhow::Result<Self> {
         Self::load_from_path(&state_file_path(Some(suffix)))
+    }
+
+    pub fn load_from_path(path: &std::path::Path) -> anyhow::Result<Self> {
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read state file on {:?}", path))?;
+
+        serde_yaml::from_str(&content).context("Failed to parse state file")
     }
 
     /// Attempts to load a State from a config. If config_override is None, it will
@@ -81,13 +88,6 @@ impl State {
 
     pub fn exists() -> bool {
         state_file_path(None).exists()
-    }
-
-    fn load_from_path(path: &std::path::Path) -> anyhow::Result<Self> {
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("Failed to read state file on {:?}", path))?;
-
-        serde_yaml::from_str(&content).context("Failed to parse state file")
     }
 
     fn save_to_path(&self, path: &std::path::Path) -> Result<()> {
@@ -222,13 +222,33 @@ pub fn top_level_domains(domains: &[String]) -> Vec<String> {
 pub fn find_isolated_suffixes() -> Vec<String> {
     let prefix = format!("{}-", LINKUP_STATE_FILE);
 
+    list_state_files()
+        .iter()
+        .filter_map(|file_path| {
+            file_path
+                .file_name()
+                .and_then(|file_name| file_name.to_str())
+        })
+        .filter(|file_name| *file_name != LINKUP_STATE_FILE)
+        .filter_map(|file_name| file_name.strip_prefix(&prefix))
+        .map(|stripped_file_name| stripped_file_name.to_string())
+        .collect()
+}
+
+pub fn list_state_files() -> Vec<PathBuf> {
     fs::read_dir(crate::linkup_dir_path())
         .map(|entries| {
             entries
                 .filter_map(|entry| entry.ok())
                 .filter_map(|entry| {
-                    let name = entry.file_name().to_string_lossy().into_owned();
-                    name.strip_prefix(&prefix).map(|suffix| suffix.to_string())
+                    let file_name = entry.file_name();
+                    let file_name = file_name.to_str()?;
+
+                    if !file_name.starts_with(LINKUP_STATE_FILE) {
+                        return None;
+                    }
+
+                    Some(entry.path())
                 })
                 .collect()
         })

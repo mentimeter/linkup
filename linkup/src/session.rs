@@ -85,6 +85,11 @@ pub struct SessionDetailResponse {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DnsListResponse {
+    pub domains: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TunneledSessionResponse {
     pub session_name: String,
     pub tunnel_data: TunnelData,

@@ -1,34 +1,40 @@
-use std::{net::Ipv4Addr, ops::Deref, str::FromStr, sync::Arc};
+use std::{collections::BTreeSet, net::Ipv4Addr, str::FromStr, sync::Arc};
 
 use hickory_server::{
     net::runtime::{Time, TokioRuntimeProvider},
-    proto::rr::{Name, RData, Record},
+    proto::rr::{LowerName, Name, RData, Record},
     server::{Request, RequestHandler, ResponseHandler, ResponseInfo},
     store::in_memory::InMemoryZoneHandler,
-    zone_handler::{AxfrPolicy, Catalog, ZoneType},
+    zone_handler::{AxfrPolicy, Catalog, ZoneHandler, ZoneType},
 };
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
-pub struct DnsCatalog(Arc<RwLock<Catalog>>);
+pub struct DnsCatalog {
+    catalog: Arc<RwLock<Catalog>>,
+    domains: Arc<RwLock<BTreeSet<String>>>,
+}
 
 impl DnsCatalog {
     pub fn new() -> Self {
-        Self(Arc::new(RwLock::new(Catalog::new())))
+        Self {
+            catalog: Arc::new(RwLock::new(Catalog::new())),
+            domains: Arc::new(RwLock::new(BTreeSet::new())),
+        }
+    }
+
+    pub async fn list_domains(&self) -> Vec<String> {
+        self.domains.read().await.iter().cloned().collect()
+    }
+
+    pub(crate) async fn upsert_zone(&self, name: LowerName, handlers: Vec<Arc<dyn ZoneHandler>>) {
+        self.catalog.write().await.upsert(name, handlers);
     }
 }
 
 impl Default for DnsCatalog {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Deref for DnsCatalog {
-    type Target = Arc<RwLock<Catalog>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -39,7 +45,7 @@ impl RequestHandler for DnsCatalog {
         request: &Request,
         response_handle: R,
     ) -> ResponseInfo {
-        let catalog = self.read().await;
+        let catalog = self.catalog.read().await;
 
         catalog
             .handle_request::<R, T>(request, response_handle)
@@ -48,8 +54,6 @@ impl RequestHandler for DnsCatalog {
 }
 
 pub async fn register_dns_record(dns_catalog: &DnsCatalog, domain: &str) {
-    let mut catalog = dns_catalog.write().await;
-
     let record_name = Name::from_str(&format!("{}.", domain))
         .expect("dns record from domain should always succeed");
 
@@ -64,5 +68,9 @@ pub async fn register_dns_record(dns_catalog: &DnsCatalog, domain: &str) {
 
     authority.upsert(record, 0).await;
 
-    catalog.upsert(record_name.clone().into(), vec![Arc::new(authority)]);
+    dns_catalog
+        .upsert_zone(record_name.into(), vec![Arc::new(authority)])
+        .await;
+
+    dns_catalog.domains.write().await.insert(domain.to_string());
 }

@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use linkup::{
-    SessionDetailResponse, SessionResponse, SessionsListResponse, TunneledSessionResponse,
-    UpsertSessionRequest,
+    DnsListResponse, SessionDetailResponse, SessionResponse, SessionsListResponse,
+    TunneledSessionResponse, UpsertSessionRequest,
 };
 use reqwest::StatusCode;
 use serde::{Serialize, de::DeserializeOwned};
@@ -91,6 +91,10 @@ impl LocalServerClient {
                 response.text().await.unwrap_or_else(|_| "".to_string()),
             ))
         }
+    }
+
+    pub async fn list_dns_domains(&self) -> Result<DnsListResponse, Error> {
+        self.get("/linkup/dns").await
     }
 
     // TODO(@augustoccesar)[2026-04-21]: This is the same on worker. Can probably be combined
