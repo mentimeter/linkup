@@ -12,7 +12,7 @@ use linkup::{
 };
 use linkup_clients::WorkerClientError;
 
-use crate::{ServerState, dns, handlers::ApiError};
+use crate::{ServerState, handlers::ApiError};
 
 pub async fn list_sessions(State(server_state): State<ServerState>) -> impl IntoResponse {
     match server_state.session_allocator.list_sessions().await {
@@ -140,7 +140,7 @@ pub async fn upsert_tunneled(
             session_name = tunneled_session.session_name
         );
 
-        dns::register_dns_record(&server_state.dns_catalog, &full_domain).await;
+        server_state.dns_catalog.register_record(&full_domain).await;
     }
 
     (StatusCode::OK, Json(tunneled_session)).into_response()
@@ -214,7 +214,7 @@ pub async fn upsert_isolated(
     for domain in &domains {
         let full_domain = format!("{session_name}.{domain}");
 
-        dns::register_dns_record(&server_state.dns_catalog, &full_domain).await;
+        server_state.dns_catalog.register_record(&full_domain).await;
     }
 
     let session_response = SessionResponse {
@@ -228,7 +228,7 @@ pub async fn delete_session(
     State(server_state): State<ServerState>,
     Path(session_name): Path<String>,
 ) -> impl IntoResponse {
-    match server_state
+    let session = match server_state
         .session_allocator
         .find_session(&session_name)
         .await
@@ -247,8 +247,8 @@ pub async fn delete_session(
             )
             .into_response();
         }
-        Ok(Some(_)) => {}
-    }
+        Ok(Some(session)) => session,
+    };
 
     if let Err(error) = server_state
         .session_allocator
@@ -260,6 +260,15 @@ pub async fn delete_session(
             StatusCode::INTERNAL_SERVER_ERROR,
         )
         .into_response();
+    }
+
+    for domain in &session.domains {
+        let full_domain = format!("{session_name}.{domain}", domain = domain.domain);
+
+        server_state
+            .dns_catalog
+            .deregister_record(&full_domain)
+            .await;
     }
 
     StatusCode::NO_CONTENT.into_response()
