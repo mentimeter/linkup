@@ -3,7 +3,7 @@ use std::{
     fs::{self, File},
     os::unix::process::CommandExt,
     path::Path,
-    process::{self, Command, Stdio},
+    process::{self, Stdio},
     time::Duration,
 };
 
@@ -37,18 +37,6 @@ pub enum Error {
     DNSNotPropagated,
     #[error("Invalid session name: '{0}'")]
     InvalidSessionName(String),
-}
-
-pub fn is_installed() -> bool {
-    let res = Command::new("which")
-        .args(["cloudflared"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .stdin(Stdio::null())
-        .status()
-        .unwrap();
-
-    res.success()
 }
 
 pub async fn start(tunnel_data: &TunnelData) -> Result<Url> {

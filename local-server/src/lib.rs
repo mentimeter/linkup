@@ -60,6 +60,7 @@ pub fn router(server_state: ServerState) -> Router {
             "/linkup/sessions/{name}",
             get(handlers::sessions::get_session).delete(handlers::sessions::delete_session),
         )
+        .route("/linkup/dns", get(handlers::dns::list))
         .route("/linkup/check", get(handlers::always_ok))
         .fallback(any(handlers::proxy::handle_all))
         .with_state(server_state)
@@ -164,10 +165,9 @@ async fn start_dns_server(dns_catalog: DnsCatalog) {
             .build()
             .unwrap();
 
-    {
-        let mut catalog = dns_catalog.write().await;
-        catalog.upsert(Name::root().into(), vec![Arc::new(forwarder)]);
-    }
+    dns_catalog
+        .upsert_zone(Name::root().into(), vec![Arc::new(forwarder)])
+        .await;
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8053));
     let sock = UdpSocket::bind(&addr).await.unwrap();
