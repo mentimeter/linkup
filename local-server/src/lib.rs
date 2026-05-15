@@ -9,13 +9,6 @@ use axum::{
     routing::{any, get, post},
 };
 use axum_server::tls_rustls::RustlsConfig;
-use hickory_server::net::runtime::TokioRuntimeProvider;
-use hickory_server::store::forwarder::ForwardZoneHandler;
-use hickory_server::{
-    proto::rr::Name,
-    resolver::config::{NameServerConfig, ResolverOpts},
-    store::forwarder::ForwardConfig,
-};
 use linkup::{MemoryStringStore, SessionAllocator};
 use linkup_clients::WorkerClient;
 use rustls::ServerConfig;
@@ -153,22 +146,6 @@ async fn start_server_http(server_state: ServerState) {
 }
 
 async fn start_dns_server(dns_catalog: DnsCatalog) {
-    let cf_name_server = NameServerConfig::udp("1.1.1.1".parse().unwrap());
-    let forward_config = ForwardConfig {
-        name_servers: vec![cf_name_server],
-        options: Some(ResolverOpts::default()),
-    };
-
-    let forwarder =
-        ForwardZoneHandler::builder_with_config(forward_config, TokioRuntimeProvider::default())
-            .with_origin(Name::root())
-            .build()
-            .unwrap();
-
-    dns_catalog
-        .upsert_zone(Name::root().into(), vec![Arc::new(forwarder)])
-        .await;
-
     let addr = SocketAddr::from(([0, 0, 0, 0], 8053));
     let sock = UdpSocket::bind(&addr).await.unwrap();
 
