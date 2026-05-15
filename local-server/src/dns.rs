@@ -27,12 +27,38 @@ impl DnsCatalog {
         self.domains.read().await.iter().cloned().collect()
     }
 
-    pub(crate) async fn upsert_zone(&self, name: LowerName, handlers: Vec<Arc<dyn ZoneHandler>>) {
-        self.catalog.write().await.upsert(name, handlers);
+    pub async fn register_record(&self, domain: &str) {
+        let record_name = Name::from_str(&format!("{}.", domain))
+            .expect("dns record from domain should always succeed");
+
+        let authority: InMemoryZoneHandler<TokioRuntimeProvider> =
+            InMemoryZoneHandler::empty(record_name.clone(), ZoneType::Primary, AxfrPolicy::Deny);
+
+        let record = Record::from_rdata(
+            record_name.clone(),
+            3600,
+            RData::A(Ipv4Addr::new(127, 0, 0, 1).into()),
+        );
+
+        authority.upsert(record, 0).await;
+
+        self.catalog
+            .write()
+            .await
+            .upsert(record_name.into(), vec![Arc::new(authority)]);
+        self.domains.write().await.insert(domain.to_string());
     }
 
-    pub(crate) async fn remove_zone(&self, name: &LowerName) {
-        self.catalog.write().await.remove(name);
+    pub async fn deregister_record(&self, domain: &str) {
+        let record_name = Name::from_str(&format!("{}.", domain))
+            .expect("dns record from domain should always succeed");
+
+        self.catalog.write().await.remove(&record_name.into());
+        self.domains.write().await.remove(domain);
+    }
+
+    pub(crate) async fn upsert_zone(&self, name: LowerName, handlers: Vec<Arc<dyn ZoneHandler>>) {
+        self.catalog.write().await.upsert(name, handlers);
     }
 }
 
@@ -55,35 +81,4 @@ impl RequestHandler for DnsCatalog {
             .handle_request::<R, T>(request, response_handle)
             .await
     }
-}
-
-pub async fn register_dns_record(dns_catalog: &DnsCatalog, domain: &str) {
-    let record_name = Name::from_str(&format!("{}.", domain))
-        .expect("dns record from domain should always succeed");
-
-    let authority: InMemoryZoneHandler<TokioRuntimeProvider> =
-        InMemoryZoneHandler::empty(record_name.clone(), ZoneType::Primary, AxfrPolicy::Deny);
-
-    let record = Record::from_rdata(
-        record_name.clone(),
-        3600,
-        RData::A(Ipv4Addr::new(127, 0, 0, 1).into()),
-    );
-
-    authority.upsert(record, 0).await;
-
-    dns_catalog
-        .upsert_zone(record_name.into(), vec![Arc::new(authority)])
-        .await;
-
-    dns_catalog.domains.write().await.insert(domain.to_string());
-}
-
-pub async fn deregister_dns_record(dns_catalog: &DnsCatalog, domain: &str) {
-    let record_name = Name::from_str(&format!("{}.", domain))
-        .expect("dns record from domain should always succeed");
-
-    dns_catalog.remove_zone(&record_name.into()).await;
-
-    dns_catalog.domains.write().await.remove(domain);
 }
