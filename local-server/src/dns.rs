@@ -30,6 +30,10 @@ impl DnsCatalog {
     pub(crate) async fn upsert_zone(&self, name: LowerName, handlers: Vec<Arc<dyn ZoneHandler>>) {
         self.catalog.write().await.upsert(name, handlers);
     }
+
+    pub(crate) async fn remove_zone(&self, name: &LowerName) {
+        self.catalog.write().await.remove(name);
+    }
 }
 
 impl Default for DnsCatalog {
@@ -73,4 +77,13 @@ pub async fn register_dns_record(dns_catalog: &DnsCatalog, domain: &str) {
         .await;
 
     dns_catalog.domains.write().await.insert(domain.to_string());
+}
+
+pub async fn deregister_dns_record(dns_catalog: &DnsCatalog, domain: &str) {
+    let record_name = Name::from_str(&format!("{}.", domain))
+        .expect("dns record from domain should always succeed");
+
+    dns_catalog.remove_zone(&record_name.into()).await;
+
+    dns_catalog.domains.write().await.remove(domain);
 }

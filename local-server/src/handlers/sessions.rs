@@ -228,7 +228,7 @@ pub async fn delete_session(
     State(server_state): State<ServerState>,
     Path(session_name): Path<String>,
 ) -> impl IntoResponse {
-    match server_state
+    let session = match server_state
         .session_allocator
         .find_session(&session_name)
         .await
@@ -247,8 +247,8 @@ pub async fn delete_session(
             )
             .into_response();
         }
-        Ok(Some(_)) => {}
-    }
+        Ok(Some(session)) => session,
+    };
 
     if let Err(error) = server_state
         .session_allocator
@@ -260,6 +260,12 @@ pub async fn delete_session(
             StatusCode::INTERNAL_SERVER_ERROR,
         )
         .into_response();
+    }
+
+    for domain in &session.domains {
+        let full_domain = format!("{session_name}.{domain}", domain = domain.domain);
+
+        dns::deregister_dns_record(&server_state.dns_catalog, &full_domain).await;
     }
 
     StatusCode::NO_CONTENT.into_response()
