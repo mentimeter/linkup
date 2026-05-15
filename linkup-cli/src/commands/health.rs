@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     env,
     io::{Write, stdout},
 };
@@ -15,6 +15,8 @@ use crate::{
     services::{cloudflared, local_server},
     state::{self, State},
 };
+
+use super::local_dns;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -51,7 +53,7 @@ struct System {
 
 #[derive(Serialize)]
 struct States {
-    items: HashMap<String, State>,
+    items: BTreeMap<String, State>,
 }
 
 #[derive(Serialize)]
@@ -61,7 +63,7 @@ enum LocalServer {
         pid: u32,
         healthy: bool,
         dns_records: Option<Vec<String>>,
-        sessions: Option<HashMap<String, Session>>,
+        sessions: Option<BTreeMap<String, Session>>,
     },
 }
 
@@ -88,7 +90,7 @@ impl Cli {
     }
 
     fn write(&self, writer: &mut impl Write, offset: usize) -> Result<()> {
-        writeln!(writer, "{:offset$}Version: {}", "", self.version)?;
+        writeln!(writer, "{:>offset$}Version: {}", "", self.version)?;
         Ok(())
     }
 }
@@ -98,7 +100,7 @@ impl System {
         Ok(Self {
             os: sysinfo::System::name().unwrap(),
             architecture: env::consts::ARCH.to_string(),
-            dns_resolvers: vec![],
+            dns_resolvers: local_dns::list_resolvers()?,
         })
     }
 
@@ -106,13 +108,23 @@ impl System {
         writeln!(writer, "{:>offset$}OS: {}", "", self.os)?;
         writeln!(writer, "{:>offset$}Architecture: {}", "", self.architecture)?;
 
+        write!(writer, "{:>offset$}DNS Resolvers:", "")?;
+        if self.dns_resolvers.is_empty() {
+            writeln!(writer, " {}", "NONE".yellow())?;
+        } else {
+            writeln!(writer)?;
+            for resolver in &self.dns_resolvers {
+                writeln!(writer, "{:>offset$}- {}", "", resolver, offset = offset + 2)?;
+            }
+        }
+
         Ok(())
     }
 }
 
 impl States {
     fn load() -> Result<Self> {
-        let mut items = HashMap::new();
+        let mut items = BTreeMap::new();
         for state_path in state::list_state_files() {
             let file_name = state_path
                 .file_name()
@@ -131,6 +143,7 @@ impl States {
     fn write(&self, writer: &mut impl Write, offset: usize) -> Result<()> {
         if self.items.is_empty() {
             writeln!(writer, " {}", "NONE".yellow())?;
+            return Ok(());
         }
 
         writeln!(writer)?;
@@ -161,7 +174,7 @@ impl LocalServer {
                 let sessions = local_server_client
                     .list_sessions()
                     .await
-                    .map(|res| res.sessions)
+                    .map(|res| res.sessions.into_iter().collect::<BTreeMap<_, _>>())
                     .ok();
 
                 Ok(Self::Running {
@@ -266,11 +279,11 @@ impl Cloudflared {
 impl Health {
     async fn load() -> Result<Self> {
         Ok(Self {
-            cli: Cli::load().unwrap(),
-            system: System::load().unwrap(),
-            states: States::load().unwrap(),
-            local_server: LocalServer::load().await.unwrap(),
-            cloudflared: Cloudflared::load().unwrap(),
+            cli: Cli::load()?,
+            system: System::load()?,
+            states: States::load()?,
+            local_server: LocalServer::load().await?,
+            cloudflared: Cloudflared::load()?,
         })
     }
 
