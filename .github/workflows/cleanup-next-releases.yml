@@ -42,11 +42,19 @@ jobs:
                 release_id: release.id,
               });
 
-              await github.rest.git.deleteRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: `tags/${release.tag_name}`,
-              });
+              try {
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `tags/${release.tag_name}`,
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  core.info(`Tag ref not found for ${release.tag_name}, skipping.`);
+                } else {
+                  throw error;
+                }
+              }
             }
 
             core.info(`Cleaned up ${old.length} old next release(s).`);
