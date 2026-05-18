@@ -16,7 +16,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 2
 
@@ -68,7 +68,7 @@ jobs:
       linux_arm_sha: ${{ steps.linux_arm_sha.outputs.linux_arm_sha }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 1
 
@@ -78,7 +78,7 @@ jobs:
           rustup target add ${{ matrix.target }}
           rustup show
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           key: ${{ matrix.target }}
           cache-on-failure: true
@@ -159,7 +159,7 @@ jobs:
           echo "linux_arm_sha=$(cat ${{ env.CHECKSUM_PATH }})" >> $GITHUB_OUTPUT
 
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v0.1.15
         with:
           tag_name: ${{ env.RELEASE_VERSION }}
           files: |
