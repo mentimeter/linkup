@@ -27,4 +27,4 @@ rcgen = { version = "0.14.7", features = ["x509-parser"] }
 rustls = { workspace = true }
 rustls-pemfile = "2.2.0"
 tower = "0.5.2"
-tower-http = { version = "0.6.2", features = ["trace"] }
+tower-http = { version = "0.6.10", features = ["trace"] }
