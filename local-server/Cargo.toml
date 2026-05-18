@@ -22,9 +22,9 @@ tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
 url = { workspace = true }
 
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
-hickory-server = { version = "0.26.0", features = ["resolver"] }
-rcgen = { version = "0.14.7", features = ["x509-parser"] }
+hickory-server = { version = "0.26.1", features = ["resolver"] }
+rcgen = { version = "0.14.8", features = ["x509-parser"] }
 rustls = { workspace = true }
 rustls-pemfile = "2.2.0"
-tower = "0.5.2"
-tower-http = { version = "0.6.2", features = ["trace"] }
+tower = "0.5.3"
+tower-http = { version = "0.6.10", features = ["trace"] }

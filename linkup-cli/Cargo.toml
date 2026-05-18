@@ -32,23 +32,23 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
 url = { workspace = true }
 
-clap = { version = "4.5.27", features = ["derive", "cargo"] }
-clap_complete = "4.5.42"
-colored = "3.0.0"
+clap = { version = "4.5.60", features = ["derive", "cargo"] }
+clap_complete = "4.6.4"
+colored = "3.1.1"
 crossterm = "0.29.0"
-ctrlc = { version = "3.4.5", features = ["termination"] }
+ctrlc = { version = "3.5.2", features = ["termination"] }
 env_logger = "0.11.6"
-flate2 = "1.0.35"
-hickory-resolver = { version = "0.26.0", features = ["tokio"] }
+flate2 = "1.1.9"
+hickory-resolver = { version = "0.26.1", features = ["tokio"] }
 indicatif = "0.18.4"
-log = "0.4.25"
+log = "0.4.29"
 serde_yaml = "0.9.34-deprecated"
 sysinfo = "0.39.1"
-tar = "0.4.43"
+tar = "0.4.45"
 
 [dev-dependencies]
 mockall = "0.14.0"
-mockito = "1.6.1"
+mockito = "1.7.2"
 
 [features]
 default = []
