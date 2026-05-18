@@ -4,6 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    labels:
+      - "dependencies"
+      - "rust"
     cooldown:
       default-days: 5
       semver-major-days: 10
@@ -16,10 +19,14 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
   - package-ecosystem: "npm"
     directory: "/docs"
     schedule:
       interval: "daily"
+    labels:
+      - "dependencies"
+      - "javascript"
     cooldown:
       default-days: 5
       semver-major-days: 10
@@ -32,3 +39,16 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      actions:
+        patterns:
+          - "*"
