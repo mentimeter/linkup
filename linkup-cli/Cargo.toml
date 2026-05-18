@@ -43,7 +43,7 @@ hickory-resolver = { version = "0.26.0", features = ["tokio"] }
 indicatif = "0.18.4"
 log = "0.4.25"
 serde_yaml = "0.9.34-deprecated"
-sysinfo = "0.38.2"
+sysinfo = "0.39.1"
 tar = "0.4.43"
 
 [dev-dependencies]
