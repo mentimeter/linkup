@@ -16,7 +16,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 2
 
@@ -68,7 +68,7 @@ jobs:
       linux_arm_sha: ${{ steps.linux_arm_sha.outputs.linux_arm_sha }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
 
@@ -159,7 +159,7 @@ jobs:
           echo "linux_arm_sha=$(cat ${{ env.CHECKSUM_PATH }})" >> $GITHUB_OUTPUT
 
       - name: Release
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v0.1.15
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: ${{ env.RELEASE_VERSION }}
           files: |
