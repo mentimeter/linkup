@@ -49,7 +49,7 @@ jobs:
                   ref: `tags/${release.tag_name}`,
                 });
               } catch (error) {
-                if (error.status === 404) {
+                if (error.status === 422) {
                   core.info(`Tag ref not found for ${release.tag_name}, skipping.`);
                 } else {
                   throw error;
