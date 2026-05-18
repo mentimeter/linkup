@@ -9,6 +9,13 @@ updates:
       semver-major-days: 10
       semver-minor-days: 7
       semver-patch-days: 3
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
   - package-ecosystem: "npm"
     directory: "/docs"
     schedule:
@@ -18,3 +25,10 @@ updates:
       semver-major-days: 10
       semver-minor-days: 7
       semver-patch-days: 3
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
