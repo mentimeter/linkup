@@ -6,6 +6,10 @@ on:
     branches:
       - next
 
+concurrency:
+  group: release-next
+  cancel-in-progress: true
+
 jobs:
   generate-version:
     name: Generate Release Version
