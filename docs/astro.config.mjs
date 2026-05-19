@@ -52,6 +52,7 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "Config Reference", slug: "reference/config" },
+            { label: "Logging", slug: "reference/logging" },
             { label: "Shell Completion", slug: "reference/shell-completion" },
             {
               label: "Cloudflare Resources",
