@@ -1,4 +1,4 @@
-name: Create Release of next branch
+name: Create Beta Release (next)
 
 on:
   workflow_dispatch:
