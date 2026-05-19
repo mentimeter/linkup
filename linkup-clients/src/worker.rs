@@ -89,4 +89,7 @@ impl WorkerClient {
     }
 }
 
-const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const CURRENT_VERSION: &str = match option_env!("LINKUP_VERSION_OVERRIDE") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};

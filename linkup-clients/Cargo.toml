@@ -2,6 +2,7 @@
 name = "linkup-clients"
 version.workspace = true
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 linkup = { workspace = true }

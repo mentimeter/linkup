@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_pre_release_vs_stable() {
-        let pre_release_version = Version::try_from("0.0.0-next-20250317-abc123").unwrap();
+        let pre_release_version = Version::try_from("1.2.3-rc.1").unwrap();
         let stable_version = Version::try_from("1.2.3").unwrap();
 
         assert!(stable_version > pre_release_version);
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn test_stable_vs_pre_release() {
         let stable_version = Version::try_from("1.2.3").unwrap();
-        let pre_release_version = Version::try_from("0.0.0-next-20250317-abc123").unwrap();
+        let pre_release_version = Version::try_from("1.2.3-rc.1").unwrap();
 
         assert!(pre_release_version <= stable_version);
         assert!(pre_release_version < stable_version);
@@ -227,9 +227,9 @@ mod tests {
             major: 1,
             minor: 2,
             patch: 3,
-            pre_release: Some("next-20250317-abc123".into()),
+            pre_release: Some("rc.1".into()),
         };
 
-        assert_eq!(version.to_string(), "1.2.3-next-20250317-abc123");
+        assert_eq!(version.to_string(), "1.2.3-rc.1");
     }
 }

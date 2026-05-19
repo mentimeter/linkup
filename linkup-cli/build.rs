@@ -6,6 +6,19 @@ use std::process::Command;
 fn main() {
     println!("cargo::rerun-if-changed=../worker/src");
     println!("cargo::rerun-if-changed=../linkup/src");
+    println!("cargo::rerun-if-env-changed=GITHUB_REF_NAME");
+
+    // When building in CI from a git tag (e.g. "4.1.0-rc.1"), override
+    // CARGO_PKG_VERSION so the binary reports the prerelease version correctly.
+    // GITHUB_REF_NAME is set by GitHub Actions to the tag name on tag pushes.
+    if let Ok(tag) = env::var("GITHUB_REF_NAME") {
+        // Only override if the tag looks like a semver version (contains a dot)
+        // and differs from what Cargo.toml already provides.
+        let pkg_version = env::var("CARGO_PKG_VERSION").unwrap_or_default();
+        if tag.contains('.') && tag != pkg_version {
+            println!("cargo::rustc-env=LINKUP_VERSION_OVERRIDE={tag}");
+        }
+    }
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR to be set");
 

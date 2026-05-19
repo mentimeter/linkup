@@ -1,8 +1,12 @@
 [package]
 name = "linkup-cli"
 version.workspace = true
+repository.workspace = true
 edition = "2024"
 build = "build.rs"
+description = "Combine local and remote services to create cheap yet complete development environments"
+homepage = "https://mentimeter.github.io/linkup"
+license = "Apache-2.0"
 
 [[bin]]
 name = "linkup"

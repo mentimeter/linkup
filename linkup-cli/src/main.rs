@@ -16,7 +16,10 @@ mod services;
 mod session;
 mod state;
 
-const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const CURRENT_VERSION: &str = match option_env!("LINKUP_VERSION_OVERRIDE") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
 const LINKUP_CONFIG_ENV: &str = "LINKUP_CONFIG";
 const LINKUP_DIR: &str = ".linkup";
 const LINKUP_STATE_FILE: &str = "state";
@@ -181,7 +184,7 @@ pub enum CheckErr {
 #[command(
     name = "linkup",
     about = "Connect remote and local dev/preview environments\n\nIf you need help running linkup, start here:\nhttps://mentimeter.github.io/linkup",
-    version = env!("CARGO_PKG_VERSION"),
+    version = CURRENT_VERSION,
 )]
 struct Cli {
     #[arg(

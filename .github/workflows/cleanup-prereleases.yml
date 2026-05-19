@@ -1,37 +1,42 @@
-name: Cleanup Old Next Releases
+name: Cleanup old prereleases
+
+# Keep the latest few prerelease GitHub releases (and their tags) so the
+# releases page doesn't accumulate forever. See RELEASING.md for the beta
+# tagging flow.
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
+    - cron: "0 6 * * 1" # Mondays at 06:00 UTC
 
 jobs:
   cleanup:
-    name: Delete all next pre-releases except the latest
+    name: Delete all prereleases except the latest few
     runs-on: ubuntu-latest
     steps:
-      - name: Delete old next pre-releases
+      - name: Delete old prereleases
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
+            const versions_to_keep = 3;
+
             const releases = await github.paginate(github.rest.repos.listReleases, {
               owner: context.repo.owner,
               repo: context.repo.repo,
             });
 
-            const nextReleases = releases
-              .filter(r => r.prerelease && r.tag_name.startsWith('0.0.0-next-'))
+            const prereleases = releases
+              .filter(r => r.prerelease)
               .sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
 
-            const [latest, ...old] = nextReleases;
+            const old = prereleases.slice(versions_to_keep);
 
-            if (latest) {
-              core.info(`Keeping latest release: ${latest.tag_name}`);
-            } else {
-              core.info('No next releases found.');
-
+            if (old.length === 0) {
+              core.info(`No prereleases to delete (have ${prereleases.length}, keeping up to ${versions_to_keep}).`);
               return;
             }
+
+            core.info(`Keeping ${Math.min(versions_to_keep, prereleases.length)} most-recent prerelease(s).`);
 
             for (const release of old) {
               core.info(`Deleting release: ${release.tag_name}`);
@@ -57,4 +62,4 @@ jobs:
               }
             }
 
-            core.info(`Cleaned up ${old.length} old next release(s).`);
+            core.info(`Cleaned up ${old.length} old prerelease(s).`);

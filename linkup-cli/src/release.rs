@@ -26,15 +26,16 @@ mod github {
     pub struct Release {
         #[serde(rename = "name")]
         pub version: String,
+        pub prerelease: bool,
         pub assets: Vec<Asset>,
     }
 
     impl Release {
         /// Examples of Linkup asset files:
-        /// - linkup-x86_64-apple-darwin.tar.gz
-        /// - linkup-aarch64-apple-darwin.tar.gz
-        /// - linkup-x86_64-unknown-linux-gnu.tar.gz
-        /// - linkup-aarch64-unknown-linux-gnu.tar.gz
+        /// - linkup-cli-x86_64-apple-darwin.tar.gz
+        /// - linkup-cli-aarch64-apple-darwin.tar.gz
+        /// - linkup-cli-x86_64-unknown-linux-gnu.tar.gz
+        /// - linkup-cli-aarch64-unknown-linux-gnu.tar.gz
         pub fn linkup_asset(&self, os: &str, arch: &str) -> Option<Asset> {
             let lookup_os = match os {
                 "macos" => "apple-darwin",
@@ -127,9 +128,7 @@ mod github {
 
         let releases: Vec<Release> = fetch(url).await?.unwrap_or_default();
 
-        let beta_release = releases
-            .into_iter()
-            .find(|release| release.version.starts_with("0.0.0-next-"));
+        let beta_release = releases.into_iter().find(|release| release.prerelease);
 
         Ok(beta_release)
     }

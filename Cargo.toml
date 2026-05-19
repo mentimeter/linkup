@@ -13,6 +13,34 @@ members = [
 
 [workspace.package]
 version = "4.0.0"
+repository = "https://github.com/mentimeter/linkup"
+
+# Config for 'dist' (https://opensource.axo.dev/cargo-dist/).
+# Run `dist generate` after editing.
+[workspace.metadata.dist]
+cargo-dist-version = "0.28.0"
+ci = "github"
+installers = ["shell", "homebrew"]
+targets = [
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+]
+unix-archive = ".tar.gz"
+# Publish a Homebrew formula but skip crates.io
+publish-jobs = ["homebrew"]
+# Skip building on PRs by default. Only run on tag pushes.
+pr-run-mode = "skip"
+# Where to publish a homebrew formula tap
+tap = "mentimeter/homebrew-mentimeter"
+formula = "linkup"
+
+[workspace.metadata.dist.github-custom-runners]
+x86_64-apple-darwin = "depot-macos-14"
+aarch64-apple-darwin = "depot-macos-14"
+x86_64-unknown-linux-gnu = "depot-ubuntu-22.04-8"
+aarch64-unknown-linux-gnu = "depot-ubuntu-22.04-arm-8"
 
 [workspace.dependencies]
 anyhow = "1.0.102"
