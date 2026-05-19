@@ -49,7 +49,6 @@ pub async fn start(tunnel_data: &TunnelData) -> Result<Url> {
         return Ok(tunnel_url);
     }
 
-    log::info!("Starting...");
     spawn_process(tunnel_data, &pidfile_path).await?;
 
     // Pidfile existence check

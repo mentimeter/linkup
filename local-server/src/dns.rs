@@ -70,8 +70,14 @@ impl DnsCatalog {
         self.catalog
             .write()
             .await
-            .upsert(record_name.into(), vec![Arc::new(authority)]);
+            .upsert(record_name.clone().into(), vec![Arc::new(authority)]);
         self.domains.write().await.insert(domain.to_string());
+
+        log::debug!(
+            "Registered DNS record. record_name={} domain={}",
+            &record_name,
+            domain
+        );
     }
 
     pub async fn deregister_record(&self, domain: &str) {

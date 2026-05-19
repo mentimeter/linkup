@@ -5,6 +5,7 @@ use thiserror::Error;
 
 pub mod cloudflared;
 pub mod local_server;
+mod log_tailer;
 
 pub use sysinfo::{Pid, Signal};
 

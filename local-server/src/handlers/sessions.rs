@@ -84,6 +84,8 @@ pub async fn upsert_tunneled(
     State(server_state): State<ServerState>,
     Json(upsert_req): Json<UpsertSessionRequest>,
 ) -> impl IntoResponse {
+    log::debug!("Received tunneled session upsert request");
+
     let tunneled_session = match server_state
         .worker_client
         .tunneled_session(&upsert_req)
@@ -127,6 +129,12 @@ pub async fn upsert_tunneled(
         )
         .into_response();
     }
+
+    log::debug!(
+        "Stored session on session store. session_kind={} session_name={}",
+        session.kind.as_str(),
+        tunneled_session.session_name
+    );
 
     let domains = session
         .domains

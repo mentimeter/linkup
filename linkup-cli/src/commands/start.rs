@@ -57,7 +57,7 @@ pub async fn start(args: &Args, config_arg: Option<&Path>) -> Result<()> {
         return Ok(());
     }
 
-    services::local_server::start().await?;
+    let log_tailer = services::local_server::start().await?;
 
     let main_session_kind = if args.isolated {
         state.linkup.kind = SessionKind::Isolated;
@@ -127,6 +127,8 @@ pub async fn start(args: &Args, config_arg: Option<&Path>) -> Result<()> {
             Err(e) => log::warn!("Failed to load isolated session state '{}': {}", suffix, e),
         }
     }
+
+    drop(log_tailer);
 
     println!();
     print_sessions_table(&rows, None);

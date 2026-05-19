@@ -86,16 +86,16 @@ pub async fn start(
 
     select! {
         () = start_server_http(server_state.clone()) => {
-            println!("HTTP server shut down");
+            log::info!("HTTP server shut down");
         },
         () = start_server_https(server_state.clone()) => {
-            println!("HTTPS server shut down");
+            log::info!("HTTPS server shut down");
         },
         () = start_dns_server(server_state.dns_catalog) => {
-            println!("DNS server shut down");
+            log::info!("DNS server shut down");
         },
         () = shutdown_signal() => {
-            println!("Shutdown signal received, stopping all servers");
+            log::info!("Shutdown signal received, stopping all servers");
         }
     }
 }
@@ -106,9 +106,10 @@ async fn start_server_https(server_state: ServerState) {
     let sni = match certificates::WildcardSniResolver::load_dir(&server_state.https_certs_dir) {
         Ok(sni) => sni,
         Err(error) => {
-            eprintln!(
+            log::error!(
                 "Failed to load certificates from {:?} into SNI: {}",
-                &server_state.https_certs_dir, error
+                &server_state.https_certs_dir,
+                error
             );
             return;
         }
@@ -122,7 +123,7 @@ async fn start_server_https(server_state: ServerState) {
     let app = router(server_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 443));
-    println!("HTTPS listening on {}", &addr);
+    log::info!("HTTPS listening on {}", &addr);
 
     axum_server::bind_rustls(addr, RustlsConfig::from_config(Arc::new(server_config)))
         .serve(app.into_make_service())
@@ -134,7 +135,7 @@ async fn start_server_http(server_state: ServerState) {
     let app = router(server_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 80));
-    println!("HTTP listening on {}", &addr);
+    log::info!("HTTP listening on {}", &addr);
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -152,7 +153,7 @@ async fn start_dns_server(dns_catalog: DnsCatalog) {
     let mut server = hickory_server::Server::new(dns_catalog);
     server.register_socket(sock);
 
-    println!("listening on {addr}");
+    log::info!("DNS listening on {addr}");
     server.block_until_done().await.unwrap();
 }
 
@@ -172,10 +173,10 @@ async fn shutdown_signal() {
 
     tokio::select! {
         () = ctrl_c => {
-            println!("Received SIGINT signal");
+            log::info!("Received SIGINT signal");
         },
         () = terminate => {
-            println!("Received SIGTERM signal");
+            log::info!("Received SIGTERM signal");
         },
     }
 }

@@ -239,8 +239,13 @@ enum Commands {
 
 #[tokio::main]
 async fn main() {
-    let env = env_logger::Env::new().filter_or("LINKUP_LOG", "info");
-    env_logger::Builder::from_env(env).init();
+    let user_filter = env::var("LINKUP_LOG").unwrap_or_else(|_| "info".to_string());
+    let linkup_log = format!("{user_filter},reqwest=warn");
+    let log_style = env::var("RUST_LOG_STYLE").unwrap_or_default();
+    env_logger::Builder::new()
+        .parse_filters(&linkup_log)
+        .parse_write_style(&log_style)
+        .init();
 
     let cli = Cli::parse();
 

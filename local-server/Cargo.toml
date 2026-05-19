@@ -23,6 +23,7 @@ url = { workspace = true }
 
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 hickory-server = { version = "0.26.1", features = ["resolver"] }
+log = { version = "0.4.29", features = ["kv"] }
 rcgen = { version = "0.14.8", features = ["x509-parser"] }
 rustls = { workspace = true }
 rustls-pemfile = "2.2.0"

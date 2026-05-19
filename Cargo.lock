@@ -1930,6 +1930,7 @@ dependencies = [
  "http",
  "linkup",
  "linkup-clients",
+ "log",
  "rcgen",
  "rustls",
  "rustls-pemfile",

@@ -19,7 +19,11 @@ use linkup::{
 use linkup_clients::{LocalServerClient, LocalServerClientError};
 
 use super::{PidError, ServiceId};
-use crate::{Result, linkup_certs_dir_path, linkup_file_path, state::State};
+use crate::{
+    Result, linkup_certs_dir_path, linkup_file_path,
+    services::log_tailer::{self, LogTailer},
+    state::State,
+};
 
 const ID: ServiceId = ServiceId("linkup-local-server");
 const NAME: &str = "Linkup local server";
@@ -38,15 +42,16 @@ pub fn url() -> Url {
     Url::parse("http://localhost:80").expect("linkup url invalid")
 }
 
-pub async fn start() -> Result<()> {
-    if super::find_pid(ID).is_some() {
+pub async fn start() -> Result<LogTailer> {
+    let freshly_spawned = super::find_pid(ID).is_none();
+    if !freshly_spawned {
         log::info!("Already running.");
-
-        return Ok(());
+    } else {
+        spawn_process()?;
     }
 
-    log::info!("Starting...");
-    spawn_process()?;
+    // If the server was already running, don't "relog" the logs from the file.
+    let tailer = log_tailer::tail_logs(linkup_file_path("localserver-stderr"), freshly_spawned);
 
     let mut reachable = is_reachable().await;
     let mut attempts: u8 = 0;
@@ -70,7 +75,7 @@ pub async fn start() -> Result<()> {
     }
     log::info!("Ready!");
 
-    Ok(())
+    Ok(tailer)
 }
 
 pub fn stop() {
@@ -190,10 +195,13 @@ fn spawn_process() -> Result<()> {
 
     let mut command =
         process::Command::new(env::current_exe().context("Failed to get the current executable")?);
-    command.env(
-        "RUST_LOG",
-        "info,hickory_server=warn,hyper_util=warn,h2=warn,tower_http=info",
-    );
+
+    let user_filter = env::var("LINKUP_LOG").unwrap_or_else(|_| "info".to_string());
+    let linkup_log =
+        format!("{user_filter},hickory_server=warn,hyper_util=warn,h2=warn,tower_http=info");
+
+    command.env("LINKUP_LOG", linkup_log);
+    command.env("RUST_LOG_STYLE", "always");
     command.env("LINKUP_SERVICE_ID", ID.to_string());
     command.args([
         "server",
