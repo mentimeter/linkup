@@ -25,7 +25,6 @@ export default defineConfig({
           label: "Sessions",
           items: [
             { label: "Managing Sessions", slug: "guides/sessions" },
-            { label: "Isolated Sessions", slug: "guides/isolated-sessions" },
             { label: "Preview Environments", slug: "guides/preview-env" },
           ],
         },

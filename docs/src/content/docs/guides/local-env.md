@@ -45,8 +45,7 @@ linkup stop               # Stop your session and clean up
 2. Uploads your session configuration to the Cloudflare worker
 3. Starts a Cloudflare tunnel so remote services can reach your local server
 4. Prints a table of your session name and domain URLs
-5. Re-registers any isolated sessions that existed before the previous stop, so
-   they are restored automatically
+5. Prints a table of your session name and domain URLs
 
 Linkup re-uses your session name across restarts, so your URLs stay stable. A
 new name is only generated on the very first run.
@@ -60,16 +59,6 @@ corresponding `.env.*` file (e.g. `.env.development.linkup` →
 domain. The added block is clearly delimited and is reverted by `linkup stop`.
 
 ### Start modes
-
-By default `linkup start` establishes a Cloudflare tunnel. If you don't need
-remote services to call back into your machine, pass `--isolated` to skip the
-tunnel entirely:
-
-```sh
-linkup start --isolated
-```
-
-You can only have one mode active at a time. To switch, run `linkup stop` first.
 
 See [Managing Sessions](/linkup/guides/sessions) for a full comparison of
 session types.
@@ -86,12 +75,6 @@ linkup route local web        # Route `web` to http://localhost:3000 (or whateve
 linkup route remote web       # Route `web` back to https://web-dev.hosting-provider.com
 linkup route local --all      # Switch every service to local at once
 linkup route remote --all     # Switch every service to remote at once
-```
-
-To target an isolated session instead of the main one, use `--session`:
-
-```sh
-linkup route local web --session my-feature
 ```
 
 ## linkup status
@@ -113,18 +96,5 @@ The service table shows each service's name, whether it is currently routing to
 Stops the local server and the Cloudflare tunnel. Also reverts the env file
 changes that `linkup start` made: the Linkup block is removed from each `.env.*`
 file, restoring the files to their original state.
-
-Isolated sessions tracked by the local server are also torn down, since they
-depend on it.
-
-## Running multiple sessions
-
-You can run additional isolated sessions alongside your main session, which is
-handy when you're working on multiple features simultaneously:
-
-```sh
-linkup sessions create-isolated my-feature
-linkup sessions list
-```
 
 See [Managing Sessions](/linkup/guides/sessions) for details.
