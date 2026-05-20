@@ -1,4 +1,4 @@
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use colored::Colorize;
 use url::Url;
 
@@ -27,13 +27,6 @@ pub struct Args {
         conflicts_with = "service_names"
     )]
     all: bool,
-
-    #[arg(
-        long,
-        value_name = "NAME",
-        help = "Session to update (defaults to the tunneled session)"
-    )]
-    session: Option<String>,
 }
 
 pub async fn route(args: &Args) -> Result<()> {
@@ -52,27 +45,12 @@ pub async fn route(args: &Args) -> Result<()> {
         TargetArg::Remote => ServiceTarget::Remote,
     };
 
-    let (state, target_map) = if let Some(session_name) = &args.session {
-        let mut state = State::load_with_suffix(session_name)
-            .with_context(|| format!("Failed to load state for session '{}'", session_name))?;
+    let mut state = State::load()?;
 
-        let target_map =
-            set_service_targets(&mut state, &args.service_names, args.all, service_target)?;
+    let target_map =
+        set_service_targets(&mut state, &args.service_names, args.all, service_target)?;
 
-        services::local_server::update_isolated_state(&mut state).await?;
-        state.save_with_suffix(session_name)?;
-
-        (state, target_map)
-    } else {
-        let mut state = State::load()?;
-
-        let target_map =
-            set_service_targets(&mut state, &args.service_names, args.all, service_target)?;
-
-        services::local_server::update_state(&mut state).await?;
-
-        (state, target_map)
-    };
+    services::local_server::update_state(&mut state).await?;
 
     let name_width = target_map
         .iter()

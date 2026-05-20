@@ -4,7 +4,7 @@ use std::{
     io::{Write, stdout},
 };
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::crate_version;
 use colored::Colorize;
 use linkup::Session;
@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use crate::{
     services::{cloudflared, local_server},
-    state::{self, State},
+    state::State,
 };
 
 use super::local_dns;
@@ -125,16 +125,9 @@ impl System {
 impl States {
     fn load() -> Result<Self> {
         let mut items = BTreeMap::new();
-        for state_path in state::list_state_files() {
-            let file_name = state_path
-                .file_name()
-                .context("Failed to resolve state file name")?
-                .to_string_lossy()
-                .to_string();
 
-            let state = State::load_from_path(&state_path)?;
-
-            items.insert(file_name, state);
+        if let Ok(state) = State::load() {
+            items.insert("state".to_string(), state);
         }
 
         Ok(Self { items })

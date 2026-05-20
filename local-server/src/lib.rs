@@ -46,10 +46,6 @@ pub fn router(server_state: ServerState) -> Router {
             post(handlers::sessions::upsert_tunneled),
         )
         .route(
-            "/linkup/sessions/isolated",
-            post(handlers::sessions::upsert_isolated),
-        )
-        .route(
             "/linkup/sessions/{name}",
             get(handlers::sessions::get_session).delete(handlers::sessions::delete_session),
         )

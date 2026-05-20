@@ -60,13 +60,6 @@ impl LocalServerClient {
         self.post("/linkup/sessions/tunneled", params).await
     }
 
-    pub async fn isolated_session(
-        &self,
-        params: &UpsertSessionRequest,
-    ) -> Result<SessionResponse, Error> {
-        self.post("/linkup/sessions/isolated", params).await
-    }
-
     pub async fn list_sessions(&self) -> Result<SessionsListResponse, Error> {
         self.get("/linkup/sessions").await
     }
@@ -74,23 +67,6 @@ impl LocalServerClient {
     pub async fn get_session(&self, session_name: &str) -> Result<SessionDetailResponse, Error> {
         self.get(&format!("/linkup/sessions/{}", session_name))
             .await
-    }
-
-    pub async fn delete_session(&self, session_name: &str) -> Result<(), Error> {
-        let endpoint = self
-            .url
-            .join(&format!("/linkup/sessions/{}", session_name))?;
-
-        let response = self.inner.delete(endpoint).send().await?;
-
-        if response.status().is_success() {
-            Ok(())
-        } else {
-            Err(Error::Response(
-                response.status(),
-                response.text().await.unwrap_or_else(|_| "".to_string()),
-            ))
-        }
     }
 
     pub async fn list_dns_domains(&self) -> Result<DnsListResponse, Error> {
