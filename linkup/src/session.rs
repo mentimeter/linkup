@@ -15,7 +15,6 @@ pub const PREVIEW_SESSION_TOKEN: &str = "preview_session";
 pub enum SessionKind {
     #[default]
     Tunneled,
-    Isolated,
     Preview,
 }
 
@@ -147,7 +146,6 @@ impl SessionKind {
     pub fn as_str(&self) -> &str {
         match self {
             SessionKind::Tunneled => "tunneled",
-            SessionKind::Isolated => "isolated",
             SessionKind::Preview => "preview",
         }
     }
@@ -157,7 +155,6 @@ impl std::fmt::Display for SessionKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SessionKind::Tunneled => write!(f, "tunneled"),
-            SessionKind::Isolated => write!(f, "isolated"),
             SessionKind::Preview => write!(f, "preview"),
         }
     }

@@ -54,14 +54,6 @@ Failed to verify that DNS got propagated
   `linkup start` to try again.
 - If the problem persists, Cloudflare may be having issues. Check their
   [status page](https://www.cloudflarestatus.com/).
-- If you don't need remote services to call back into your machine, switch to an
-  isolated session, which skips the tunnel entirely. Isolated sessions require
-  [Local DNS](/linkup/guides/local-dns) to be installed.
-
-  ```sh
-  linkup stop
-  linkup start --isolated
-  ```
 
 ---
 
@@ -139,9 +131,8 @@ causes:
 - The session was cleaned up after 7 days of inactivity (see
   [Managing Sessions](/linkup/guides/sessions#inactive-session-cleanup)). Run
   `linkup start` to recreate it.
-- The session was never created in the worker. For example, an isolated session
-  referenced by name from outside your machine, or a typo in a hand-crafted
-  `Referer`/`tracestate` header.
+- The session was never created in the worker. For example, a typo in a
+  hand-crafted `Referer`/`tracestate` header.
 - The session belongs to a different Linkup deployment than the worker the
   request is hitting.
 
@@ -172,17 +163,9 @@ This linkup session has no associated tunnel / was started with --no-tunnel
 ```
 
 This means the request reached the public worker for a session that doesn't have
-a tunnel: an isolated session that's expected to be served entirely from your
-machine.
+a tunnel.
 
-The fix depends on what you intended:
-
-- If you intended a tunneled session, run `linkup stop` then `linkup start`
-  (without `--isolated`) to bring up the tunnel.
-- If you intended an isolated session, the request shouldn't be reaching the
-  public worker at all. Make sure [Local DNS](/linkup/guides/local-dns) is
-  installed so that `{session}.{linkup-domain}` resolves to your machine instead
-  of going out to the internet.
+The fix is to run `linkup stop` then `linkup start` to bring up the tunnel.
 
 ---
 

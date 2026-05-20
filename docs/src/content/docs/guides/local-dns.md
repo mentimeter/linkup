@@ -35,7 +35,6 @@ restarts cleanly with the new configuration.
 | Session type                                   | Local DNS                                                                                                                                                                                                                                  |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Tunneled** (`linkup start`)                  | Optional. Without it, requests still work. They just go out to Cloudflare and back through the tunnel. With it, requests originating on your machine resolve to the local server directly, which is much faster for asset-heavy frontends. |
-| **Isolated** (`linkup start --isolated`)       | **Required.** Isolated sessions have no Cloudflare tunnel and no worker involvement, so without local-dns there is no path for your browser to reach `{session}.{linkup-domain}`.                                                          |
 | **Preview** (`linkup sessions create-preview`) | Not applicable. Preview sessions consist of remote services only, so there's no local component for local-dns to point at.                                                                                                                 |
 
 Local-dns only affects requests originating on your own machine. Requests from

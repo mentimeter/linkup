@@ -4,129 +4,60 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
-use colored::Colorize;
-use linkup::SessionKind;
 
 use crate::{
-    Result, commands,
+    Result,
     env_files::write_to_env_file,
     services::{self, local_server},
     session::{SessionRow, print_sessions_table},
-    state::{State, find_isolated_suffixes},
+    state::{self, State},
 };
 
 #[derive(clap::Args)]
-pub struct Args {
-    #[arg(
-        long,
-        help = "Start as an isolated session with no Cloudflare connectivity"
-    )]
-    pub isolated: bool,
-}
+pub struct Args {}
 
-pub async fn start(args: &Args, config_arg: Option<&Path>) -> Result<()> {
-    if let Ok(existing_state) = State::load()
-        && local_server::is_reachable().await
-    {
-        let requested = if args.isolated {
-            SessionKind::Isolated
-        } else {
-            SessionKind::Tunneled
-        };
+pub async fn start(_args: &Args, config_arg: Option<&Path>) -> Result<()> {
+    if State::load().is_ok() && local_server::is_reachable().await {
+        println!("Linkup is already running. Run 'linkup stop' first to restart.",);
 
-        if existing_state.linkup.kind != requested {
-            println!(
-                "Linkup is already running as {}. Run 'linkup stop' first to switch modes.",
-                existing_state.linkup.kind
-            );
-
-            return Ok(());
-        }
+        return Ok(());
     }
 
     let mut state = load_and_save_state(config_arg)?;
     set_linkup_env(state.clone())?;
 
-    if args.isolated && !commands::local_dns::is_installed(Some(&state), config_arg) {
-        println!(
-            "{}",
-            "Isolated sessions requires Local DNS to be configured.\nPlease run 'linkup local-dns install' first."
-                .yellow()
-        );
-
-        return Ok(());
-    }
+    // TODO(@augustoccesar)[2026-05-20]: This should be removed once we actually start
+    //  having multiple state files again (if we decide that we will do it this way).
+    state::cleanup_legacy_state_files();
 
     services::local_server::start().await?;
 
-    let main_session_kind = if args.isolated {
-        state.linkup.kind = SessionKind::Isolated;
-        services::local_server::update_isolated_state(&mut state).await?;
-        state
-            .save()
-            .expect("failed to update local state file with session name");
-
-        SessionKind::Isolated
-    } else {
-        state.linkup.kind = SessionKind::Tunneled;
-
-        let tunnel_data = match services::local_server::update_state(&mut state).await {
-            Ok(tunnel_data) => {
-                log::info!("Finished setting up!");
-
-                tunnel_data
-            }
-            Err(e) => {
-                log::error!("Failed to upload state: {e}");
-
-                return Err(e);
-            }
-        };
-
-        if state.should_use_tunnel() {
-            let tunnel_url = services::cloudflared::start(&tunnel_data).await?;
-
-            if let Err(e) = services::cloudflared::update_state(&mut state, &tunnel_url) {
-                log::error!("Failed to update state with tunnel information.");
-
-                return Err(e);
-            }
-        } else {
-            log::info!("Skipping. State file requested no tunnel.");
+    let tunnel_data = match services::local_server::update_state(&mut state).await {
+        Ok(tunnel_data) => {
+            log::info!("Finished setting up!");
+            tunnel_data
         }
-
-        SessionKind::Tunneled
+        Err(e) => {
+            log::error!("Failed to upload state: {e}");
+            return Err(e);
+        }
     };
 
-    let mut rows = vec![SessionRow::from_state(&state, main_session_kind)];
+    if state.should_use_tunnel() {
+        let tunnel_url = services::cloudflared::start(&tunnel_data).await?;
 
-    for suffix in find_isolated_suffixes() {
-        match State::load_with_suffix(&suffix) {
-            Ok(mut isolated_state) => {
-                match services::local_server::update_isolated_state(&mut isolated_state).await {
-                    Ok(()) => {
-                        isolated_state
-                            .save_with_suffix(&isolated_state.linkup.session_name.clone())
-                            .unwrap_or_else(|e| {
-                                log::warn!(
-                                    "Failed to save isolated session state '{}': {}",
-                                    suffix,
-                                    e
-                                )
-                            });
-                        rows.push(SessionRow::from_state(
-                            &isolated_state,
-                            SessionKind::Isolated,
-                        ));
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to restore isolated session '{}': {}", suffix, e)
-                    }
-                }
-            }
-            Err(e) => log::warn!("Failed to load isolated session state '{}': {}", suffix, e),
+        if let Err(e) = services::cloudflared::update_state(&mut state, &tunnel_url) {
+            log::error!("Failed to update state with tunnel information.");
+            return Err(e);
         }
+    } else {
+        log::info!("Skipping. State file requested no tunnel.");
     }
+
+    let rows = vec![SessionRow::from_state(
+        &state,
+        linkup::SessionKind::Tunneled,
+    )];
 
     println!();
     print_sessions_table(&rows, None);

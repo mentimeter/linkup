@@ -14,7 +14,6 @@ use url::Url;
 
 use linkup::{
     NameKind, Session, SessionKind, TunnelData, TunneledSessionResponse, UpsertSessionRequest,
-    random_six_char,
 };
 use linkup_clients::{LocalServerClient, LocalServerClientError};
 
@@ -100,23 +99,6 @@ pub async fn update_state(state: &mut State) -> Result<TunnelData> {
         .expect("failed to update local state file with session name");
 
     Ok(tunneled_session.tunnel_data)
-}
-
-pub async fn update_isolated_state(state: &mut State) -> Result<()> {
-    let session_name = if !state.linkup.session_name.is_empty() {
-        state.linkup.session_name.clone()
-    } else {
-        random_six_char()
-    };
-
-    let client = LocalServerClient::new(&url());
-    let upsert_request = build_named_upsert_request(&session_name, state);
-    client.isolated_session(&upsert_request).await?;
-
-    state.linkup.session_name = session_name;
-    state.linkup.kind = SessionKind::Isolated;
-
-    Ok(())
 }
 
 fn build_named_upsert_request(session_name: &str, state: &State) -> UpsertSessionRequest {

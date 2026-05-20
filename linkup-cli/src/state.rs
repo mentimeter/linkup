@@ -1,7 +1,7 @@
 use std::{
     fmt::{self, Display, Formatter},
     fs,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use anyhow::Context;
@@ -23,14 +23,10 @@ pub struct State {
 
 impl State {
     pub fn load() -> anyhow::Result<Self> {
-        Self::load_from_path(&state_file_path(None))
+        Self::load_from_path(&state_file_path())
     }
 
-    pub fn load_with_suffix(suffix: &str) -> anyhow::Result<Self> {
-        Self::load_from_path(&state_file_path(Some(suffix)))
-    }
-
-    pub fn load_from_path(path: &std::path::Path) -> anyhow::Result<Self> {
+    fn load_from_path(path: &std::path::Path) -> anyhow::Result<Self> {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read state file on {:?}", path))?;
 
@@ -46,22 +42,7 @@ impl State {
     }
 
     pub fn save(&mut self) -> Result<()> {
-        self.save_to_path(&state_file_path(None))
-    }
-
-    pub fn save_with_suffix(&self, suffix: &str) -> Result<()> {
-        self.save_to_path(&state_file_path(Some(suffix)))
-    }
-
-    pub fn delete_with_suffix(suffix: &str) -> Result<()> {
-        let path = state_file_path(Some(suffix));
-
-        if path.exists() {
-            fs::remove_file(&path)
-                .with_context(|| format!("Failed to delete state file {:?}", path))?;
-        }
-
-        Ok(())
+        self.save_to_path(&state_file_path())
     }
 
     pub fn should_use_tunnel(&self) -> bool {
@@ -87,7 +68,7 @@ impl State {
     }
 
     pub fn exists() -> bool {
-        state_file_path(None).exists()
+        state_file_path().exists()
     }
 
     fn save_to_path(&self, path: &std::path::Path) -> Result<()> {
@@ -219,46 +200,25 @@ pub fn top_level_domains(domains: &[String]) -> Vec<String> {
         .collect::<Vec<String>>()
 }
 
-pub fn find_isolated_suffixes() -> Vec<String> {
+fn state_file_path() -> std::path::PathBuf {
+    linkup_file_path(LINKUP_STATE_FILE)
+}
+
+// TODO(@augustoccesar)[2026-05-20]: This should be removed once we actually start
+//  having multiple state files again (if we decide that we will do it this way).
+/// Remove leftover isolated session state files (state-*) from previous versions.
+pub fn cleanup_legacy_state_files() {
+    let dir = crate::linkup_dir_path();
     let prefix = format!("{}-", LINKUP_STATE_FILE);
 
-    list_state_files()
-        .iter()
-        .filter_map(|file_path| {
-            file_path
-                .file_name()
-                .and_then(|file_name| file_name.to_str())
-        })
-        .filter(|file_name| *file_name != LINKUP_STATE_FILE)
-        .filter_map(|file_name| file_name.strip_prefix(&prefix))
-        .map(|stripped_file_name| stripped_file_name.to_string())
-        .collect()
-}
-
-pub fn list_state_files() -> Vec<PathBuf> {
-    fs::read_dir(crate::linkup_dir_path())
-        .map(|entries| {
-            entries
-                .filter_map(|entry| entry.ok())
-                .filter_map(|entry| {
-                    let file_name = entry.file_name();
-                    let file_name = file_name.to_str()?;
-
-                    if !file_name.starts_with(LINKUP_STATE_FILE) {
-                        return None;
-                    }
-
-                    Some(entry.path())
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn state_file_path(suffix: Option<&str>) -> std::path::PathBuf {
-    match suffix {
-        None => linkup_file_path(LINKUP_STATE_FILE),
-        Some(suffix) => linkup_file_path(&format!("{}-{}", LINKUP_STATE_FILE, suffix)),
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            if let Some(name) = entry.file_name().to_str()
+                && name.starts_with(&prefix)
+            {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
     }
 }
 
