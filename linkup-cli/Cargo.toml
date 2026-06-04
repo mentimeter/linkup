@@ -41,10 +41,10 @@ env_logger = "0.11.10"
 flate2 = "1.1.9"
 hickory-resolver = { version = "0.26.1", features = ["tokio"] }
 indicatif = "0.18.4"
-log = "0.4.29"
+log = "0.4.30"
 serde_yaml = "0.9.34-deprecated"
-sysinfo = "0.39.1"
-tar = "0.4.45"
+sysinfo = "0.39.3"
+tar = "0.4.46"
 
 [dev-dependencies]
 mockall = "0.14.0"
