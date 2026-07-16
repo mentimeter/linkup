@@ -78,13 +78,10 @@ pub async fn status(args: &Args) -> anyhow::Result<()> {
 
     let config = load_config(&config_path).ok();
 
-    let user_services = build_user_services(session_detail.as_ref(), config.as_ref());
-    let internal_services = build_internal_services(&state);
-    let all_services: Vec<ServiceToCheck> =
-        user_services.into_iter().chain(internal_services).collect();
+    let services = build_user_services(session_detail.as_ref(), config.as_ref());
 
     let (mut service_statuses, status_receiver) =
-        prepare_service_statuses(&target_session, all_services);
+        prepare_service_statuses(&target_session, services);
 
     service_statuses.sort_by(|a, b| {
         a.priority
@@ -259,41 +256,6 @@ fn build_user_services(
             }
         })
         .collect()
-}
-
-fn build_internal_services(state: &State) -> Vec<ServiceToCheck> {
-    let local_url = services::local_server::url();
-
-    vec![
-        ServiceToCheck {
-            name: "linkup_local_server".to_string(),
-            url: local_url.join("/linkup/check").unwrap(),
-            component_kind: "local".to_string(),
-            health: None,
-            priority: 1,
-        },
-        ServiceToCheck {
-            name: "linkup_remote_server".to_string(),
-            url: state
-                .linkup
-                .worker_url
-                .join("/linkup/check")
-                .unwrap_or_else(|_| state.linkup.worker_url.clone()),
-            component_kind: "remote".to_string(),
-            health: None,
-            priority: 1,
-        },
-        ServiceToCheck {
-            name: "tunnel".to_string(),
-            url: state
-                .get_tunnel_url()
-                .join("/linkup/check")
-                .unwrap_or_else(|_| state.get_tunnel_url()),
-            component_kind: "remote".to_string(),
-            health: None,
-            priority: 1,
-        },
-    ]
 }
 
 fn prepare_service_statuses(

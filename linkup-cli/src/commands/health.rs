@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     env,
     io::{Write, stdout},
+    thread,
 };
 
 use anyhow::Result;
@@ -10,13 +11,17 @@ use colored::Colorize;
 use linkup::Session;
 use linkup_clients::LocalServerClient;
 use serde::Serialize;
+use url::Url;
 
 use crate::{
     services::{cloudflared, local_server},
     state::State,
 };
 
-use super::local_dns;
+use super::{
+    local_dns,
+    status::{ServerStatus, server_status},
+};
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -57,6 +62,18 @@ struct States {
 }
 
 #[derive(Serialize)]
+struct LinkupService {
+    url: Url,
+    status: ServerStatus,
+}
+
+#[derive(Serialize)]
+struct LinkupServices {
+    remote_server: Option<LinkupService>,
+    tunnel: Option<LinkupService>,
+}
+
+#[derive(Serialize)]
 enum LocalServer {
     Stopped,
     Running {
@@ -78,6 +95,7 @@ struct Health {
     cli: Cli,
     system: System,
     states: States,
+    linkup_services: LinkupServices,
     local_server: LocalServer,
     cloudflared: Cloudflared,
 }
@@ -146,6 +164,65 @@ impl States {
                 "{:>offset$}- [{}] {} ({})",
                 "", state_file_name, state.linkup.session_name, state.linkup.kind,
             )?;
+        }
+
+        Ok(())
+    }
+}
+
+impl LinkupService {
+    fn load(url: Url) -> Self {
+        let status = server_status(url.as_str(), None, None);
+
+        Self { url, status }
+    }
+
+    fn write(&self, writer: &mut impl Write, name: &str, offset: usize) -> Result<()> {
+        writeln!(
+            writer,
+            "{:>offset$}{}: {} ({})",
+            "",
+            name,
+            self.status.colored().to_uppercase(),
+            self.url
+        )?;
+
+        Ok(())
+    }
+}
+
+impl LinkupServices {
+    fn load() -> Result<Self> {
+        let state = State::load().ok();
+
+        let remote_server_url = state
+            .as_ref()
+            .map(|state| state.linkup.worker_url.join("/linkup/check"))
+            .transpose()?;
+        let remote_server =
+            remote_server_url.map(|url| thread::spawn(move || LinkupService::load(url)));
+
+        let tunnel_url = state
+            .as_ref()
+            .filter(|state| state.should_use_tunnel())
+            .map(|state| state.get_tunnel_url().join("/linkup/check"))
+            .transpose()?;
+        let tunnel = tunnel_url.map(|url| thread::spawn(move || LinkupService::load(url)));
+
+        Ok(Self {
+            remote_server: remote_server
+                .map(|handle| handle.join().expect("Linkup service check panicked")),
+            tunnel: tunnel.map(|handle| handle.join().expect("Linkup service check panicked")),
+        })
+    }
+
+    fn write(&self, writer: &mut impl Write, offset: usize) -> Result<()> {
+        if let Some(remote_server) = &self.remote_server {
+            remote_server.write(writer, "Remote Server", offset)?;
+        }
+
+        if let Some(tunnel) = &self.tunnel {
+            tunnel.write(writer, "Tunnel", offset)?;
         }
 
         Ok(())
@@ -275,6 +352,7 @@ impl Health {
             cli: Cli::load()?,
             system: System::load()?,
             states: States::load()?,
+            linkup_services: LinkupServices::load()?,
             local_server: LocalServer::load().await?,
             cloudflared: Cloudflared::load()?,
         })
@@ -289,6 +367,9 @@ impl Health {
 
         write!(writer, "{}", "States:".bold())?;
         self.states.write(writer, 2)?;
+
+        writeln!(writer, "{}", "Linkup Services:".bold())?;
+        self.linkup_services.write(writer, 2)?;
 
         write!(writer, "{}", "Local Server:".bold())?;
         self.local_server.write(writer, 2)?;

@@ -13,7 +13,7 @@ pub enum ServerStatus {
 }
 
 impl ServerStatus {
-    pub(super) fn colored(&self) -> ColoredString {
+    pub fn colored(&self) -> ColoredString {
         match self {
             ServerStatus::Ok => "ok".blue(),
             ServerStatus::Error => "error".yellow(),
